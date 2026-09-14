@@ -1,6 +1,7 @@
 # just_sonner — v0.1 specification
 
-Status: **draft** (2026-09-14). Implementation has not started.
+Status: **settled** (2026-09-14). Every question §11 held is decided and written up; §12 records
+each one with its basis. Implementation has not started. Scope is **desktop only** for v0.1 (§2).
 
 A stacking toast system for Flutter in the spirit of [sonner](https://github.com/emilkowalski/sonner):
 toasts pile up instead of replacing each other, collapse into a deck and fan out on hover, and a
@@ -46,7 +47,7 @@ What just_sonner adds, in the order a real consumer needed them:
 - One default look — light and dark from `Theme.of(context)` — with a leading slot the caller
   fills, and a spinner in that slot while a toast is loading
 - A builder that fully replaces the look and receives the animation and a dismiss handle
-- Android, iOS, web, Windows, macOS, Linux; no dependency beyond Flutter
+- **Windows, macOS, Linux**; no dependency beyond Flutter
 
 ### Non-goals (v0.1)
 
@@ -58,6 +59,10 @@ What just_sonner adds, in the order a real consumer needed them:
 - Reporting that a toast went away and why — no callback, future or reason enum (sonner's
   `onDismiss` / `onAutoClose`, `SnackBarClosedReason`). A caller learns about its own button
   through the `action` slot's callback, and nothing else
+- **Mobile and web.** v0.1 targets desktop only, so nothing here is specified or tested for
+  touch: how a deck expands without hover, whether pause-on-hover has a touch equivalent, and
+  honouring `MediaQuery.viewPadding` / `viewInsets` for notches, the status bar and the keyboard.
+  The package will still build for those platforms; it just makes no promises about them
 - Keyboard shortcut to focus the toast region (sonner's `hotkey`)
 - RTL mirroring beyond what `Directionality` gives for free
 
@@ -150,7 +155,7 @@ same methods as `toast`. There is no static facade.
 
 `SonnerHost({SonnerController? controller, required Widget child})` (mount mode 2) draws
 `controller`, or `toast` when omitted. `SonnerConfig` carry: `position`, `width` (356), `gap` (14),
-`offset` (24, mobile 16), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
+`offset` (24), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false), `backlogDuration` (300 ms — a just_sonner proposal, to be felt out in the
@@ -362,8 +367,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   collapse rule, not a timer one.)
 
   **`inactive` does not pause.** The app is still on screen there — Flutter's own docs describe it
-  as "at least one view is visible, but none have input focus", which on desktop is a window that
-  merely lost focus and on Android includes a system dialog or the notification shade. Pausing for
+  as "at least one view is visible, but none have input focus" — on desktop, a window that merely
+  lost focus while staying fully on screen. Pausing for
   those would leave a pile of stale toasts waiting whenever the user comes back. `hidden` is the
   state Flutter **synthesises** before `paused` so that one handler covers "conceptually hidden"
   on every platform, which is exactly what is wanted here.
@@ -476,7 +481,8 @@ flash `FlashBar` through the adapter in §1.
 
 ## 11. Open questions (for review)
 
-5. Mobile: honour `MediaQuery.viewPadding` for the offset automatically?
+None. Each one is now a row in §12 with the reasoning behind it, and the work deliberately left
+outside v0.1 is in §2's non-goals.
 
 ## 12. Decision record
 
