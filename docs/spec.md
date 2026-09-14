@@ -249,15 +249,53 @@ Also:
 ### The z-order rule (mode 1)
 
 `flash` inserts a **new** overlay entry per toast, so a new toast is always on top. A stack host is
-inserted **once** — a dialog or route pushed afterwards is inserted above it and covers the whole
-deck, new toasts included. So in mode 1:
+inserted **once**.
 
-> **Every `show`, and every `update` that changes what the toast looks like, re-inserts the host
-> at the top of the overlay** if anything has been inserted above it since.
+**Routes do not cover it.** `Navigator` re-orders its overlay on every push — `_flushHistoryUpdates`
+calls `overlay.rearrange(_allRouteOverlayEntries)` (`navigator.dart:4568-4570`), and `rearrange`
+keeps every **non-route** entry as a group on top (`overlay.dart:772-822`). The host rises above
+each new dialog or page on the first frame, with no help from this package. Read and probed against
+Flutter 3.41.9 (`00b0c91f06`) in the [overlay research](https://github.com/kihyun1998/just_sonner/blob/research/overlay-reraise/research/overlay-reraise.md).
 
-Consequence, stated so nobody expects otherwise: a toast shown *before* a dialog opens is covered
-by that dialog until the next toast or update, exactly as with flash. Mode 2 has no such rule —
-the host is above every route.
+What *can* sit above the host is an entry another package inserts **directly** into the same
+overlay afterwards: flash's per-toast entries, `Draggable` feedback, a hero flight during a route
+transition. `OverlayState` exposes no entry order and no insertion hook — `_entries` is private and
+`debugIsVisible` is debug-only — so there is no way to ask whether anything is above. The rule is
+therefore unconditional:
+
+> **Every `show` re-raises the host to the top of the overlay**, with
+> `overlay.rearrange([host], below: host)` — one synchronous call that keeps the host's State and
+> its running animations.
+
+**`update` does not re-raise.** Replace (`show(id:)`) and every `promise` state go through `show`,
+so each transition that matters is covered, while a progress toast driven by repeated `update`
+(§4) does not rebuild the overlay on every tick. (This settles §11 Q2.)
+
+Consequences, stated so nobody expects otherwise:
+
+- **Toasts render above dialogs and pushed pages**, including above a modal barrier: they stay
+  visible and tappable while a dialog is open. This is what §10 already asks for, and it now holds
+  whether the toast was shown before or after the dialog.
+- A toast is covered only by an entry inserted directly into the overlay since the last `show`, or
+  by an overlay **higher** than the host's.
+- `attach` must be given the **root** navigator's key. A nested navigator's key puts the host in a
+  lower overlay, where `showDialog` — whose `useRootNavigator` defaults to `true` — lands above it
+  and no amount of re-raising helps. Caught in debug:
+
+  ```dart
+  assert(Overlay.of(navigator.context, rootOverlay: true) == navigator.overlay,
+      'attach() needs the root navigator key, or dialogs will cover toasts. '
+      'Use mount mode 2 (SonnerHost) instead.');
+  ```
+
+  The same assert catches an `Overlay` added in `MaterialApp.builder`, which also sits above the
+  navigator's — use mode 2 there.
+- The overlay is read from `navigatorKey` on each use and **never cached**:
+  `NavigatorState.restoreState` replaces its overlay key with a fresh `GlobalKey`
+  (`navigator.dart:3825-3828`), after which a host held in the old overlay is gone and its
+  `remove()` is silently a no-op.
+
+Mode 2 has no such rule — the host is above every route for the life of the app.
 
 Mode 1 must fail loudly rather than silently: showing a toast before `attach`, or while the
 navigator has no overlay, throws a `StateError` in debug and drops the toast with a single
@@ -412,6 +450,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - Only `visibleToasts` are hit-testable
 - Swipe below and above the threshold
 - **Mode 1 z-order: a toast shown while a dialog is open appears above the dialog**
+- **and a toast shown *before* a dialog opens is still above it afterwards**
+- `update` does not re-raise the host; `show`, replace and each `promise` state do
+- a re-raise keeps the host's State and a running animation
+- `attach` with a non-root navigator key asserts in debug
 - Show before `attach` throws in debug
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
 - A change of builder cross-fades, and the outgoing builder does not receive pointer events
@@ -434,7 +476,6 @@ flash `FlashBar` through the adapter in §1.
 
 ## 11. Open questions (for review)
 
-2. Should an `update` re-raise the host in mode 1, or only a `show`?
 5. Mobile: honour `MediaQuery.viewPadding` for the offset automatically?
 
 ## 12. Decision record
@@ -459,6 +500,7 @@ flash `FlashBar` through the adapter in §1.
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
 | `config` is a settable property of the controller, with `copyWith`; `attach` and `SonnerHost` take none. On-screen toasts animate to a new config in place | maintainer | the exported `toast` is already constructed, so a post-construction path has to exist anyway — once it does, a second one on `attach` is duplication with a precedence rule to define. The controller is already a `ChangeNotifier`, so both mount modes get the same path for free, and §6 already animates offsets, scales and heights on collapse ↔ expand; a config change reuses it rather than inventing a rule |
+| Re-raise the host on every `show` (so also on replace and each `promise` state), never on `update`; unconditionally, since nothing can be detected | maintainer | §5's premise was wrong: `Navigator` already lifts non-route entries above every pushed route, so dialogs and pages never covered the host (overlay research, probes A1-A5). What remains is another package's direct `overlay.insert`, which no public API can see — hence unconditional. Keying it to `show` covers every transition that matters, since replace and `promise` go through `show`, and spares an overlay rebuild per tick on the progress toast §4 now keeps alive |
 | `dismissible` is `bool?`, unset meaning `!isLoading`, resolved on read rather than at `show` | maintainer | sonner blocks swipe and the close button on loading *in addition to* `dismissible`, giving one job to two handles and leaving "loading, but closeable" inexpressible — and that rule is policy, not a measurement, so the example reference does not carry it here. Deriving the default keeps a single handle, matches sonner out of the box, and makes a toast hand itself back when its work finishes. Resolving on read rather than at `show` is what makes that last part free |
 | Any `update` or replace restarts the countdown, from the toast's own duration | maintainer | §1's motivating flow breaks otherwise — new content arriving on a toast with 1 s left would vanish before it is read. No field list: the only field that is not on screen is `dismissible`, so an exception would buy one case and cost a rule. Restarting also makes a frequently-updated progress toast stay up for free. `backlogDuration` is not re-applied, so a toast being read never shortens under the reader (§7) |
 | Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
