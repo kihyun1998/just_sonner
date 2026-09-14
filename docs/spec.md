@@ -83,7 +83,7 @@ Dart signatures are the contract; names are open to review (§11).
 final toast = SonnerController();
 
 class SonnerController extends ChangeNotifier {
-  SonnerController({SonnerConfig config, Clock? clock});
+  SonnerController({SonnerConfig config});
 
   /// Mount mode 1 — insert this controller's host into the root overlay of [navigatorKey].
   void attach(GlobalKey<NavigatorState> navigatorKey, {SonnerConfig config});
@@ -277,6 +277,19 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - **All** timers pause while the deck is expanded by hover, while any toast is being dragged, or
   while the app is not `AppLifecycleState.resumed`; they resume with the time that was left.
 - Toasts with `isLoading` and `Duration.zero` toasts have no timer.
+- **How the countdown runs.** One `Timer.periodic` of **100 ms**, alive only while some toast has
+  a timer, subtracts a tick from every counting toast; a toast whose remainder reaches zero is
+  dismissed. Pausing is not subtracting. **The controller never reads a clock**, so it needs no
+  time source injected and none of `package:clock`, `Stopwatch` or `DateTime.now` appears in it —
+  `Timer` alone is what the tests fake (§10).
+
+  The cost is granularity: a toast shown between ticks runs up to one tick long. That is invisible
+  against the 200-400 ms motion in §6, and it is not configurable.
+
+  The gain is that "time left" is a number the controller owns rather than one it derives from two
+  clock readings. sonner derives it, and needs a guard so a pause is not subtracted twice
+  ([research #2 row 25](https://github.com/kihyun1998/just_sonner/blob/research/sonner-values/research/sonner-values.md)).
+  That bug cannot be written here.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
   `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
 
@@ -305,7 +318,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 
 ## 10. Proof
 
-### Controller (unit, fake clock)
+### Controller (unit, `fake_async` — a dev dependency; nothing is injected)
 
 - `show` returns distinct ids; newest first
 - `update` changes only the fields passed and keeps position; returns false for an unknown id
@@ -315,6 +328,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
 - `promise(id:)` takes over a toast already on screen
 - timers pause on hover, drag and lifecycle; resume with the remaining time
+- the tick stops when the last counting toast goes, and starts again with the next one
 
 ### Host (widget tests)
 
@@ -366,6 +380,7 @@ flash `FlashBar` through the adapter in §1.
 | The loading indicator and the leading slot's size live on `SonnerConfig` (`loadingIndicator`, `leadingSize` 20), not on `show` | maintainer | one spinner style per app; per-toast sizes would break the deck's alignment. The box stays fixed either way, for the `minWidth: 42` reason in §9 |
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
+| The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
