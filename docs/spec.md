@@ -85,8 +85,12 @@ final toast = SonnerController();
 class SonnerController extends ChangeNotifier {
   SonnerController({SonnerConfig config});
 
+  /// The live config. Assigning notifies, so a mounted host follows it (§6 Motion).
+  /// This is the only way to configure the exported `toast`, which is already constructed.
+  SonnerConfig config;
+
   /// Mount mode 1 — insert this controller's host into the root overlay of [navigatorKey].
-  void attach(GlobalKey<NavigatorState> navigatorKey, {SonnerConfig config});
+  void attach(GlobalKey<NavigatorState> navigatorKey);
 
   /// Shows a toast. An [id] that is on screen **replaces** that toast (see Update rules).
   ToastId show(String title, {
@@ -149,7 +153,14 @@ same methods as `toast`. There is no static facade.
 `offset` (24, mobile 16), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
-`closeButton` (false).
+`closeButton` (false). It is immutable and has a `copyWith`, so one field changes with
+`toast.config = toast.config.copyWith(position: …)`.
+
+**The config lives on the controller and nowhere else.** `attach` does not take one and neither
+does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
+modes read the same value and both follow a change through the `ChangeNotifier` the controller
+already is. Changing `position` also changes the `swipeDirections` derived from it, and changing
+`builder` re-draws every toast that has no builder of its own.
 Hosts of two controllers mounted at once are not coordinated (§2 non-goal).
 
 ### Slots
@@ -270,6 +281,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 | Exit (dismiss or timeout) | slide toward the edge + fade; the rest close the gap | removed from the tree after 200 ms | sonner `TIME_BEFORE_UNMOUNT` |
 | Swipe out | continue in the swipe direction + fade | 200 ms | just_sonner |
 | Update / replace | content cross-fades (the two builders' output, if the builder changed); no re-enter | 200 ms | just_sonner |
+| `config` assigned | offsets, scales and heights animate to the new config, in place; no toast re-enters or exits. Toasts that fall outside a lowered `visibleToasts` stop being painted, exactly as when a newer toast pushes them out | 400 ms | just_sonner |
 
 ## 7. Timers
 
@@ -329,6 +341,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `promise(id:)` takes over a toast already on screen
 - timers pause on hover, drag and lifecycle; resume with the remaining time
 - the tick stops when the last counting toast goes, and starts again with the next one
+- assigning `config` notifies, and a lowered `visibleToasts` leaves the hidden toasts in the list
 
 ### Host (widget tests)
 
@@ -380,6 +393,7 @@ flash `FlashBar` through the adapter in §1.
 | The loading indicator and the leading slot's size live on `SonnerConfig` (`loadingIndicator`, `leadingSize` 20), not on `show` | maintainer | one spinner style per app; per-toast sizes would break the deck's alignment. The box stays fixed either way, for the `minWidth: 42` reason in §9 |
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
+| `config` is a settable property of the controller, with `copyWith`; `attach` and `SonnerHost` take none. On-screen toasts animate to a new config in place | maintainer | the exported `toast` is already constructed, so a post-construction path has to exist anyway — once it does, a second one on `attach` is duplication with a precedence rule to define. The controller is already a `ChangeNotifier`, so both mount modes get the same path for free, and §6 already animates offsets, scales and heights on collapse ↔ expand; a config change reuses it rather than inventing a rule |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
 
