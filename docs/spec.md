@@ -55,6 +55,9 @@ What just_sonner adds, in the order a real consumer needed them:
 - Semantic toast types (`success` / `error` / …) and the rich colors, custom fonts and icon packs
   that would follow from them — the caller fills the leading slot with its own widget, and the
   builder is the escape hatch for everything else
+- Reporting that a toast went away and why — no callback, future or reason enum (sonner's
+  `onDismiss` / `onAutoClose`, `SnackBarClosedReason`). A caller learns about its own button
+  through the `action` slot's callback, and nothing else
 - Keyboard shortcut to focus the toast region (sonner's `hotkey`)
 - RTL mirroring beyond what `Directionality` gives for free
 
