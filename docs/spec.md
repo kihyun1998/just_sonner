@@ -295,8 +295,26 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   is — so a burst drains quickly while each toast is still seen, and the last one gets its full
   time. A toast whose backlog empties mid-countdown keeps the short duration it entered with;
   nothing stretches back out under the reader.
-- **All** timers pause while the deck is expanded by hover, while any toast is being dragged, or
-  while the app is not `AppLifecycleState.resumed`; they resume with the time that was left.
+- **All** timers pause while any of these holds, and resume with the time that was left:
+  - **the pointer is over the deck** (the hover region of §6, gaps included). The trigger is the
+    pointer, not the expansion — a lone toast has nothing to fan out but still pauses under the
+    cursor, which is the most common case of all. `expandByDefault` does **not** pause: it is not
+    hover.
+  - **a toast is being dragged**, and it keeps pausing after the drag carries the pointer off the
+    deck.
+  - the app is **`hidden`, `paused` or `detached`**.
+
+  A pointer-down that never becomes a drag needs no rule of its own: pressing something in the
+  deck means the pointer is over the deck, which already pauses. (sonner has a separate
+  `interacting` flag for this; its other job, keeping the deck expanded until pointer-up, is a
+  collapse rule, not a timer one.)
+
+  **`inactive` does not pause.** The app is still on screen there — Flutter's own docs describe it
+  as "at least one view is visible, but none have input focus", which on desktop is a window that
+  merely lost focus and on Android includes a system dialog or the notification shade. Pausing for
+  those would leave a pile of stale toasts waiting whenever the user comes back. `hidden` is the
+  state Flutter **synthesises** before `paused` so that one handler covers "conceptually hidden"
+  on every platform, which is exactly what is wanted here.
 - Toasts with `isLoading` and `Duration.zero` toasts have no timer.
 - A toast stops counting when it is **dismissed**, not when it is **removed** — its exit takes
   200 ms more (§6) and there is nothing left to count.
@@ -351,6 +369,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
 - `promise(id:)` takes over a toast already on screen
 - timers pause on hover, drag and lifecycle; resume with the remaining time
+- a single toast pauses under the pointer, and `expandByDefault` alone does not pause
+- `inactive` does not pause; `hidden` does
 - a toast beyond `visibleToasts` does not count down, and starts at `backlogDuration` when it
   reaches the window with toasts still behind it, at `duration` when none are
 - an explicit `duration` on `show` is used even while there is a backlog
@@ -407,6 +427,7 @@ flash `FlashBar` through the adapter in §1.
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
 | `config` is a settable property of the controller, with `copyWith`; `attach` and `SonnerHost` take none. On-screen toasts animate to a new config in place | maintainer | the exported `toast` is already constructed, so a post-construction path has to exist anyway — once it does, a second one on `attach` is duplication with a precedence rule to define. The controller is already a `ChangeNotifier`, so both mount modes get the same path for free, and §6 already animates offsets, scales and heights on collapse ↔ expand; a config change reuses it rather than inventing a rule |
+| Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
 | Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without | maintainer | sonner counts hidden toasts down and lets them expire unseen, but its timer effect simply has no `isVisible` guard (research #2 row 26) — an omission rather than a decision, and sonner is an example. Waiting alone would make a burst of 10 take 13 s to clear; a short duration while backlogged clears it in about 2 s and still puts every toast on screen. Fixing it at entry keeps a nearly-expired toast from swelling back to full time under the reader |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
