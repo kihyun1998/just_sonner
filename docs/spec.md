@@ -43,8 +43,8 @@ What just_sonner adds, in the order a real consumer needed them:
 - Six positions, max visible count, width, gap, offset
 - `show` returns an id; `update(id)`, `dismiss(id)`, `dismissAll()`, `promise(future)`
 - Two mount modes (§5), root overlay by default
-- A default look for `success`, `info`, `warning`, `error`, `loading`, plain — light and dark from
-  `Theme.of(context)`
+- One default look — light and dark from `Theme.of(context)` — with a leading slot the caller
+  fills, and a spinner in that slot while a toast is loading
 - A builder that fully replaces the look and receives the animation and a dismiss handle
 - Android, iOS, web, Windows, macOS, Linux; no dependency beyond Flutter
 
@@ -52,7 +52,9 @@ What just_sonner adds, in the order a real consumer needed them:
 
 - Several independent toasters at once (one host per app)
 - A toast history / notification center
-- Rich colors, custom fonts, icon packs — the builder is the escape hatch
+- Semantic toast types (`success` / `error` / …) and the rich colors, custom fonts and icon packs
+  that would follow from them — the caller fills the leading slot with its own widget, and the
+  builder is the escape hatch for everything else
 - Keyboard shortcut to focus the toast region (sonner's `hotkey`)
 - RTL mirroring beyond what `Directionality` gives for free
 
@@ -60,7 +62,7 @@ What just_sonner adds, in the order a real consumer needed them:
 
 | Term | Meaning |
 |---|---|
-| **toast** | One notification. Has an id, a state (type, title, description, …) and a lifetime |
+| **toast** | One notification. Has an id, a state (title, description, `isLoading`, …) and a lifetime |
 | **host** | The single widget that lays out and animates every toast |
 | **deck** | The collapsed stack: the front toast in full, the ones behind peeking out |
 | **front** | The newest visible toast |
@@ -86,25 +88,17 @@ class SonnerController extends ChangeNotifier {
   /// Shows a toast. An [id] that is on screen **replaces** that toast (see Update rules).
   ToastId show(String title, {
     String? description,
-    ToastType type = ToastType.normal,
+    bool isLoading = false,      // no timer; the leading slot holds config.loadingIndicator
+    Widget? leading,             // fills the leading slot when the toast is not loading
     Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed
     bool dismissible = true,
     ToastAction? action,
     ToastId? id,
     ToastBuilder? builder,       // replaces the look for this toast only
-  });
-
-  // Every type helper takes what `show` takes except `type`; `loading` also drops `duration`.
-  ToastId success(String title, {String? description, Duration? duration, bool dismissible = true,
-      ToastAction? action, ToastId? id, ToastBuilder? builder});
-  ToastId info(...);     // same parameters as success
-  ToastId warning(...);  // same parameters as success
-  ToastId error(...);    // same parameters as success
-  ToastId loading(String title, {String? description, bool dismissible = true,
-      ToastAction? action, ToastId? id, ToastBuilder? builder});   // no timer
+  });                            // debug assert: !isLoading || duration == null
 
   /// **Updates** a toast on screen: only the fields passed change. Returns false if it is gone.
-  bool update(ToastId id, {String? title, String? description, ToastType? type,
+  bool update(ToastId id, {String? title, String? description, bool? isLoading, Widget? leading,
       Duration? duration, bool? dismissible, ToastAction? action, ToastBuilder? builder});
 
   Future<T> promise<T>(Future<T> future, {
@@ -118,9 +112,10 @@ class SonnerController extends ChangeNotifier {
   void dismissAll();
 }
 
-/// The content of one `promise` state. Everything a type helper takes except `type` and `id`.
+/// The content of one `promise` state. Everything `show` takes except `id` and `isLoading`,
+/// which `promise` sets itself.
 class ToastContent {
-  const ToastContent(String title, {String? description, Duration? duration,
+  const ToastContent(String title, {String? description, Widget? leading, Duration? duration,
       bool dismissible = true, ToastAction? action, ToastBuilder? builder});
 }
 
@@ -129,7 +124,7 @@ typedef ToastBuilder = Widget Function(BuildContext context, ToastView toast);
 /// What a builder gets.
 abstract interface class ToastView {
   ToastId get id;
-  ToastState get state;                  // type, title, description, action, dismissible
+  ToastState get state;                  // title, description, isLoading, leading, action, dismissible
   AnimationController get animation;     // enter 0→1, exit 1→0
   Future<void> dismiss();
   void holdTimer();                      // a widget-driven gesture started (see §7)
@@ -142,8 +137,9 @@ same methods as `toast`. There is no static facade.
 `SonnerHost({SonnerController? controller, required Widget child})` (mount mode 2) draws
 `controller`, or `toast` when omitted. `SonnerConfig` carry: `position`, `width` (356), `gap` (14),
 `offset` (24, mobile 16), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
-`swipeDirections` (derived from position), `builder` (the default look when null). Hosts of two
-controllers mounted at once are not coordinated (§2 non-goal).
+`swipeDirections` (derived from position), `builder` (the default look when null),
+`loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20).
+Hosts of two controllers mounted at once are not coordinated (§2 non-goal).
 
 ### Update rules
 
@@ -152,15 +148,15 @@ not given:
 
 - **Update** — `update(id, …)`: a patch. A field passed as `null` or not passed keeps its value, so
   `update` cannot clear a field.
-- **Replace** — `show(id: x)`, a type helper with `id: x`, or a `promise` state, where `x` is on
-  screen: the new content replaces the old whole. A field not given takes its default —
-  `description` and `action` disappear, `builder: null` returns to the default look.
+- **Replace** — `show(id: x)` or a `promise` state, where `x` is on screen: the new content
+  replaces the old whole. A field not given takes its default — `description`, `leading` and
+  `action` disappear, `builder: null` returns to the default look.
 
 Both:
 
 - keep the toast's place in the deck and its enter animation; only the content changes.
-- A toast leaving `loading` starts a timer of its (new or configured) duration. A toast entering
-  `loading` stops its timer.
+- A toast leaving `isLoading` starts a timer of its (new or configured) duration. A toast
+  entering it stops its timer.
 - A change of `builder` cross-fades the two builders' output (§6); the outgoing one ignores the
   pointer, so a builder with its own gestures (flash's `FlashBar`) cannot act while fading out.
 
@@ -171,7 +167,8 @@ Also:
 - `promise` shows `loading` immediately (replacing the toast at `id` if one is on screen), then
   replaces it with `success(value)` or `error(error)`; the future's own result or error is returned
   unchanged to the caller. `duration` on the `loading` content is ignored (asserted in debug).
-- A multi-step flow holds the id: `final id = toast.loading('Checking credentials…')`, then
+- A multi-step flow holds the id:
+  `final id = toast.show('Checking credentials…', isLoading: true)`, then
   `toast.update(id, title: 'Opening the session…')`, then `toast.promise(open(), id: id, …)`.
 
 ## 5. Mounting
@@ -187,8 +184,8 @@ Also:
 inserted **once** — a dialog or route pushed afterwards is inserted above it and covers the whole
 deck, new toasts included. So in mode 1:
 
-> **Every `show` and every `update` that changes the type re-inserts the host at the top of the
-> overlay** if anything has been inserted above it since.
+> **Every `show`, and every `update` that changes what the toast looks like, re-inserts the host
+> at the top of the overlay** if anything has been inserted above it since.
 
 Consequence, stated so nobody expects otherwise: a toast shown *before* a dialog opens is covered
 by that dialog until the next toast or update, exactly as with flash. Mode 2 has no such rule —
@@ -237,7 +234,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - Each toast counts down its own remaining time.
 - **All** timers pause while the deck is expanded by hover, while any toast is being dragged, or
   while the app is not `AppLifecycleState.resumed`; they resume with the time that was left.
-- `loading` toasts and `Duration.zero` toasts have no timer.
+- Toasts with `isLoading` and `Duration.zero` toasts have no timer.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
   `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
 
@@ -253,9 +250,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 
 - Surface from `Theme.of(context).colorScheme` (`surfaceContainerHigh`, `outlineVariant` border,
   8 px radius), text from `textTheme` — a just_sonner proposal, to be settled in the example app.
-- Leading slot: an icon per type; **`loading` puts a spinner in the same slot**. The slot is a fixed
-  20×20 centred box, so a parent that imposes a minimum width cannot stretch the spinner into an
-  ellipse (observed with flash's `FlashBar`, which wraps its icon in `minWidth: 42`).
+- Leading slot: the toast's `leading` widget, or `config.loadingIndicator` while `isLoading`. A
+  toast with neither gets **no slot at all** — the title starts at the padding edge. The slot is a
+  centred box of `config.leadingSize` (20) and is **fixed**, so a parent that imposes a minimum
+  width cannot stretch the spinner into an ellipse (observed with flash's `FlashBar`, which wraps
+  its icon in `minWidth: 42`).
 - Title, optional description, optional action button, optional close button.
 - `Semantics(liveRegion: true)` on each toast; toasts never request focus.
 
@@ -266,7 +265,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `show` returns distinct ids; newest first
 - `update` changes only the fields passed and keeps position; returns false for an unknown id
 - `show(id:)` on a toast on screen replaces it whole: an omitted `description`, `action` or `builder` is cleared
-- `loading` → `success` starts the timer; `success` → `loading` stops it
+- leaving `isLoading` starts the timer; entering `isLoading` stops it
 - `show(id:)` after dismissal creates a new toast with no leaked fields
 - `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
 - `promise(id:)` takes over a toast already on screen
@@ -287,15 +286,15 @@ Every test is reddened once before it is trusted: remove the rule it guards and 
 
 ### Example app
 
-Mirrors the checks above as buttons: each type, five in a row, loading → success, loading → error,
-two promises at once, a toast over an open dialog (mode 1), position / expand / visible-count
-controls, light and dark, and a builder that wraps a flash `FlashBar` through the adapter in §1.
+Mirrors the checks above as buttons: five toasts in a row, a toast with a `leading` widget and one
+without, loading → done, loading → failed, two promises at once, a toast over an open dialog
+(mode 1), position / expand / visible-count controls, light and dark, and a builder that wraps a
+flash `FlashBar` through the adapter in §1.
 
 ## 11. Open questions (for review)
 
-2. Should an `update` that does not change the type also re-raise the host in mode 1?
+2. Should an `update` re-raise the host in mode 1, or only a `show`?
 3. Should older toasts beyond `visibleToasts` still count down, or wait their turn?
-4. `ToastType.normal` vs no type at all for the plain toast
 5. Mobile: honour `MediaQuery.viewPadding` for the offset automatically?
 
 ## 12. Decision record
@@ -309,12 +308,15 @@ controls, light and dark, and a builder that wraps a flash `FlashBar` through th
 | Layout constants follow sonner | derived | the reference implementation; changeable by measurement |
 | Mode-1 z-order rule (§5) | derived | follows from a single long-lived overlay entry |
 | Item exposes `AnimationController` | derived | makes flash-based widgets fit without redrawing; verified in a spike |
-| Entry point is an exported default instance `final toast = SonnerController()`, no static facade and no `call` | maintainer | one API surface instead of a forwarding copy; `toast.success(…)` reads without knowing sonner; name clashes fail at compile time |
-| Type helpers take every `show` parameter except `type` | maintainer | an error with a Retry action is the common case; sonner's helpers take the full option set |
+| Entry point is an exported default instance `final toast = SonnerController()`, no static facade and no `call` | maintainer | one API surface instead of a forwarding copy; `toast.show(…)` reads without knowing sonner; name clashes fail at compile time |
+| ~~Type helpers take every `show` parameter except `type`~~ | maintainer | **Superseded**: the type helpers and `ToastType` are gone (row below) |
 | `attach` is an instance method; `SonnerHost` takes an optional controller, `toast` by default | maintainer | follows from the instance entry point; widget tests get their own controller |
 | `promise` states take a `ToastContent` each, replacing the shared `description`; `promise` accepts `id` | maintainer | one description under loading and result reads wrong; sonner's extended result without a union type; a multi-step flow hands its loading toast to `promise` |
 | Update patches, replace swaps whole (§4) | maintainer | Dart cannot tell a parameter not passed from `null`, so clearing a field needs its own verb |
 | `update` and replace can change the builder | maintainer | replace already takes `builder`; sonner's `custom` replaces a toast's look in place |
+| **Reversal**: `ToastType` and the `success` / `info` / `warning` / `error` / `loading` helpers are removed. `show(isLoading:)` carries the only type that ever meant anything, and a caller-supplied `leading` widget carries the look | maintainer | the package never read `type` to decide anything — it only picked an icon, and what counts as an error is the calling app's judgement. §1's four differentiators never included the preset set, so removing it does not weaken the case for the package. A `leading` widget gives the caller icon and colour in one parameter, without an enum the package would have to own and extend |
+| The loading indicator and the leading slot's size live on `SonnerConfig` (`loadingIndicator`, `leadingSize` 20), not on `show` | maintainer | one spinner style per app; per-toast sizes would break the deck's alignment. The box stays fixed either way, for the `minWidth: 42` reason in §9 |
+| A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 
@@ -322,5 +324,5 @@ controls, light and dark, and a builder that wraps a flash `FlashBar` through th
   `FlashController` itself — no `showFlash`, no flash overlay.
 - flash's swipe flings the animation to 0 and only then calls `deactivate`; a host must treat
   **animation reaching `dismissed`** as removal, not wait for `dismiss`.
-- In-place update (loading → result) and a spinner in the icon slot read as one toast.
+- In-place update (loading → result) and a spinner in the leading slot read as one toast.
 - A fixed-overlap collapsed deck breaks when toasts differ in height — the reason §6 measures.
