@@ -1,5 +1,8 @@
-/// A Calculator.
-class Calculator {
-  /// Returns [value] plus 1.
-  int addOne(int value) => value + 1;
-}
+/// A stacking toast system: toasts pile into a deck, fan out, and can be
+/// changed in place.
+library;
+
+export 'src/config.dart' show SonnerConfig, SonnerPosition;
+export 'src/controller.dart' show SonnerController, toast;
+export 'src/host.dart' show SonnerHost;
+export 'src/toast_id.dart' show ToastId;
