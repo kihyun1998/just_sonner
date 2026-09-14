@@ -4,6 +4,11 @@ A stacking toast system for Flutter: toasts pile into a deck, fan out, and can b
 
 ## Language
 
+**Action slot**:
+The place at a toast's trailing edge that the caller fills with its own widget. The widget is
+handed the toast, so it decides for itself whether acting on it also dismisses it.
+_Avoid_: action button, primary action
+
 **Deck**:
 The group of visible toasts, in one of two states: collapsed (front toast in full, the rest peeking out) or expanded (fanned out into a list).
 _Avoid_: stack (for the visible group), collapsed stack

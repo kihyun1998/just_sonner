@@ -92,14 +92,16 @@ class SonnerController extends ChangeNotifier {
     Widget? leading,             // fills the leading slot when the toast is not loading
     Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed
     bool dismissible = true,
-    ToastAction? action,
+    ToastSlot? action,           // the caller's widget; it receives the toast (see Slots)
+    bool? closeButton,           // null → config.closeButton
     ToastId? id,
     ToastBuilder? builder,       // replaces the look for this toast only
   });                            // debug assert: !isLoading || duration == null
 
   /// **Updates** a toast on screen: only the fields passed change. Returns false if it is gone.
   bool update(ToastId id, {String? title, String? description, bool? isLoading, Widget? leading,
-      Duration? duration, bool? dismissible, ToastAction? action, ToastBuilder? builder});
+      Duration? duration, bool? dismissible, ToastSlot? action, bool? closeButton,
+      ToastBuilder? builder});
 
   Future<T> promise<T>(Future<T> future, {
     required ToastContent loading,
@@ -116,15 +118,20 @@ class SonnerController extends ChangeNotifier {
 /// which `promise` sets itself.
 class ToastContent {
   const ToastContent(String title, {String? description, Widget? leading, Duration? duration,
-      bool dismissible = true, ToastAction? action, ToastBuilder? builder});
+      bool dismissible = true, ToastSlot? action, bool? closeButton, ToastBuilder? builder});
 }
 
 typedef ToastBuilder = Widget Function(BuildContext context, ToastView toast);
 
+/// A slot the caller fills. It receives the toast so the widget can act on it — the same
+/// contract as [ToastBuilder], for one slot rather than the whole look.
+typedef ToastSlot = Widget Function(BuildContext context, ToastView toast);
+
 /// What a builder gets.
 abstract interface class ToastView {
   ToastId get id;
-  ToastState get state;                  // title, description, isLoading, leading, action, dismissible
+  ToastState get state;                  // title, description, isLoading, leading,
+                                         // action, closeButton, dismissible
   AnimationController get animation;     // enter 0→1, exit 1→0
   Future<void> dismiss();
   void holdTimer();                      // a widget-driven gesture started (see §7)
@@ -138,8 +145,39 @@ same methods as `toast`. There is no static facade.
 `controller`, or `toast` when omitted. `SonnerConfig` carry: `position`, `width` (356), `gap` (14),
 `offset` (24, mobile 16), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
-`loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20).
+`loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
+`closeButton` (false).
 Hosts of two controllers mounted at once are not coordinated (§2 non-goal).
+
+### Slots
+
+The default look has two slots the caller fills, and one affordance the package owns.
+
+- **`leading`** — a widget placed before the title. While `isLoading` the slot holds
+  `config.loadingIndicator` instead.
+- **`action`** — a `ToastSlot`. The caller returns the whole widget and the package only places
+  it. It receives the toast, so the widget decides for itself whether acting also dismisses:
+
+  ```dart
+  toast.show('Item deleted', action: (context, t) => TextButton(
+    onPressed: () { undo(); t.dismiss(); },       // closes the toast
+    child: const Text('Undo'),
+  ));
+
+  toast.show('Connection failed', action: (context, t) => TextButton(
+    onPressed: () => toast.update(t.id, isLoading: true, title: 'Retrying…'),
+    child: const Text('Retry'),                   // keeps it, and its place in the deck
+  ));
+  ```
+
+  There is one slot; two buttons are a `Row` inside it.
+- **The close button** is not caller content — it is the pointer equivalent of a swipe, so the
+  package owns it and `dismissible` governs both (§8). `show(closeButton:)` wins over
+  `config.closeButton` (false); `null` means "follow the config".
+
+This follows flash's `FlashBar`, which takes `Widget? icon` and `Widget? primaryAction` and wires
+neither. flash can take a bare widget because its caller already holds the `FlashController`;
+`show` returns the id only afterwards, so just_sonner hands the toast to the slot instead.
 
 ### Update rules
 
@@ -150,7 +188,8 @@ not given:
   `update` cannot clear a field.
 - **Replace** — `show(id: x)` or a `promise` state, where `x` is on screen: the new content
   replaces the old whole. A field not given takes its default — `description`, `leading` and
-  `action` disappear, `builder: null` returns to the default look.
+  `action` disappear, `closeButton` goes back to following the config, and `builder: null` returns
+  to the default look.
 
 Both:
 
@@ -244,7 +283,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   `top-right` allows up and right, `bottom-left` allows down and left, `top-center` allows up only.
 - Dismiss when the drag passes 45 px or its speed is above 0.11 px/ms (distance over the time since
   the pointer went down), in an allowed direction; otherwise spring back.
-- `dismissible: false` disables swipe and the close button.
+- `dismissible: false` disables swipe and the close button — the two ways a **user** dismisses a
+  toast. It does not affect `dismiss(id)` or `ToastView.dismiss()`, which the app, or a widget in
+  the `action` slot, can always call.
 
 ## 9. Default look
 
@@ -255,7 +296,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   centred box of `config.leadingSize` (20) and is **fixed**, so a parent that imposes a minimum
   width cannot stretch the spinner into an ellipse (observed with flash's `FlashBar`, which wraps
   its icon in `minWidth: 42`).
-- Title, optional description, optional action button, optional close button.
+- Title, optional description, then the `action` slot at the trailing edge (§4 Slots). The close
+  button sits in the corner whenever `closeButton` resolves true.
 - `Semantics(liveRegion: true)` on each toast; toasts never request focus.
 
 ## 10. Proof
@@ -281,6 +323,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - Show before `attach` throws in debug
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
 - A change of builder cross-fades, and the outgoing builder does not receive pointer events
+- An `action` slot receives the toast, and can dismiss it or leave it standing
+- `closeButton` on a toast wins over the config; `dismissible: false` disables swipe and the close
+  button but not `dismiss(id)`
 
 Every test is reddened once before it is trusted: remove the rule it guards and watch it fail.
 
@@ -317,6 +362,8 @@ flash `FlashBar` through the adapter in §1.
 | **Reversal**: `ToastType` and the `success` / `info` / `warning` / `error` / `loading` helpers are removed. `show(isLoading:)` carries the only type that ever meant anything, and a caller-supplied `leading` widget carries the look | maintainer | the package never read `type` to decide anything — it only picked an icon, and what counts as an error is the calling app's judgement. §1's four differentiators never included the preset set, so removing it does not weaken the case for the package. A `leading` widget gives the caller icon and colour in one parameter, without an enum the package would have to own and extend |
 | The loading indicator and the leading slot's size live on `SonnerConfig` (`loadingIndicator`, `leadingSize` 20), not on `show` | maintainer | one spinner style per app; per-toast sizes would break the deck's alignment. The box stays fixed either way, for the `minWidth: 42` reason in §9 |
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
+| `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
+| The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 
