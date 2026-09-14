@@ -34,13 +34,14 @@ What just_sonner adds, in the order a real consumer needed them:
    `AnimationController` and a `dismiss`, so an existing widget built on flash's `FlashBar`
    (which takes a `FlashController`: `controller`, `dismiss`, `deactivate`) plugs in through a
    three-member adapter. Migrating off `showFlash` does not mean redrawing the toast.
-4. **Desktop first.** Hover expands the deck and pauses every timer; pointer drag swipes.
+4. **Desktop only, in v0.1.** Hover expands the deck and pauses every timer; pointer drag
+   swipes. Touch has neither, and §2 says so rather than leaving it to be discovered.
 
 ## 2. Goals and non-goals
 
 ### Goals (v0.1)
 
-- Stack, collapse, expand on hover, pause on hover/interaction/app-hidden, swipe to dismiss
+- Stack, collapse, expand on hover, pause on pointer/drag/app-hidden (§7), swipe to dismiss
 - Six positions, max visible count, width, gap, offset
 - `show` returns an id; `update(id)`, `dismiss(id)`, `dismissAll()`, `promise(future)`
 - Two mount modes (§5), root overlay by default
