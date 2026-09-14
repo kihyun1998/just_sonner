@@ -98,7 +98,7 @@ class SonnerController extends ChangeNotifier {
     bool isLoading = false,      // no timer; the leading slot holds config.loadingIndicator
     Widget? leading,             // fills the leading slot when the toast is not loading
     Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed
-    bool dismissible = true,
+    bool? dismissible,           // null → !isLoading (§8)
     ToastSlot? action,           // the caller's widget; it receives the toast (see Slots)
     bool? closeButton,           // null → config.closeButton
     ToastId? id,
@@ -125,7 +125,7 @@ class SonnerController extends ChangeNotifier {
 /// which `promise` sets itself.
 class ToastContent {
   const ToastContent(String title, {String? description, Widget? leading, Duration? duration,
-      bool dismissible = true, ToastSlot? action, bool? closeButton, ToastBuilder? builder});
+      bool? dismissible, ToastSlot? action, bool? closeButton, ToastBuilder? builder});
 }
 
 typedef ToastBuilder = Widget Function(BuildContext context, ToastView toast);
@@ -228,6 +228,10 @@ Also:
 
 - `show(id: x)` with an `x` that was already dismissed creates a **new** toast — the old one's
   fields do not leak into it (sonner `state.ts`, same rule).
+- A `promise` whose loading toast the user dismissed still shows its result, as a **new** toast.
+  That follows from the rule above rather than being an exception to it, and it is the wanted
+  behaviour: what the user swept away was the progress indicator, not the outcome. A failure is
+  not swallowed because someone tidied the screen.
 - `promise` shows `loading` immediately (replacing the toast at `id` if one is on screen), then
   replaces it with `success(value)` or `error(error)`; the future's own result or error is returned
   unchanged to the caller. `duration` on the `loading` content is ignored (asserted in debug).
@@ -353,6 +357,18 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `dismissible: false` disables swipe and the close button — the two ways a **user** dismisses a
   toast. It does not affect `dismiss(id)` or `ToastView.dismiss()`, which the app, or a widget in
   the `action` slot, can always call.
+- **`dismissible` is `bool?`, and unset means `!isLoading`.** A loading toast cannot be swept away
+  by default, and becomes dismissible on its own the moment it stops loading. An app that wants a
+  loading toast the user *can* close says `dismissible: true`; one that wants an ordinary toast
+  pinned says `dismissible: false`.
+
+  It is stored as given, **including unset**, and resolved against `isLoading` on each read rather
+  than frozen when the toast was shown — that is what lets `update(id, isLoading: false)` hand the
+  toast back to the user without the caller restating `dismissible`.
+
+  This keeps one handle rather than two. sonner blocks swipe and the close button on `loading`
+  outright, *on top of* its own `dismissible`, so an app there cannot ask for a closeable loading
+  toast at all ([research #2 row 17](https://github.com/kihyun1998/just_sonner/blob/research/sonner-values/research/sonner-values.md)).
 
 ## 9. Default look
 
@@ -400,6 +416,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
 - A change of builder cross-fades, and the outgoing builder does not receive pointer events
 - An `action` slot receives the toast, and can dismiss it or leave it standing
+- an unset `dismissible` blocks swipe and the close button while `isLoading`, and stops blocking
+  when `update(id, isLoading: false)` lands, with no second call
+- `dismissible: true` on a loading toast leaves it swipeable
+- a `promise` whose loading toast was dismissed still delivers its result, as a new toast
 - `closeButton` on a toast wins over the config; `dismissible: false` disables swipe and the close
   button but not `dismiss(id)`
 
@@ -439,6 +459,7 @@ flash `FlashBar` through the adapter in §1.
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
 | `config` is a settable property of the controller, with `copyWith`; `attach` and `SonnerHost` take none. On-screen toasts animate to a new config in place | maintainer | the exported `toast` is already constructed, so a post-construction path has to exist anyway — once it does, a second one on `attach` is duplication with a precedence rule to define. The controller is already a `ChangeNotifier`, so both mount modes get the same path for free, and §6 already animates offsets, scales and heights on collapse ↔ expand; a config change reuses it rather than inventing a rule |
+| `dismissible` is `bool?`, unset meaning `!isLoading`, resolved on read rather than at `show` | maintainer | sonner blocks swipe and the close button on loading *in addition to* `dismissible`, giving one job to two handles and leaving "loading, but closeable" inexpressible — and that rule is policy, not a measurement, so the example reference does not carry it here. Deriving the default keeps a single handle, matches sonner out of the box, and makes a toast hand itself back when its work finishes. Resolving on read rather than at `show` is what makes that last part free |
 | Any `update` or replace restarts the countdown, from the toast's own duration | maintainer | §1's motivating flow breaks otherwise — new content arriving on a toast with 1 s left would vanish before it is read. No field list: the only field that is not on screen is `dismissible`, so an exception would buy one case and cost a rule. Restarting also makes a frequently-updated progress toast stay up for free. `backlogDuration` is not re-applied, so a toast being read never shortens under the reader (§7) |
 | Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
 | Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without | maintainer | sonner counts hidden toasts down and lets them expire unseen, but its timer effect simply has no `isVisible` guard (research #2 row 26) — an omission rather than a decision, and sonner is an example. Waiting alone would make a burst of 10 take 13 s to clear; a short duration while backlogged clears it in about 2 s and still puts every toast on screen. Fixing it at entry keeps a nearly-expired toast from swelling back to full time under the reader |
