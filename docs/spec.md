@@ -209,8 +209,18 @@ not given:
 Both:
 
 - keep the toast's place in the deck and its enter animation; only the content changes.
-- A toast leaving `isLoading` starts a timer of its (new or configured) duration. A toast
-  entering it stops its timer.
+- **restart the countdown from the toast's duration**, every time and whatever changed — there is
+  no list of fields that do and do not count. A toast that is updated is a toast with something
+  new to read, and one that is updated repeatedly (`update(id, title: 'Uploading 43%')` in a loop)
+  stays up for as long as the updates keep coming, then goes its full duration after the last one.
+
+  The duration it restarts from is the toast's own: whatever it resolved to when it reached the
+  visible window (§7), or whatever a later `duration:` set. An `update` keeps that value unless
+  `duration:` is passed; a **replace** resets it like any other field not given, and a reset
+  duration is `config.duration`. `backlogDuration` applies only when a toast *first reaches* the
+  visible window and never to one already in it — a toast already being read never has its
+  remaining time shortened underneath the reader.
+- A toast entering `isLoading` stops counting; one leaving it counts again under the rule above.
 - A change of `builder` cross-fades the two builders' output (§6); the outgoing one ignores the
   pointer, so a builder with its own gestures (flash's `FlashBar`) cannot act while fading out.
 
@@ -365,6 +375,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `update` changes only the fields passed and keeps position; returns false for an unknown id
 - `show(id:)` on a toast on screen replaces it whole: an omitted `description`, `action` or `builder` is cleared
 - leaving `isLoading` starts the timer; entering `isLoading` stops it
+- any `update` or replace restarts the countdown, including one that changes only `dismissible`
+- a replace resets an unset `duration` to `config.duration`, not to `backlogDuration`
 - `show(id:)` after dismissal creates a new toast with no leaked fields
 - `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
 - `promise(id:)` takes over a toast already on screen
@@ -427,6 +439,7 @@ flash `FlashBar` through the adapter in §1.
 | A builder receives `isLoading` and `leading` through `ToastState` | maintainer | a builder that cannot see `isLoading` cannot know when to spin; `leading` beside it lets the flash `FlashBar` adapter place both |
 | `action` is a `ToastSlot` — the caller's widget, handed the toast; one slot, not flash's `primaryAction` + `actions` | maintainer | flash takes widgets and wires neither, which is the `leading` decision again. Handing the toast over replaces flash's `controller` and spares the caller a `late final` id. It dissolves two questions: whether pressing dismisses (the widget's own callback decides) and whether a `cancel` slot is needed (a `Row` inside the one slot) |
 | `config` is a settable property of the controller, with `copyWith`; `attach` and `SonnerHost` take none. On-screen toasts animate to a new config in place | maintainer | the exported `toast` is already constructed, so a post-construction path has to exist anyway — once it does, a second one on `attach` is duplication with a precedence rule to define. The controller is already a `ChangeNotifier`, so both mount modes get the same path for free, and §6 already animates offsets, scales and heights on collapse ↔ expand; a config change reuses it rather than inventing a rule |
+| Any `update` or replace restarts the countdown, from the toast's own duration | maintainer | §1's motivating flow breaks otherwise — new content arriving on a toast with 1 s left would vanish before it is read. No field list: the only field that is not on screen is `dismissible`, so an exception would buy one case and cost a rule. Restarting also makes a frequently-updated progress toast stay up for free. `backlogDuration` is not re-applied, so a toast being read never shortens under the reader (§7) |
 | Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
 | Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without | maintainer | sonner counts hidden toasts down and lets them expire unseen, but its timer effect simply has no `isVisible` guard (research #2 row 26) — an omission rather than a decision, and sonner is an example. Waiting alone would make a burst of 10 take 13 s to clear; a short duration while backlogged clears it in about 2 s and still puts every toast on screen. Fixing it at entry keeps a nearly-expired toast from swelling back to full time under the reader |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
