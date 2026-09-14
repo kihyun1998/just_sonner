@@ -231,7 +231,7 @@ Minimal rewording of the §5 subsection:
 > every route.
 
 Related follow-ups this raises (not decided here): whether toasts *should* sit above a modal barrier
-(sonner on the web does sit above dialogs); whether §11 Q2 ("re-raise on every update") is now moot
+(not checked against sonner here); whether §11 Q2 ("re-raise on every update") is now moot
 given the call is cheap; and that the controller should re-read `navigatorKey.currentState!.overlay`
 on each `show` because state restoration replaces the `OverlayState`.
 
