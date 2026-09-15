@@ -37,7 +37,8 @@ class SonnerConfig {
   final double offset;
 
   /// How many toasts the deck draws. The rest are kept, undrawn, until the
-  /// ones in front leave.
+  /// ones in front leave; they count down all the while, and one whose time
+  /// runs out first leaves without being drawn.
   final int visibleToasts;
 
   /// How long a toast shown without a `duration` stays. [Duration.zero] keeps
