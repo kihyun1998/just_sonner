@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart' show GlobalKey, NavigatorState;
 
 import 'config.dart';
+import 'root_overlay.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
 
@@ -10,7 +12,8 @@ import 'toast_state.dart';
 final toast = SonnerController();
 
 /// Owns the toasts on screen, their ids and their countdowns. Holds no widgets;
-/// a host draws it.
+/// a host draws it, either one the app mounts or one [attach] puts in the root
+/// overlay.
 ///
 /// One periodic tick subtracts from every counting toast, and runs only while
 /// some toast is counting. Nothing here reads a clock.
@@ -45,6 +48,30 @@ class SonnerController extends ChangeNotifier {
   /// a zone that has finished, such as an earlier test's, never fires again.
   Zone? _tickerZone;
 
+  RootOverlayMount? _mount;
+
+  /// Mount mode 1: draws this controller's toasts in the overlay of the root
+  /// navigator [navigatorKey] names, above its dialogs and pages.
+  ///
+  /// Nothing is inserted until the first [show], so it can be called before
+  /// the app is built. Once attached, a [show] with no navigator to draw in is
+  /// an error in debug and drops the toast in release.
+  void attach(GlobalKey<NavigatorState> navigatorKey) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    if (identical(_mount?.navigatorKey, navigatorKey)) return;
+    final mount = RootOverlayMount(this, navigatorKey)..debugAssertRoot();
+    _mount?.detach();
+    _mount = mount;
+  }
+
+  /// Undoes [attach]: takes the toasts out of the overlay and leaves a
+  /// controller that is not in mode 1, so a [show] with no navigator is no
+  /// longer an error. Toasts stay in the controller.
+  void detach() {
+    _mount?.detach();
+    _mount = null;
+  }
+
   /// Shows a toast and returns its id.
   ///
   /// It dismisses itself after [duration], or after `config.duration` when
@@ -58,6 +85,12 @@ class SonnerController extends ChangeNotifier {
       'until it is dismissed.',
     );
     final id = ToastId(AutoToastIdValue(_serial++));
+    final problem = _mount?.problem();
+    if (problem != null) {
+      if (kDebugMode) throw StateError(problem);
+      debugPrint('just_sonner: $problem The toast "$title" was dropped.');
+      return id;
+    }
     final lifetime = duration ?? config.duration;
     final record = ToastRecord(
       id,
@@ -75,6 +108,7 @@ class SonnerController extends ChangeNotifier {
       }
     }
     notifyListeners();
+    _mount?.raise();
     return id;
   }
 
@@ -97,6 +131,7 @@ class SonnerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _mount?.detach();
     _ticker?.cancel();
     super.dispose();
   }
