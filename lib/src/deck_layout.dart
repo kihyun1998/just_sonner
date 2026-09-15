@@ -1,11 +1,17 @@
+import 'dart:math' as math;
+
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'config.dart';
 
-/// Lays out toasts newest first as a collapsed deck: each one `gap × depth`
-/// from the screen edge [config] names, the front at its own height and the
-/// ones behind it at the front's.
+/// Lays out toasts newest first as a deck, between collapsed and expanded by
+/// [expansion] (0 to 1).
+///
+/// Collapsed, each toast is `gap × depth` from the screen edge [config] names,
+/// the front at its own height and the ones behind it at the front's.
+/// Expanded, each is drawn at its own height and lifted further from the edge
+/// by [lift], the heights of the toasts in front of it.
 ///
 /// Children are identified by the layout ids in [order]. [depth] is how many
 /// toasts sit in front of one, counting each by its [presence] (0 to 1), so a
@@ -17,32 +23,46 @@ import 'config.dart';
 /// height. Where a toast is only partly covered it is drawn between its own
 /// height, as [natural] last measured it, and theirs.
 ///
-/// The height each toast is drawn at and the height it covers with are
-/// reported through [onPlaced]. A toast for which [pinned] returns heights is
-/// drawn at and covers with those instead, and is not reported.
+/// The height each toast is drawn at, the height it covers with and its
+/// distance from the edge are reported through [onPlaced]. A toast for which
+/// [pinned] returns heights is drawn at and covers with those instead, at the
+/// distance it gives if any, and is not reported.
+///
+/// The box around the toasts [inDeck] names, and the gaps between them, is
+/// reported through [onDeck].
 ///
 /// It lays out again whenever it is rebuilt, since what moves the toasts is
-/// read from [depth] and [presence] rather than held by the delegate.
+/// read from [depth], [lift] and [presence] rather than held by the delegate.
 class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   ToastDeckDelegate({
     required this.config,
     required this.order,
+    required this.expansion,
     required this.presence,
     required this.depth,
+    required this.lift,
     required this.natural,
     required this.covering,
     required this.pinned,
+    required this.inDeck,
     required this.onPlaced,
+    required this.onDeck,
   });
 
   final SonnerConfig config;
   final List<T> order;
+  final double expansion;
   final double Function(T id) presence;
   final double Function(T id) depth;
+  final double Function(T id) lift;
   final double? Function(T id) natural;
   final double? Function(T id) covering;
-  final ({double height, double covering})? Function(T id) pinned;
-  final void Function(T id, double height, double covering) onPlaced;
+  final ({double height, double covering, double? distance})? Function(T id)
+  pinned;
+  final bool Function(T id) inDeck;
+  final void Function(T id, double height, double covering, double distance)
+  onPlaced;
+  final ValueChanged<Rect> onDeck;
 
   @override
   void performLayout(Size size) {
@@ -58,6 +78,8 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     // weighted by how much each covers.
     var covered = 0.0;
     var coveringHeight = 0.0;
+    double? nearest;
+    double? farthest;
     for (final id in order) {
       final pinnedHeights = pinned(id);
       final double own;
@@ -68,31 +90,47 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
           id,
           BoxConstraints.tightFor(width: config.width, height: own),
         );
-      } else if (covered == 0) {
+      } else if (covered == 0 || expansion == 1) {
         child = layoutChild(id, BoxConstraints.tightFor(width: config.width));
         own = child.height;
       } else {
         own = natural(id) ?? coveringHeight / covered;
+        final collapsed = (1 - covered) * own + coveringHeight;
         child = layoutChild(
           id,
           BoxConstraints.tightFor(
             width: config.width,
-            height: (1 - covered) * own + coveringHeight,
+            height: collapsed + (own - collapsed) * expansion,
           ),
         );
       }
       final covers = pinnedHeights?.covering ?? covering(id) ?? own;
-      if (pinnedHeights == null) onPlaced(id, child.height, covers);
+      final fromEdge =
+          pinnedHeights?.distance ??
+          config.offset + config.gap * depth(id) + lift(id) * expansion;
+      if (pinnedHeights == null) onPlaced(id, child.height, covers, fromEdge);
 
-      final fromEdge = config.offset + config.gap * depth(id);
       final top = config.position.isTop
           ? fromEdge
           : size.height - fromEdge - child.height;
       positionChild(id, Offset(left, top));
 
+      if (inDeck(id)) {
+        nearest = math.min(nearest ?? fromEdge, fromEdge);
+        farthest = math.max(farthest ?? 0, fromEdge + child.height);
+      }
+
       final weight = (1 - covered) * presence(id);
       coveringHeight += weight * covers;
       covered += weight;
+    }
+
+    if (nearest == null || farthest == null) {
+      onDeck(Rect.zero);
+    } else {
+      final top = config.position.isTop ? nearest : size.height - farthest;
+      final bottom = config.position.isTop ? farthest : size.height - nearest;
+      onDeck(Rect.fromLTRB(left, top, left + config.width, bottom));
     }
   }
 

@@ -1,7 +1,8 @@
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
-import 'package:just_sonner/src/controller.dart' show toastsOf;
+import 'package:just_sonner/src/controller.dart'
+    show holdTimers, releaseTimers, toastsOf;
 
 void main() {
   group('countdown', () {
@@ -238,6 +239,103 @@ void main() {
         controller.show('Pinned');
 
         expect(async.periodicTimerCount, 0);
+        controller.dispose();
+      });
+    });
+  });
+
+  group('pause', () {
+    test('a held controller does not count down, and resumes with the time '
+        'left', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        const holder = #pointer;
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+        // Letting go of nothing is not coming out of a pause, so it costs the
+        // countdown no tick.
+        releaseTimers(controller, holder);
+
+        async.elapse(const Duration(seconds: 1));
+        holdTimers(controller, holder);
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'held, so nothing is subtracted');
+        expect(
+          async.periodicTimerCount,
+          1,
+          reason: 'the tick keeps running while held',
+        );
+
+        releaseTimers(controller, holder);
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(notifications, 0, reason: '3 s were left, not 4 and not 0');
+        async.elapse(const Duration(milliseconds: 101));
+        expect(notifications, 1, reason: 'gone within a tick of the 3 s left');
+        controller.dispose();
+      });
+    });
+
+    test('a pause released between ticks never runs a toast short', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        const holder = #pointer;
+        var notifications = 0;
+        controller.show('Short', duration: const Duration(seconds: 1));
+        controller.addListener(() => notifications++);
+
+        // 50 ms counted, then held over no tick, then released 10 ms before
+        // the next one: 1 s of unheld time is not over until 1040 ms.
+        async.elapse(const Duration(milliseconds: 50));
+        holdTimers(controller, holder);
+        async.elapse(const Duration(milliseconds: 40));
+        releaseTimers(controller, holder);
+
+        async.elapse(const Duration(milliseconds: 949));
+        expect(notifications, 0, reason: 'a full unheld second has not passed');
+        async.elapse(const Duration(milliseconds: 111));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('every holder has to let go before the countdown resumes', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        holdTimers(controller, #first);
+        holdTimers(controller, #second);
+        releaseTimers(controller, #first);
+        releaseTimers(controller, #never);
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the second holder still holds');
+
+        releaseTimers(controller, #second);
+        async.elapse(const Duration(milliseconds: 4100));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('a toast shown while held waits with the rest', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        holdTimers(controller, #pointer);
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0);
+
+        releaseTimers(controller, #pointer);
+        async.elapse(const Duration(milliseconds: 3999));
+        expect(notifications, 0, reason: 'it starts from its full 4 s');
+        async.elapse(const Duration(milliseconds: 101));
+        expect(notifications, 1);
         controller.dispose();
       });
     });

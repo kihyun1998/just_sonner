@@ -1,7 +1,13 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart' show GlobalKey, NavigatorState;
+import 'package:flutter/widgets.dart'
+    show
+        AppLifecycleState,
+        GlobalKey,
+        NavigatorState,
+        WidgetsBinding,
+        WidgetsBindingObserver;
 
 import 'config.dart';
 import 'root_overlay.dart';
@@ -16,7 +22,8 @@ final toast = SonnerController();
 /// overlay.
 ///
 /// One periodic tick subtracts from every counting toast, and runs only while
-/// some toast is counting. Nothing here reads a clock.
+/// some toast is counting. Nothing here reads a clock. While the timers are
+/// paused the tick still runs and subtracts nothing.
 ///
 /// The tick belongs to the controller, not to the widget tree, so unmounting a
 /// host does not stop it. A widget test that shows a toast with a timer must
@@ -49,6 +56,18 @@ class SonnerController extends ChangeNotifier {
   Zone? _tickerZone;
 
   RootOverlayMount? _mount;
+
+  /// Whatever is pausing the timers other than the app's lifecycle, such as a
+  /// host with the pointer over its deck.
+  final Set<Object> _holders = {};
+
+  /// Whether the app is `hidden`, `paused` or `detached`, once [_lifecycle]
+  /// watches it.
+  bool _appHidden = false;
+
+  _LifecycleWatch? _lifecycle;
+
+  bool get _paused => _appHidden || _holders.isNotEmpty;
 
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
   /// navigator [navigatorKey] names, above its dialogs and pages.
@@ -125,7 +144,11 @@ class SonnerController extends ChangeNotifier {
       debugPrint('just_sonner: $problem "$title" replaced a toast not drawn.');
       return id;
     }
-    _mount?.raise();
+    final mount = _mount;
+    if (mount != null) {
+      _watchLifecycle();
+      mount.raise();
+    }
     return id;
   }
 
@@ -180,10 +203,49 @@ class SonnerController extends ChangeNotifier {
   void dispose() {
     _mount?.detach();
     _ticker?.cancel();
+    _lifecycle?.dispose();
     super.dispose();
   }
 
+  /// Starts pausing the timers on the app's lifecycle, or reads the state
+  /// again when already watching. Needs a binding, so it waits for something
+  /// that has one: a host, or a [show] once attached.
+  void _watchLifecycle() {
+    final lifecycle = _lifecycle;
+    if (lifecycle == null) {
+      _lifecycle = _LifecycleWatch(_onLifecycle);
+    } else {
+      lifecycle.read();
+    }
+  }
+
+  void _onLifecycle(AppLifecycleState? state) {
+    _setPaused(() {
+      _appHidden = switch (state) {
+        AppLifecycleState.hidden ||
+        AppLifecycleState.paused ||
+        AppLifecycleState.detached => true,
+        AppLifecycleState.resumed ||
+        AppLifecycleState.inactive ||
+        null => false,
+      };
+    });
+  }
+
+  /// Applies [change] to what pauses the timers. Coming out of a pause, every
+  /// counting toast lets the partial tick under way pass uncounted, as one
+  /// shown between ticks does.
+  void _setPaused(VoidCallback change) {
+    final was = _paused;
+    change();
+    if (!was || _paused) return;
+    for (final record in _toasts) {
+      if (record.remaining != null) record.skipTick = true;
+    }
+  }
+
   void _onTick(Timer _) {
+    if (_paused) return;
     for (final record in _toasts) {
       final remaining = record.remaining;
       if (remaining == null) continue;
@@ -245,6 +307,42 @@ class SonnerController extends ChangeNotifier {
 /// The toasts on screen, newest first. For the host; not exported.
 List<ToastRecord> toastsOf(SonnerController controller) =>
     List.unmodifiable(controller._toasts);
+
+/// Pauses every timer of [controller] until [holder] lets go through
+/// [releaseTimers]. Holding twice with one holder holds once. For the host;
+/// not exported.
+void holdTimers(SonnerController controller, Object holder) =>
+    controller._setPaused(() => controller._holders.add(holder));
+
+/// Lets go of a hold [holder] took with [holdTimers]; the timers resume once
+/// nothing holds them. A holder that holds nothing is ignored.
+void releaseTimers(SonnerController controller, Object holder) =>
+    controller._setPaused(() => controller._holders.remove(holder));
+
+/// Makes [controller] pause its timers while the app is `hidden`, `paused` or
+/// `detached`. For the host, which has a binding; not exported.
+void watchLifecycle(SonnerController controller) =>
+    controller._watchLifecycle();
+
+/// Reports the app's lifecycle state to [onChange], once with the state it is
+/// in and again on each change.
+class _LifecycleWatch with WidgetsBindingObserver {
+  _LifecycleWatch(this.onChange) {
+    WidgetsBinding.instance.addObserver(this);
+    read();
+  }
+
+  final ValueChanged<AppLifecycleState?> onChange;
+
+  /// Reports the state the app is in now. A binding can reset its state
+  /// without telling its observers, as `flutter_test` does between tests.
+  void read() => onChange(WidgetsBinding.instance.lifecycleState);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => onChange(state);
+
+  void dispose() => WidgetsBinding.instance.removeObserver(this);
+}
 
 /// One toast on screen, as the controller holds it. Each new toast gets a new
 /// record, so a host can tell two toasts apart even where they share an id; an
