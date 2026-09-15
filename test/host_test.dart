@@ -1313,11 +1313,12 @@ void main() {
             reason: '$title is not scaled',
           );
         }
-        expect(find.text('Hidden'), findsNothing, reason: 'beyond the window');
         expect(
-          find.text('Hidden', skipOffstage: false),
-          findsOneWidget,
-          reason: 'still kept',
+          boxOf(tester, 'Hidden').bottom,
+          moreOrLessEquals(
+            576 - h['Newest']! - h['Middle']! - h['Oldest']! - 42,
+          ),
+          reason: 'beyond the window, and fanned out with the rest',
         );
         await tester.pumpAndSettle();
       },
@@ -1830,6 +1831,520 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1200));
       expect(toastsOf(first), isEmpty);
     });
+
+    group('every toast while hovered', () {
+      /// Shows [count] toasts, `Toast 0` the oldest, and returns the height
+      /// each is drawn at.
+      Future<double> showMany(
+        WidgetTester tester,
+        SonnerController controller,
+        int count,
+      ) async {
+        for (var n = 0; n < count; n++) {
+          controller.show('Toast $n');
+        }
+        await tester.pumpAndSettle();
+        return boxOf(tester, 'Toast ${count - 1}').height;
+      }
+
+      /// Turns a mouse wheel at [at] by [delta].
+      Future<void> wheel(WidgetTester tester, Offset at, Offset delta) async {
+        final wheel = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(wheel.hover(at));
+        await tester.sendEventToBinding(wheel.scroll(delta));
+      }
+
+      bool drawn(String title) => find.text(title).evaluate().isNotEmpty;
+
+      testWidgets('hovering fans out the toasts beyond visibleToasts too, and '
+          'leaving hides them again', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        final height = await showMany(tester, controller, 5);
+        expect(drawn('Toast 1'), isFalse);
+
+        final mouse = await mouseAt(tester, boxOf(tester, 'Toast 4').center);
+        await tester.pumpAndSettle();
+        for (var n = 0; n < 5; n++) {
+          expect(
+            boxOf(tester, 'Toast $n').bottom,
+            moreOrLessEquals(576 - (4 - n) * (height + 14)),
+            reason: 'Toast $n',
+          );
+          expect(paintedOpacityOf(tester, 'Toast $n'), 1, reason: 'Toast $n');
+        }
+
+        await mouse.moveTo(away);
+        await tester.pumpAndSettle();
+        expect(drawn('Toast 0'), isFalse);
+        expect(drawn('Toast 1'), isFalse);
+        expect(drawn('Toast 2'), isTrue);
+      });
+
+      testWidgets('a toast revealed by hover takes taps and keeps the deck '
+          'paused under the pointer', (tester) async {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: Duration(seconds: 1)),
+        );
+        addTearDown(controller.dispose);
+        var taps = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              onTap: () => taps++,
+              child: const ColoredBox(color: Color(0xFFFFFFFF)),
+            ),
+          ),
+        );
+        for (var n = 0; n < 5; n++) {
+          controller.show('Toast $n');
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final mouse = await mouseAt(tester, boxOf(tester, 'Toast 4').center);
+        await tester.pump(const Duration(milliseconds: 400));
+
+        await mouse.moveTo(boxOf(tester, 'Toast 0').center);
+        await tester.pump(const Duration(seconds: 3));
+        expect(toastsOf(controller), hasLength(5), reason: 'still paused');
+
+        await tester.tapAt(boxOf(tester, 'Toast 0').center);
+        expect(taps, 0, reason: 'the revealed toast takes the tap');
+        final hit = HitTestResult();
+        tester.binding.hitTestInView(
+          hit,
+          boxOf(tester, 'Toast 0').center,
+          tester.view.viewId,
+        );
+        expect(
+          hit.path.map((entry) => entry.target),
+          contains(tester.renderObject(find.text('Toast 0'))),
+          reason: 'the toast itself, not only the deck region',
+        );
+
+        await mouse.moveTo(away);
+        await tester.pump(const Duration(milliseconds: 1300));
+        await tester.pumpAndSettle();
+        expect(toastsOf(controller), isEmpty);
+      });
+
+      testWidgets(
+        'expandByDefault draws only visibleToasts until hovered, then fades '
+        'the rest in over 400 ms',
+        (tester) async {
+          final controller = expandedController();
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 5);
+          expect(drawn('Toast 0'), isFalse);
+          expect(drawn('Toast 2'), isTrue);
+
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 4').center);
+          await tester.pump(const Duration(milliseconds: 200));
+          expect(paintedOpacityOf(tester, 'Toast 0'), inExclusiveRange(0, 1));
+          await tester.pump(const Duration(milliseconds: 201));
+          expect(paintedOpacityOf(tester, 'Toast 0'), 1);
+
+          await mouse.moveTo(away);
+          await tester.pumpAndSettle();
+          expect(drawn('Toast 0'), isFalse);
+          expect(drawn('Toast 2'), isTrue);
+        },
+      );
+
+      testWidgets('a toast is in the semantics tree while it is drawn', (
+        tester,
+      ) async {
+        final semantics = tester.ensureSemantics();
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 4);
+        expect(find.bySemanticsLabel('Toast 0'), findsNothing);
+
+        final mouse = await mouseAt(tester, boxOf(tester, 'Toast 3').center);
+        await tester.pumpAndSettle();
+        expect(find.bySemanticsLabel('Toast 0'), findsOneWidget);
+
+        await mouse.moveTo(away);
+        await tester.pumpAndSettle();
+        expect(find.bySemanticsLabel('Toast 0'), findsNothing);
+        semantics.dispose();
+      });
+
+      testWidgets('toasts that do not fit scroll with the wheel, and stop at '
+          'the oldest', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        final height = await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, 576);
+        expect(boxOf(tester, 'Toast 0').top, lessThan(0));
+
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
+        expect(
+          boxOf(tester, 'Toast 0').top,
+          moreOrLessEquals(676 - 12 * height - 11 * 14),
+        );
+
+        await wheel(tester, at, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        expect(
+          boxOf(tester, 'Toast 0').top,
+          moreOrLessEquals(24),
+          reason: 'the oldest stops at the far offset',
+        );
+
+        final gap = Offset(at.dx, boxOf(tester, 'Toast 5').top - 7);
+        final before = boxOf(tester, 'Toast 5').top;
+        await wheel(tester, gap, const Offset(0, 50));
+        await tester.pumpAndSettle();
+        expect(
+          boxOf(tester, 'Toast 5').top,
+          moreOrLessEquals(before - 50),
+          reason: 'a gap between two toasts takes the wheel',
+        );
+      });
+
+      testWidgets(
+        'toasts more than 20 deep never scale past nothing as the deck '
+        'collapses',
+        (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 25);
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 24').center);
+          await tester.pumpAndSettle();
+
+          await mouse.moveTo(away);
+          await tester.pump();
+          // Late in the collapse, where 1 − 0.05 × 24 × 0.98 would be −0.18.
+          await tester.pump(const Duration(milliseconds: 350));
+          expect(find.text('Toast 0'), findsOneWidget, reason: 'still drawn');
+          for (final transform in tester.widgetList<Transform>(
+            find.byType(Transform, skipOffstage: false),
+          )) {
+            expect(transform.transform.storage[0], greaterThanOrEqualTo(0));
+          }
+          await tester.pumpAndSettle();
+        },
+      );
+
+      testWidgets('at the top, the wheel scrolls the other way', (
+        tester,
+      ) async {
+        final controller = SonnerController(
+          config: const SonnerConfig(
+            duration: Duration.zero,
+            position: SonnerPosition.topRight,
+          ),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').top, 24);
+
+        await wheel(tester, at, const Offset(0, 100));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').top, moreOrLessEquals(-76));
+      });
+
+      testWidgets('a trackpad pan scrolls the deck', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        final trackpad = TestPointer(2, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(trackpad.panZoomStart(at));
+        for (var i = 1; i <= 6; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          await tester.sendEventToBinding(
+            trackpad.panZoomUpdate(at, pan: Offset(0, 10.0 * i)),
+          );
+        }
+        await tester.sendEventToBinding(trackpad.panZoomEnd());
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, greaterThan(576));
+      });
+
+      testWidgets(
+        'leaving eases the scroll back to the edge with the collapse, and the '
+        'next hover starts there',
+        (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 12);
+          final at = boxOf(tester, 'Toast 11').center;
+          final mouse = await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          await wheel(tester, at, const Offset(0, -100));
+          await tester.pumpAndSettle();
+          expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
+
+          await mouse.moveTo(away);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 200));
+          expect(
+            boxOf(tester, 'Toast 11').bottom,
+            // The collapse's `ease` at t = 0.5.
+            moreOrLessEquals(576 + 100 * (1 - 0.8024), epsilon: 0.05),
+          );
+          await tester.pumpAndSettle();
+          expect(boxOf(tester, 'Toast 11').bottom, 576);
+
+          await mouse.moveTo(at);
+          await tester.pumpAndSettle();
+          expect(boxOf(tester, 'Toast 11').bottom, 576);
+        },
+      );
+
+      /// Hovers 12 toasts scrolled by [scrolled], makes [change], and expects
+      /// `Toast 6`, which is in view, not to move in any frame.
+      Future<void> expectReadInPlace(
+        WidgetTester tester, {
+        required double scrolled,
+        required void Function() change,
+      }) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, Offset(0, -scrolled));
+        await tester.pumpAndSettle();
+        final read = boxOf(tester, 'Toast 6');
+
+        change();
+        await tester.pump();
+        for (var elapsed = 0; elapsed <= 500; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(
+            boxOf(tester, 'Toast 6').top,
+            moreOrLessEquals(read.top, epsilon: 0.5),
+            reason: 'at $elapsed ms',
+          );
+        }
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 6'), rectMoreOrLessEquals(read));
+      }
+
+      testWidgets('a toast shown while scrolled keeps the toasts being read in '
+          'place', (tester) async {
+        await expectReadInPlace(
+          tester,
+          scrolled: 100,
+          change: () => controller.show('New'),
+        );
+        expect(boxOf(tester, 'New').top, greaterThan(576));
+      });
+
+      testWidgets('a toast shown at the edge of an overflowing deck keeps the '
+          'toasts being read in place', (tester) async {
+        await expectReadInPlace(
+          tester,
+          scrolled: 0,
+          change: () => controller.show('New'),
+        );
+        expect(boxOf(tester, 'New').top, greaterThan(576));
+      });
+
+      testWidgets('the toasts being read stay in place as the toast they were '
+          'kept by leaves', (tester) async {
+        await expectReadInPlace(
+          tester,
+          scrolled: 100,
+          // Toast 10, the first toast reaching into view.
+          change: () => controller.dismiss(toastsOf(controller)[1].id),
+        );
+      });
+
+      testWidgets('the toasts being read stay in place as a toast out of view '
+          'grows', (tester) async {
+        await expectReadInPlace(
+          tester,
+          scrolled: 100,
+          change: () => controller.update(
+            toastsOf(controller).first.id,
+            description: 'One\nTwo\nThree',
+          ),
+        );
+      });
+
+      testWidgets('dismissing the farthest toast at the end of the scroll '
+          'eases the deck toward it', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        final start = boxOf(tester, 'Toast 5').top;
+
+        controller.dismiss(toastsOf(controller).last.id);
+        var previous = start;
+        for (var elapsed = 0; elapsed <= 300; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          final top = boxOf(tester, 'Toast 5').top;
+          expect(
+            (top - previous).abs(),
+            // A 66 px reach given back on the exit's 200 ms `ease`, not in
+            // one frame.
+            lessThan(15),
+            reason: 'at $elapsed ms',
+          );
+          previous = top;
+        }
+        await tester.pumpAndSettle();
+        final height = boxOf(tester, 'Toast 5').height;
+        expect(
+          boxOf(tester, 'Toast 5').top,
+          moreOrLessEquals(start - height - 14),
+          reason: 'the scroll ends a toast and a gap sooner',
+        );
+      });
+
+      testWidgets('a pointer resting in the far margin stays over the deck as '
+          'it scrolls to the end', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final front = boxOf(tester, 'Toast 11').center;
+        final mouse = await mouseAt(tester, front);
+        await tester.pumpAndSettle();
+        final margin = Offset(front.dx, 10);
+        await mouse.moveTo(margin);
+        await tester.pumpAndSettle();
+
+        for (var n = 0; n < 4; n++) {
+          await wheel(tester, margin, const Offset(0, -100));
+          await tester.pumpAndSettle();
+        }
+        expect(boxOf(tester, 'Toast 0').top, moreOrLessEquals(24));
+        expect(boxOf(tester, 'Toast 11').bottom, greaterThan(576));
+      });
+
+      testWidgets('a host handed another controller draws its deck at the '
+          'edge', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -300));
+        await tester.pumpAndSettle();
+
+        final other = SonnerController(
+          config: const SonnerConfig(duration: Duration.zero),
+        );
+        addTearDown(other.dispose);
+        for (var n = 0; n < 14; n++) {
+          other.show('Other $n');
+        }
+        await tester.pumpWidget(app(controller: other));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Other 13').bottom, 576);
+      });
+
+      testWidgets('without a pointer, an expandByDefault deck taller than the '
+          'layer leaves the margins to the app', (tester) async {
+        tester.view.physicalSize = const Size(800, 220);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final controller = SonnerController(
+          config: const SonnerConfig(
+            duration: Duration(seconds: 1),
+            expandByDefault: true,
+          ),
+        );
+        addTearDown(controller.dispose);
+        var taps = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              onTap: () => taps++,
+              child: const ColoredBox(color: Color(0xFFFFFFFF)),
+            ),
+          ),
+        );
+        for (var n = 0; n < 3; n++) {
+          controller.show('Toast $n');
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        final column = boxOf(tester, 'Toast 2').center.dx;
+        expect(boxOf(tester, 'Toast 0').top, lessThan(24), reason: 'overflows');
+
+        await tester.tapAt(Offset(column, 5));
+        expect(taps, 1, reason: 'the margin above the deck is the app');
+
+        await mouseAt(tester, Offset(column, 5));
+        await tester.pump(const Duration(seconds: 2));
+        await tester.pumpAndSettle();
+        expect(toastsOf(controller), isEmpty, reason: 'nothing paused them');
+      });
+
+      testWidgets('hovering and scrolling the deck tell the app nothing about '
+          'scrolling', (tester) async {
+        var notifications = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => NotificationListener<Notification>(
+              onNotification: (notification) {
+                if (notification is ScrollNotification ||
+                    notification is ScrollMetricsNotification) {
+                  notifications++;
+                }
+                return false;
+              },
+              child: SonnerHost(controller: controller, child: child!),
+            ),
+            home: const SizedBox.expand(),
+          ),
+        );
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pumpAndSettle();
+
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
+        expect(notifications, 0);
+      });
+
+      testWidgets(
+        'a toast dismissed while scrolled stays where it is on screen as the '
+        'deck scrolls under it',
+        (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 12);
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          await wheel(tester, at, const Offset(0, -100));
+          await tester.pumpAndSettle();
+
+          controller.dismiss(toastsOf(controller)[5].id);
+          await tester.pump();
+          final place = boxOf(tester, 'Toast 6');
+          final neighbour = boxOf(tester, 'Toast 7').top;
+          await wheel(tester, at, const Offset(0, -50));
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(boxOf(tester, 'Toast 6').top, moreOrLessEquals(place.top));
+          expect(
+            boxOf(tester, 'Toast 7').top,
+            isNot(moreOrLessEquals(neighbour)),
+          );
+          await tester.pumpAndSettle();
+        },
+      );
+    });
   });
 
   group('a lifecycle state a test leaves behind', () {
@@ -1929,7 +2444,8 @@ void main() {
   });
 
   testWidgets(
-    'a toast beyond the window is announced when it reaches the window',
+    'a toast beyond the window joins the semantics tree as a live region '
+    'when it reaches the window',
     (tester) async {
       final semantics = tester.ensureSemantics();
       await tester.pumpWidget(app(controller: controller));

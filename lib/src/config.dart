@@ -36,17 +36,19 @@ class SonnerConfig {
   /// The distance from the screen edges to the toasts.
   final double offset;
 
-  /// How many toasts the deck draws. The rest are kept, undrawn, until the
-  /// ones in front leave; they count down all the while, and one whose time
-  /// runs out first leaves without being drawn.
+  /// How many toasts the deck draws while the pointer is away from it. The
+  /// rest are kept, undrawn, until the ones in front leave or the pointer
+  /// comes over the deck, which draws every toast; they count down all the
+  /// while the pointer is away.
   final int visibleToasts;
 
   /// How long a toast shown without a `duration` stays. [Duration.zero] keeps
   /// it until it is dismissed.
   final Duration duration;
 
-  /// Whether the deck is fanned out without the pointer over it. It does not
-  /// pause the timers; only the pointer over the deck does.
+  /// Whether the deck is fanned out without the pointer over it. It draws only
+  /// [visibleToasts], and does not pause the timers; the pointer over the deck
+  /// does both.
   final bool expandByDefault;
 
   SonnerConfig copyWith({
