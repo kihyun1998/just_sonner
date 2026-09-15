@@ -1,8 +1,9 @@
 import 'package:flutter/widgets.dart';
 
+import 'config.dart';
 import 'controller.dart';
 import 'default_look.dart';
-import 'stack_layout.dart';
+import 'deck_layout.dart';
 
 /// Mount mode 2: draws [controller]'s toasts above [child], or the exported
 /// `toast`'s when [controller] is null.
@@ -109,42 +110,86 @@ class _SonnerHostState extends State<SonnerHost> with TickerProviderStateMixin {
       children: [
         widget.child,
         Positioned.fill(
-          child: CustomMultiChildLayout(
-            delegate: ToastStackDelegate<_Slot>(
-              config: config,
-              order: _slots,
-              presence: (slot) => slot.animation.value,
-              pinned: (slot) => slot.exiting ? slot.fromEdge : null,
-              onPlaced: (slot, fromEdge) => slot.fromEdge = fromEdge,
-              relayout: Listenable.merge([
-                for (final slot in _slots) slot.animation,
-              ]),
-            ),
-            // Oldest first: children paint in order, so the newest is on top.
-            children: [
-              for (final slot in _slots.reversed)
-                LayoutId(
-                  id: slot,
-                  child: FadeTransition(
-                    opacity: slot.animation,
-                    child: SlideTransition(
-                      position: slot.animation.drive(
-                        Tween(
-                          begin: Offset(0, config.position.isTop ? -1 : 1),
-                          end: Offset.zero,
-                        ),
-                      ),
-                      child: Semantics(
-                        liveRegion: true,
-                        child: DefaultToastLook(state: slot.record.state),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
+          child: ListenableBuilder(
+            listenable: Listenable.merge([
+              for (final slot in _slots) slot.animation,
+            ]),
+            builder: (context, _) => _buildDeck(config),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildDeck(SonnerConfig config) {
+    // An exiting toast keeps the depth it had when it was dismissed, and does
+    // not count towards the window.
+    //
+    // The toasts entering and leaving run on clocks of different lengths, so
+    // their presences can add up to more or less than either end; a depth
+    // only ever moves toward its place, and stops there.
+    var sum = 0.0;
+    var index = 0;
+    for (final slot in _slots) {
+      if (!slot.exiting) {
+        final from = slot.drawn ? slot.depth : sum;
+        final place = index.toDouble();
+        slot.depth = from < place
+            ? sum.clamp(from, place)
+            : sum.clamp(place, from);
+        slot.drawn = true;
+        slot.index = index++;
+      }
+      sum += slot.animation.value;
+    }
+
+    final visible = config.visibleToasts;
+    for (final slot in _slots) {
+      slot.hidden =
+          (slot.exiting || slot.index >= visible) && slot.depth >= visible;
+    }
+    return CustomMultiChildLayout(
+      delegate: ToastDeckDelegate<_Slot>(
+        config: config,
+        order: _slots,
+        presence: (slot) => slot.animation.value,
+        depth: (slot) => slot.depth,
+        natural: (slot) => slot.natural,
+        pinned: (slot) => slot.exiting || slot.hidden ? slot.height : null,
+        onPlaced: (slot, height) => slot.height = height,
+      ),
+      // Oldest first: children paint in order, so the newest is on top.
+      children: [
+        for (final slot in _slots.reversed)
+          LayoutId(id: slot, child: _buildToast(slot, config, visible)),
+      ],
+    );
+  }
+
+  Widget _buildToast(_Slot slot, SonnerConfig config, int visible) {
+    // A toast crossing the edge of the window fades as it moves across it.
+    final fade = (visible - slot.depth).clamp(0.0, 1.0);
+    return Offstage(
+      offstage: slot.hidden,
+      child: IgnorePointer(
+        ignoring: slot.index >= visible,
+        child: Opacity(
+          opacity: fade,
+          child: FadeTransition(
+            opacity: slot.animation,
+            child: SlideTransition(
+              position: slot.slide(fromTop: config.position.isTop),
+              child: Transform.scale(
+                scale: 1 - 0.05 * slot.depth,
+                child: ToastHeight(
+                  onMeasured: slot.measured,
+                  child: slot.content,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
@@ -162,9 +207,50 @@ class _Slot {
   /// Whether the controller has let go of this toast and its exit has started.
   bool exiting = false;
 
-  /// How far from the screen edge the toast was last laid out. Frozen once it
-  /// is [exiting], so the toasts moving around it do not carry it along.
-  double? fromEdge;
+  /// How many toasts sit in front of this one, each counted by its presence.
+  /// Frozen once it is [exiting], so the toasts moving around it do not carry
+  /// it along.
+  double depth = 0;
+
+  /// Whether [depth] has been worked out at least once.
+  bool drawn = false;
+
+  /// Its place among the toasts that are not exiting, newest first. Frozen
+  /// once it is [exiting].
+  int index = 0;
+
+  /// Whether it is outside the window and faded out, so neither painted nor
+  /// laid out anew.
+  bool hidden = false;
+
+  /// The height it was last drawn at. Frozen once it is [exiting].
+  double? height;
+
+  /// The height it last measured on its own, whatever it was drawn at.
+  double? natural;
+
+  /// What the toast shows. Built once, so an animation frame that moves the
+  /// toast does not rebuild it.
+  late final Widget content = Semantics(
+    liveRegion: true,
+    child: DefaultToastLook(state: record.state),
+  );
+
+  void measured(double height) => natural = height;
+
+  Animation<Offset>? _slide;
+  bool? _slideFromTop;
+
+  /// Its enter and exit slide, from the edge [fromTop] names.
+  Animation<Offset> slide({required bool fromTop}) {
+    if (_slideFromTop != fromTop) {
+      _slideFromTop = fromTop;
+      _slide = animation.drive(
+        Tween(begin: Offset(0, fromTop ? -1 : 1), end: Offset.zero),
+      );
+    }
+    return _slide!;
+  }
 
   void dispose() {
     animation.dispose();

@@ -186,6 +186,29 @@ void main() {
       controller.dispose();
     });
 
+    test('visibleToasts outside 1 to 20 is refused', () {
+      for (final visibleToasts in [-1, 0, 21]) {
+        expect(
+          () => SonnerController(
+            config: SonnerConfig(
+              visibleToasts: visibleToasts,
+              duration: Duration.zero,
+            ),
+          ),
+          throwsAssertionError,
+          reason: '$visibleToasts',
+        );
+      }
+      for (final visibleToasts in [1, 20]) {
+        SonnerController(
+          config: SonnerConfig(
+            visibleToasts: visibleToasts,
+            duration: Duration.zero,
+          ),
+        ).dispose();
+      }
+    });
+
     test('show on a disposed controller fails without leaving a timer', () {
       fakeAsync((async) {
         final controller = SonnerController()..dispose();
