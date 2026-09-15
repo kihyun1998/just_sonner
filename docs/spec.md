@@ -103,7 +103,8 @@ class SonnerController extends ChangeNotifier {
     String? description,
     bool isLoading = false,      // no timer; the leading slot holds config.loadingIndicator
     Widget? leading,             // fills the leading slot when the toast is not loading
-    Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed
+    Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed;
+                                 // negative → debug assert
     bool? dismissible,           // null → !isLoading (§8)
     ToastSlot? action,           // the caller's widget; it receives the toast (see Slots)
     bool? closeButton,           // null → config.closeButton
@@ -388,8 +389,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   time source injected and none of `package:clock`, `Stopwatch` or `DateTime.now` appears in it —
   `Timer` alone is what the tests fake (§10).
 
-  The cost is granularity: a toast shown between ticks runs up to one tick long. That is invisible
-  against the 200-400 ms motion in §6, and it is not configurable.
+  The cost is granularity, and a toast never runs short. The toast that starts the tick runs its
+  duration rounded up to a whole tick. One shown while the tick is already running cannot know
+  how far into the current tick it arrived, so it lets that partial tick pass uncounted and runs
+  up to one tick longer than that — a 4 s toast lives 4.0–4.1 s, a 150 ms one up to 300 ms. That
+  is invisible against the 200-400 ms motion in §6, and it is not configurable.
 
   The gain is that "time left" is a number the controller owns rather than one it derives from two
   clock readings. sonner derives it, and needs a guard so a pause is not subtracted twice
@@ -519,6 +523,8 @@ outside v0.1 is in §2's non-goals.
 | Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
 | Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without | maintainer | sonner counts hidden toasts down and lets them expire unseen, but its timer effect simply has no `isVisible` guard (research #2 row 26) — an omission rather than a decision, and sonner is an example. Waiting alone would make a burst of 10 take 13 s to clear; a short duration while backlogged clears it in about 2 s and still puts every toast on screen. Fixing it at entry keeps a nearly-expired toast from swelling back to full time under the reader |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
+| The tick is started again when a toast is shown in a different `Zone` from the one the running tick was created in | maintainer | a `Timer` is bound to its zone, and the exported `toast` outlives test zones: measured while working #18, a toast left counting by one test kept `_ticker` pointing at a timer in that test's finished fake-time zone, and every later test's toasts silently never expired. Shown against documenting "clean up inside the test body" instead, which leaves the failure silent. Only a zone change restarts it — restarting on every `show` would let a burst of toasts shown faster than one tick hold every countdown back. **Not decided**: whether the tick should move to the host, as `SnackBar`'s timer lives in `ScaffoldMessengerState`; §7 keeps it on the controller |
+| A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |
 | `ToastId` is `extension type ToastId(Object value)`: a caller may make one, and a generated id's value is an object compared by identity | derived | sonner takes a caller's id, which §4's `show(id:)` already implies; an identity-compared value keeps a caller's `ToastId(0)` from ever colliding with a generated id, with no reserved range to document. An extension type costs nothing at runtime and keeps `==` on the value |
 | Exit runs the enter's `ease` backwards over 200 ms, and the toasts behind close the gap over the same 200 ms, driven by the exiting toast's own animation | maintainer | shown sonner contradicting itself — `TIME_BEFORE_UNMOUNT = 200` is commented "equal to exit animation duration" while the front toast keeps its 400 ms transition and is cut off about 20% opaque, and neighbours move over 400 ms — against splitting the neighbours onto 400 ms, which needs a layout animation per toast. **Not decided**: whether neighbours move on their own 400 ms clock once §6's collapse ↔ expand animation exists (#19, #22) |
 | A toast leaves the tree when its animation reports `dismissed`, which is the first tick **past** 200 ms; it is fully transparent at 200 ms | derived | #27 needs the animation reaching `dismissed` to count as removal, and `AnimationController` reports it only when elapsed time exceeds the duration (`_InterpolationSimulation.isDone` uses `>`, Flutter 3.41.9). An exiting toast keeps the distance from the edge it had when dismissed, as sonner freezes `offsetBeforeRemove`, and the newest toast paints on top, as sonner's `z-index: toasts.length - index` |
