@@ -20,6 +20,7 @@ class SonnerConfig {
     this.width = 356,
     this.gap = 14,
     this.offset = 24,
+    this.visibleToasts = 3,
     this.duration = const Duration(seconds: 4),
   });
 
@@ -34,6 +35,10 @@ class SonnerConfig {
   /// The distance from the screen edges to the toasts.
   final double offset;
 
+  /// How many toasts the deck draws. The rest are kept, undrawn, until the
+  /// ones in front leave.
+  final int visibleToasts;
+
   /// How long a toast shown without a `duration` stays. [Duration.zero] keeps
   /// it until it is dismissed.
   final Duration duration;
@@ -43,12 +48,14 @@ class SonnerConfig {
     double? width,
     double? gap,
     double? offset,
+    int? visibleToasts,
     Duration? duration,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
     gap: gap ?? this.gap,
     offset: offset ?? this.offset,
+    visibleToasts: visibleToasts ?? this.visibleToasts,
     duration: duration ?? this.duration,
   );
 
@@ -59,8 +66,10 @@ class SonnerConfig {
       other.width == width &&
       other.gap == gap &&
       other.offset == offset &&
+      other.visibleToasts == visibleToasts &&
       other.duration == duration;
 
   @override
-  int get hashCode => Object.hash(position, width, gap, offset, duration);
+  int get hashCode =>
+      Object.hash(position, width, gap, offset, visibleToasts, duration);
 }

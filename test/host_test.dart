@@ -171,44 +171,490 @@ void main() {
     });
   });
 
-  group('stacking', () {
-    testWidgets(
-      'at the bottom, the newest is nearest the edge, the older gap above',
-      (tester) async {
-        await tester.pumpWidget(app(controller: controller));
+  group('deck', () {
+    /// Where toast [i] behind the front of a bottomRight deck is drawn: a box
+    /// of [height], its bottom `gap × i` above the front's, scaled by
+    /// `1 − 0.05 × i` about its centre.
+    Rect collapsed(int i, double height) {
+      final scale = 1 - 0.05 * i;
+      final box = Rect.fromLTRB(
+        420,
+        576 - 14.0 * i - height,
+        776,
+        576 - 14.0 * i,
+      );
+      return Rect.fromCenter(
+        center: box.center,
+        width: box.width * scale,
+        height: box.height * scale,
+      );
+    }
 
-        controller.show('Older');
-        controller.show('Newer');
+    for (final count in [1, 2, 3, 5]) {
+      testWidgets('$count toasts collapse into a deck of at most three', (
+        tester,
+      ) async {
+        await tester.pumpWidget(app(controller: controller));
+        for (var n = 0; n < count; n++) {
+          controller.show('Toast $n');
+        }
         await tester.pumpAndSettle();
 
-        final older = toastRect(tester, 'Older');
-        final newer = toastRect(tester, 'Newer');
-        expect(newer.bottom, 576);
-        expect(newer.top - older.bottom, 14);
+        final front = toastRect(tester, 'Toast ${count - 1}');
+        for (var i = 0; i < count; i++) {
+          final title = 'Toast ${count - 1 - i}';
+          if (i < 3) {
+            final rect = toastRect(tester, title);
+            expect(
+              rect.left,
+              moreOrLessEquals(collapsed(i, front.height).left),
+            );
+            expect(rect.top, moreOrLessEquals(collapsed(i, front.height).top));
+            expect(rect.size, _sizeCloseTo(collapsed(i, front.height).size));
+          } else {
+            expect(find.text(title), findsNothing, reason: '$title is hidden');
+            expect(
+              find.text(title, skipOffstage: false),
+              findsOneWidget,
+              reason: '$title is still kept',
+            );
+          }
+        }
+      });
+    }
+
+    testWidgets('at the top, the toasts behind shift down', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          position: SonnerPosition.topLeft,
+          gap: 20,
+          visibleToasts: 2,
+          duration: Duration.zero,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+
+      controller.show('Oldest');
+      controller.show('Older');
+      controller.show('Newer');
+      await tester.pumpAndSettle();
+
+      final newer = toastRect(tester, 'Newer');
+      final older = toastRect(tester, 'Older');
+      expect(newer.top, 24);
+      expect(older.center.dy - newer.center.dy, moreOrLessEquals(20));
+      expect(older.height / newer.height, moreOrLessEquals(0.95));
+      expect(find.text('Oldest'), findsNothing);
+    });
+
+    testWidgets('a shorter toast behind is stretched to the front height', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Short');
+      controller.show('Tall', description: 'A second line');
+      await tester.pumpAndSettle();
+
+      final tall = toastRect(tester, 'Tall');
+      final short = toastRect(tester, 'Short');
+      expect(short.height, moreOrLessEquals(tall.height * 0.95));
+      expect(short.bottom, moreOrLessEquals(collapsed(1, tall.height).bottom));
+    });
+
+    testWidgets('a taller toast behind is cut to the front height', (
+      tester,
+    ) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          position: SonnerPosition.topLeft,
+          duration: Duration.zero,
+        ),
+      );
+      addTearDown(controller.dispose);
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) =>
+              SonnerHost(controller: controller, child: child!),
+          home: GestureDetector(
+            onTap: () => taps++,
+            child: const ColoredBox(color: Color(0xFFFFFFFF)),
+          ),
+        ),
+      );
+      controller.show('Alone');
+      await tester.pumpAndSettle();
+      final alone = toastRect(tester, 'Alone').height;
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+
+      controller.show('Tall', description: 'One\nTwo\nThree\nFour\nFive');
+      controller.show('Short');
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      expect(
+        toastRect(tester, 'Short').height,
+        alone,
+        reason: 'the front is drawn at its own height',
+      );
+      final scaled = tester.renderObject<RenderTransform>(
+        find.ancestor(of: find.text('Tall'), matching: find.byType(Transform)),
+      );
+      final drawn = scaled.child!;
+      final tall = MatrixUtils.transformRect(
+        drawn.getTransformTo(null),
+        Offset.zero & drawn.paintBounds.size,
+      );
+      expect(tall.height, moreOrLessEquals(alone * 0.95));
+      expect(
+        tester.renderObject(
+          find.ancestor(
+            of: find.text('Tall'),
+            matching: find.byType(Transform),
+          ),
+        ),
+        paints..clipRect(rect: Offset.zero & Size(356, alone)),
+      );
+
+      await tester.tapAt(Offset(tall.center.dx, tall.bottom + 20));
+      expect(taps, 1, reason: 'the part cut off takes no taps');
+    });
+
+    testWidgets(
+      'the deck takes the front height plus a gap per toast behind it',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        for (var n = 0; n < 5; n++) {
+          controller.show('Toast $n', description: n == 4 ? 'Front' : null);
+        }
+        await tester.pumpAndSettle();
+
+        final front = toastRect(tester, 'Toast 4').height;
+        // A toast's box before it is scaled.
+        final boxes = [
+          for (var n = 2; n < 5; n++)
+            tester.getRect(
+              find.ancestor(
+                of: find.text('Toast $n'),
+                matching: find.byType(SlideTransition),
+              ),
+            ),
+        ];
+        final deck = boxes.reduce((a, b) => a.expandToInclude(b));
+        expect(deck.bottom, 576);
+        expect(deck.height, moreOrLessEquals(front + 14 * 2));
+      },
+    );
+
+    testWidgets('the toasts behind the front are not faded', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      for (var n = 0; n < 3; n++) {
+        controller.show('Toast $n');
+      }
+      await tester.pumpAndSettle();
+
+      for (var n = 0; n < 3; n++) {
+        expect(paintedOpacityOf(tester, 'Toast $n'), 1, reason: 'Toast $n');
+      }
+    });
+
+    /// The y of a point only toast [i] of a resting bottomRight deck covers:
+    /// between its top and the top of the toast in front of it.
+    double peekOf(int i, double height) =>
+        (collapsed(i, height).top + collapsed(i - 1, height).top) / 2;
+
+    Widget tappableApp(void Function() onTap) => MaterialApp(
+      builder: (context, child) =>
+          SonnerHost(controller: controller, child: child!),
+      home: GestureDetector(
+        onTap: onTap,
+        child: const ColoredBox(color: Color(0xFFFFFFFF)),
+      ),
+    );
+
+    testWidgets('toasts beyond visibleToasts take no taps', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      for (var n = 0; n < 4; n++) {
+        controller.show('Toast $n');
+      }
+      await tester.pumpAndSettle();
+      final height = toastRect(tester, 'Toast 3').height;
+
+      await tester.tapAt(Offset(600, peekOf(2, height)));
+      expect(taps, 0, reason: 'the third toast takes the tap');
+
+      await tester.tapAt(Offset(600, peekOf(3, height)));
+      expect(taps, 1, reason: 'the fourth toast is hidden');
+    });
+
+    testWidgets('a toast pushed out of the window fades as the new one enters, '
+        'taking no taps', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      for (var n = 0; n < 3; n++) {
+        controller.show('Toast $n');
+      }
+      await tester.pumpAndSettle();
+      final height = toastRect(tester, 'Toast 2').height;
+
+      controller.show('Toast 3');
+      await tester.pump();
+      expect(paintedOpacityOf(tester, 'Toast 0'), 1);
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(paintedOpacityOf(tester, 'Toast 0'), inExclusiveRange(0, 1));
+      await tester.tapAt(Offset(600, toastRect(tester, 'Toast 0').top + 2));
+      expect(taps, 1);
+
+      await tester.pumpAndSettle();
+      expect(find.text('Toast 0'), findsNothing);
+      expect(
+        toastRect(tester, 'Toast 1').top,
+        moreOrLessEquals(collapsed(2, height).top),
+      );
+    });
+
+    testWidgets('dismissing the front brings the next toast into the window', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      final ids = [for (var n = 0; n < 4; n++) controller.show('Toast $n')];
+      await tester.pumpAndSettle();
+      final height = toastRect(tester, 'Toast 3').height;
+
+      controller.dismiss(ids[3]);
+      await tester.pump();
+      expect(find.text('Toast 0'), findsOneWidget, reason: 'in at once');
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(paintedOpacityOf(tester, 'Toast 0'), inExclusiveRange(0, 1));
+
+      await tester.pumpAndSettle();
+      expect(paintedOpacityOf(tester, 'Toast 0'), 1);
+      expect(
+        toastRect(tester, 'Toast 0').top,
+        moreOrLessEquals(collapsed(2, height).top),
+      );
+      await tester.tapAt(Offset(600, peekOf(2, height)));
+      expect(taps, 0, reason: 'it takes taps');
+    });
+
+    double scaleOf(WidgetTester tester, String title) => tester
+        .widget<Transform>(
+          find.ancestor(of: find.text(title), matching: find.byType(Transform)),
+        )
+        .transform
+        .storage[0];
+
+    testWidgets(
+      'a toast shown as the front leaves holds the ones behind still',
+      (tester) async {
+        var taps = 0;
+        await tester.pumpWidget(tappableApp(() => taps++));
+        final ids = [for (var n = 0; n < 4; n++) controller.show('Toast $n')];
+        await tester.pumpAndSettle();
+        final height = toastRect(tester, 'Toast 3').height;
+
+        controller.dismiss(ids[3]);
+        controller.show('New');
+        await tester.pump();
+        for (var elapsed = 0; elapsed <= 400; elapsed += 20) {
+          expect(
+            find.text('Toast 0'),
+            findsNothing,
+            reason: 'hidden before and after, at $elapsed ms',
+          );
+          expect(
+            paintedOpacityOf(tester, 'Toast 1'),
+            1,
+            reason: 'in the window before and after, at $elapsed ms',
+          );
+          expect(
+            scaleOf(tester, 'Toast 1'),
+            moreOrLessEquals(0.9),
+            reason: 'third before and after, at $elapsed ms',
+          );
+          await tester.pump(const Duration(milliseconds: 20));
+        }
+        await tester.pumpAndSettle();
+        expect(
+          toastRect(tester, 'Toast 1').top,
+          moreOrLessEquals(collapsed(2, height).top),
+        );
       },
     );
 
     testWidgets(
-      'at the top, the newest is nearest the edge, the older gap below',
+      'a toast on its way back never comes forward, however the clocks mix',
       (tester) async {
-        final controller = SonnerController(
-          config: const SonnerConfig(
-            position: SonnerPosition.topLeft,
-            gap: 20,
-            duration: Duration.zero,
-          ),
-        );
-        addTearDown(controller.dispose);
         await tester.pumpWidget(app(controller: controller));
-
-        controller.show('Older');
-        controller.show('Newer', description: 'A taller toast');
+        controller.show('A');
+        final b = controller.show('B');
         await tester.pumpAndSettle();
+        final bottoms = <double>[];
 
-        final older = toastRect(tester, 'Older');
-        final newer = toastRect(tester, 'Newer');
-        expect(newer.top, 24);
-        expect(older.top - newer.bottom, 20);
+        controller.show('C');
+        await tester.pump();
+        for (var i = 0; i < 6; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          bottoms.add(toastRect(tester, 'A').bottom);
+        }
+        controller.dismiss(b);
+        controller.show('D');
+        for (var i = 0; i < 40; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          bottoms.add(toastRect(tester, 'A').bottom);
+        }
+
+        // At the bottom, moving back means moving up: the bottom edge only
+        // ever falls.
+        for (var i = 1; i < bottoms.length; i++) {
+          expect(
+            bottoms[i],
+            lessThanOrEqualTo(bottoms[i - 1] + 1e-9),
+            reason: 'frame $i',
+          );
+        }
+      },
+    );
+
+    testWidgets('a toast dismissed outside the window still takes no taps', (
+      tester,
+    ) async {
+      var taps = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      final oldest = controller.show('Toast 0');
+      for (var n = 1; n < 3; n++) {
+        controller.show('Toast $n');
+      }
+      await tester.pumpAndSettle();
+
+      controller.show('Toast 3');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final fading = toastRect(tester, 'Toast 0');
+
+      controller.dismiss(oldest);
+      await tester.pump();
+      await tester.tapAt(Offset(600, fading.top + 2));
+      expect(taps, 1);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an exiting toast keeps the scale it was dismissed at', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      final back = controller.show('Back');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      controller.dismiss(back);
+      controller.show('New');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(scaleOf(tester, 'Back'), moreOrLessEquals(0.95));
+      expect(scaleOf(tester, 'Front'), inExclusiveRange(0.95, 1));
+
+      await tester.pumpAndSettle();
+      expect(scaleOf(tester, 'Front'), moreOrLessEquals(0.95));
+    });
+
+    // A toast's height before it is scaled.
+    double drawnHeightOf(WidgetTester tester, String title) => tester
+        .getRect(
+          find.ancestor(
+            of: find.text(title),
+            matching: find.byType(SlideTransition),
+          ),
+        )
+        .height;
+
+    testWidgets(
+      'a toast brought to the front grows from the height it was drawn at',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Short');
+        final tall = controller.show('Tall', description: 'A second line');
+        await tester.pumpAndSettle();
+        final tallHeight = drawnHeightOf(tester, 'Tall');
+
+        controller.dismiss(tall);
+        await tester.pump();
+        expect(drawnHeightOf(tester, 'Short'), moreOrLessEquals(tallHeight));
+
+        await tester.pump(const Duration(milliseconds: 100));
+        final midway = drawnHeightOf(tester, 'Short');
+
+        await tester.pumpAndSettle();
+        final own = drawnHeightOf(tester, 'Short');
+        expect(own, lessThan(tallHeight));
+        expect(midway, inExclusiveRange(own, tallHeight));
+      },
+    );
+
+    testWidgets('an exiting toast keeps the height it was dismissed at', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Short');
+      controller.show('Tall', description: 'A second line');
+      await tester.pumpAndSettle();
+      final tallHeight = drawnHeightOf(tester, 'Tall');
+
+      controller.dismissAll();
+      await tester.pump();
+      for (var elapsed = 0; elapsed < 200; elapsed += 40) {
+        expect(
+          drawnHeightOf(tester, 'Short'),
+          moreOrLessEquals(tallHeight),
+          reason: 'at $elapsed ms',
+        );
+        await tester.pump(const Duration(milliseconds: 40));
+      }
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the front toast is not clipped', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Tall', description: 'One\nTwo\nThree');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.renderObject(
+          find.ancestor(
+            of: find.text('Front'),
+            matching: find.byType(Transform),
+          ),
+        ),
+        isNot(paints..clipRect()),
+      );
+    });
+
+    testWidgets(
+      'the toast a new one covers takes its height as the new one enters',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Short');
+        await tester.pumpAndSettle();
+        final own = drawnHeightOf(tester, 'Short');
+
+        controller.show('Tall', description: 'A second line');
+        await tester.pump();
+        expect(drawnHeightOf(tester, 'Short'), moreOrLessEquals(own));
+
+        await tester.pump(const Duration(milliseconds: 200));
+        final midway = drawnHeightOf(tester, 'Short');
+
+        await tester.pumpAndSettle();
+        final tallHeight = drawnHeightOf(tester, 'Tall');
+        expect(drawnHeightOf(tester, 'Short'), moreOrLessEquals(tallHeight));
+        expect(midway, inExclusiveRange(own, tallHeight));
       },
     );
   });
@@ -458,6 +904,26 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets(
+    'a toast beyond the window is announced when it reaches the window',
+    (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(app(controller: controller));
+      final ids = [for (var n = 0; n < 4; n++) controller.show('Toast $n')];
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Toast 0'), findsNothing);
+
+      controller.dismiss(ids[3]);
+      await tester.pumpAndSettle();
+      expect(
+        tester.getSemantics(find.text('Toast 0')),
+        isSemantics(label: 'Toast 0', isLiveRegion: true),
+      );
+      semantics.dispose();
+    },
+  );
+
   testWidgets('taps away from the toasts reach the app underneath', (
     tester,
   ) async {
@@ -559,4 +1025,30 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+}
+
+Matcher _sizeCloseTo(Size expected) => predicate<Size>(
+  (size) =>
+      (size.width - expected.width).abs() < 1e-6 &&
+      (size.height - expected.height).abs() < 1e-6,
+  'a size close to $expected',
+);
+
+/// The opacity [title]'s toast is painted with: every fade above it multiplied.
+double paintedOpacityOf(WidgetTester tester, String title) {
+  var opacity = 1.0;
+  final above = find.ancestor(
+    of: find.text(title),
+    matching: find.byWidgetPredicate(
+      (widget) => widget is Opacity || widget is FadeTransition,
+    ),
+  );
+  for (final widget in tester.widgetList(above)) {
+    opacity *= switch (widget) {
+      Opacity(:final opacity) => opacity,
+      FadeTransition(:final opacity) => opacity.value,
+      _ => 1,
+    };
+  }
+  return opacity;
 }

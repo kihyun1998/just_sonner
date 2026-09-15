@@ -25,6 +25,11 @@ class SonnerController extends ChangeNotifier {
         config.duration >= Duration.zero,
         'SonnerConfig.duration must not be negative; Duration.zero keeps '
         'toasts until they are dismissed.',
+      ),
+      assert(
+        config.visibleToasts >= 1 && config.visibleToasts <= 20,
+        'SonnerConfig.visibleToasts must be between 1 and 20; at 21 the toast '
+        'at the back would be scaled to nothing.',
       );
 
   static const _tick = Duration(milliseconds: 100);
