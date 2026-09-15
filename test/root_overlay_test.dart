@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
+import 'package:just_sonner/src/host.dart' show ToastLayer;
 
 void main() {
   late SonnerController controller;
@@ -556,4 +557,38 @@ void main() {
     expect(find.text('Saved'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'the first toast shown while the app is hidden waits, before its host is '
+    'built',
+    (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration(seconds: 1)),
+      );
+      addTearDown(controller.dispose);
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+
+      controller.show('Saved');
+      // Time passes with no frame, as it does while the app is hidden.
+      await tester.binding.delayed(const Duration(seconds: 5));
+      expect(
+        find.byType(ToastLayer, skipOffstage: false),
+        findsNothing,
+        reason: 'no frame is drawn while hidden, so no host has been built',
+      );
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Saved'), findsOneWidget, reason: 'it waited');
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    },
+  );
 }

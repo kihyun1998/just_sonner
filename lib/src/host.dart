@@ -1,3 +1,6 @@
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart'
+    show PointerEnterEventListener, PointerExitEventListener;
 import 'package:flutter/widgets.dart';
 
 import 'config.dart';
@@ -38,9 +41,37 @@ class ToastLayer extends StatefulWidget {
 class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   static const _enterDuration = Duration(milliseconds: 400);
   static const _exitDuration = Duration(milliseconds: 200);
+  static const _expandDuration = Duration(milliseconds: 400);
 
   /// Newest first, as the controller orders its toasts.
   List<_Slot> _slots = [];
+
+  /// The pointer devices over the deck. While there are any, this host holds
+  /// the controller's timers.
+  final Set<int> _pointers = {};
+
+  bool get _hovered => _pointers.isNotEmpty;
+
+  /// Where the deck is, for hit testing: the toasts in the window, and those
+  /// exiting from it, and the gaps between them, as last laid out.
+  Rect _deck = Rect.zero;
+
+  /// Runs from 0 to 1 while [_expansion] eases from [_expandFrom] to
+  /// [_expandTo].
+  late final AnimationController _expand = AnimationController(
+    vsync: this,
+    value: 1,
+  );
+  late double _expandFrom = _expandTarget;
+  late double _expandTo = _expandFrom;
+
+  double get _expandTarget =>
+      _hovered || _controller.config.expandByDefault ? 1 : 0;
+
+  /// How far the deck is fanned out, from 0 collapsed to 1 expanded.
+  double get _expansion =>
+      _expandFrom +
+      (_expandTo - _expandFrom) * Curves.ease.transform(_expand.value);
 
   SonnerController get _controller => widget.controller;
 
@@ -48,6 +79,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _controller.addListener(_onToastsChanged);
+    watchLifecycle(_controller);
     _sync();
   }
 
@@ -58,19 +90,55 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (identical(previous, _controller)) return;
     previous.removeListener(_onToastsChanged);
     _controller.addListener(_onToastsChanged);
+    watchLifecycle(_controller);
+    if (_hovered) {
+      releaseTimers(previous, this);
+      holdTimers(_controller, this);
+    }
+    _retarget();
     _sync();
   }
 
   @override
   void dispose() {
     _controller.removeListener(_onToastsChanged);
+    // A region unmounted under the pointer reports no exit.
+    if (_hovered) releaseTimers(_controller, this);
     for (final slot in _slots) {
       slot.dispose();
     }
+    _expand.dispose();
     super.dispose();
   }
 
   void _onToastsChanged() => setState(_sync);
+
+  void _setPointer(int device, {required bool over}) {
+    final was = _hovered;
+    if (over) {
+      _pointers.add(device);
+    } else {
+      _pointers.remove(device);
+    }
+    final hovered = _hovered;
+    if (hovered == was) return;
+    if (hovered) {
+      holdTimers(_controller, this);
+    } else {
+      releaseTimers(_controller, this);
+    }
+    _retarget();
+  }
+
+  /// Eases the deck from wherever it is toward expanded or collapsed, over
+  /// [_expandDuration], when where it is headed has changed.
+  void _retarget() {
+    final target = _expandTarget;
+    if (target == _expandTo) return;
+    _expandFrom = _expansion;
+    _expandTo = target;
+    _expand.animateWith(_Progress(_expandDuration));
+  }
 
   /// Matches the slots to the controller's toasts. A toast the controller no
   /// longer holds keeps its slot, in its place, until its exit animation ends.
@@ -130,6 +198,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final config = _controller.config;
     return ListenableBuilder(
       listenable: Listenable.merge([
+        _expand,
         for (final slot in _slots) ...[slot.animation, slot.resize],
       ]),
       builder: (context, _) => _buildDeck(config),
@@ -142,20 +211,26 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     //
     // The toasts entering and leaving run on clocks of different lengths, so
     // their presences can add up to more or less than either end; a depth
-    // only ever moves toward its place, and stops there.
+    // only ever moves toward its place, and stops there. A lift, the heights
+    // of the toasts in front counted the same way, moves by the same rule.
+    final expansion = _expansion;
     var sum = 0.0;
     var index = 0;
+    var lifted = 0.0;
+    var liftPlace = 0.0;
     for (final slot in _slots) {
+      final covers = (slot.exiting ? slot.covers : slot.covering) ?? 0;
       if (!slot.exiting) {
-        final from = slot.drawn ? slot.depth : sum;
-        final place = index.toDouble();
-        slot.depth = from < place
-            ? sum.clamp(from, place)
-            : sum.clamp(place, from);
-        slot.drawn = true;
-        slot.index = index++;
+        slot
+          ..depth = _toward(slot.drawn ? slot.depth : sum, index, sum)
+          ..lift = _toward(slot.drawn ? slot.lift : lifted, liftPlace, lifted)
+          ..scale = 1 - 0.05 * slot.depth * (1 - expansion)
+          ..drawn = true
+          ..index = index++;
+        liftPlace += covers;
       }
       sum += slot.animation.value;
+      lifted += slot.animation.value * covers;
     }
 
     final visible = config.visibleToasts;
@@ -163,25 +238,42 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       slot.hidden =
           (slot.exiting || slot.index >= visible) && slot.depth >= visible;
     }
-    return CustomMultiChildLayout(
-      delegate: ToastDeckDelegate<_Slot>(
-        config: config,
-        order: _slots,
-        presence: (slot) => slot.animation.value,
-        depth: (slot) => slot.depth,
-        natural: (slot) => slot.natural,
-        covering: (slot) => slot.covering,
-        pinned: (slot) => slot.pinned,
-        onPlaced: (slot, height, covering) => slot
-          ..height = height
-          ..covers = covering,
+    return _DeckRegion(
+      deck: () => _deck,
+      onEnter: (event) => _setPointer(event.device, over: true),
+      onExit: (event) => _setPointer(event.device, over: false),
+      child: CustomMultiChildLayout(
+        delegate: ToastDeckDelegate<_Slot>(
+          config: config,
+          order: _slots,
+          expansion: expansion,
+          presence: (slot) => slot.animation.value,
+          depth: (slot) => slot.depth,
+          lift: (slot) => slot.lift,
+          natural: (slot) => slot.natural,
+          covering: (slot) => slot.covering,
+          pinned: (slot) => slot.pinned,
+          inDeck: (slot) => slot.index < visible,
+          onPlaced: (slot, height, covering, distance) => slot
+            ..height = height
+            ..covers = covering
+            ..distance = distance,
+          onDeck: (deck) => _deck = deck,
+        ),
+        // Oldest first: children paint in order, so the newest is on top.
+        children: [
+          for (final slot in _slots.reversed)
+            LayoutId(id: slot, child: _buildToast(slot, config, visible)),
+        ],
       ),
-      // Oldest first: children paint in order, so the newest is on top.
-      children: [
-        for (final slot in _slots.reversed)
-          LayoutId(id: slot, child: _buildToast(slot, config, visible)),
-      ],
     );
+  }
+
+  /// [value] kept between [from] and [place], so it only moves toward
+  /// [place].
+  static double _toward(double from, num place, double value) {
+    final to = place.toDouble();
+    return from < to ? value.clamp(from, to) : value.clamp(to, from);
   }
 
   Widget _buildToast(_Slot slot, SonnerConfig config, int visible) {
@@ -198,7 +290,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             child: SlideTransition(
               position: slot.slide(fromTop: config.position.isTop),
               child: Transform.scale(
-                scale: 1 - 0.05 * slot.depth,
+                scale: slot.scale,
                 child: ToastHeight(
                   onMeasured: slot.measured,
                   child: slot.content,
@@ -239,6 +331,14 @@ class _Slot {
   /// it along.
   double depth = 0;
 
+  /// The heights of the toasts in front of this one, each counted by its
+  /// presence, that the expanded deck lifts it by. Frozen once it is
+  /// [exiting].
+  double lift = 0;
+
+  /// The scale it is drawn at. Frozen once it is [exiting].
+  double scale = 1;
+
   /// Whether [depth] has been worked out at least once.
   bool drawn = false;
 
@@ -257,6 +357,10 @@ class _Slot {
   /// [exiting].
   double? covers;
 
+  /// Its distance from the screen edge as last laid out. Frozen once it is
+  /// [exiting].
+  double? distance;
+
   /// The height it last measured on its own, whatever it was drawn at.
   double? natural;
 
@@ -272,12 +376,17 @@ class _Slot {
   }
 
   /// The heights it is drawn at and covers with while it is [exiting] or
-  /// [hidden], or null when it is laid out anew.
-  ({double height, double covering})? get pinned {
+  /// [hidden], and its distance from the edge while it is [exiting]; null
+  /// when it is laid out anew.
+  ({double height, double covering, double? distance})? get pinned {
     final height = this.height;
     final covers = this.covers;
     if (!(exiting || hidden) || height == null || covers == null) return null;
-    return (height: height, covering: covers);
+    return (
+      height: height,
+      covering: covers,
+      distance: exiting ? distance : null,
+    );
   }
 
   void measured(double height) {
@@ -349,4 +458,46 @@ class _Progress extends Simulation {
 
   @override
   bool isDone(double time) => time > _seconds;
+}
+
+/// A [MouseRegion] over the part of its child that [deck] names, gaps
+/// included. It takes the taps that land there.
+class _DeckRegion extends SingleChildRenderObjectWidget {
+  const _DeckRegion({
+    required this.deck,
+    required this.onEnter,
+    required this.onExit,
+    super.child,
+  });
+
+  final Rect Function() deck;
+  final PointerEnterEventListener onEnter;
+  final PointerExitEventListener onExit;
+
+  @override
+  _RenderDeckRegion createRenderObject(BuildContext context) =>
+      _RenderDeckRegion(deck, onEnter: onEnter, onExit: onExit);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderDeckRegion renderObject,
+  ) => renderObject
+    ..deck = deck
+    ..onEnter = onEnter
+    ..onExit = onExit;
+}
+
+class _RenderDeckRegion extends RenderMouseRegion {
+  _RenderDeckRegion(this.deck, {super.onEnter, super.onExit});
+
+  Rect Function() deck;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) {
+    final hitChild = hitTestChildren(result, position: position);
+    final inDeck = deck().contains(position);
+    if (inDeck) result.add(BoxHitTestEntry(this, position));
+    return hitChild || inDeck;
+  }
 }

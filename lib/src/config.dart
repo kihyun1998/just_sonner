@@ -22,6 +22,7 @@ class SonnerConfig {
     this.offset = 24,
     this.visibleToasts = 3,
     this.duration = const Duration(seconds: 4),
+    this.expandByDefault = false,
   });
 
   final SonnerPosition position;
@@ -43,6 +44,10 @@ class SonnerConfig {
   /// it until it is dismissed.
   final Duration duration;
 
+  /// Whether the deck is fanned out without the pointer over it. It does not
+  /// pause the timers; only the pointer over the deck does.
+  final bool expandByDefault;
+
   SonnerConfig copyWith({
     SonnerPosition? position,
     double? width,
@@ -50,6 +55,7 @@ class SonnerConfig {
     double? offset,
     int? visibleToasts,
     Duration? duration,
+    bool? expandByDefault,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -57,6 +63,7 @@ class SonnerConfig {
     offset: offset ?? this.offset,
     visibleToasts: visibleToasts ?? this.visibleToasts,
     duration: duration ?? this.duration,
+    expandByDefault: expandByDefault ?? this.expandByDefault,
   );
 
   @override
@@ -67,9 +74,17 @@ class SonnerConfig {
       other.gap == gap &&
       other.offset == offset &&
       other.visibleToasts == visibleToasts &&
-      other.duration == duration;
+      other.duration == duration &&
+      other.expandByDefault == expandByDefault;
 
   @override
-  int get hashCode =>
-      Object.hash(position, width, gap, offset, visibleToasts, duration);
+  int get hashCode => Object.hash(
+    position,
+    width,
+    gap,
+    offset,
+    visibleToasts,
+    duration,
+    expandByDefault,
+  );
 }
