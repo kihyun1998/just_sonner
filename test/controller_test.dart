@@ -242,6 +242,34 @@ void main() {
         controller.dispose();
       });
     });
+
+    test('a toast pushed beyond visibleToasts keeps counting down', () {
+      fakeAsync((async) {
+        final controller = SonnerController(
+          config: const SonnerConfig(visibleToasts: 1),
+        );
+        List<String> titles() => [
+          for (final record in toastsOf(controller)) record.state.title,
+        ];
+        controller.show('Oldest');
+        async.elapse(const Duration(seconds: 1));
+        controller.show('Newest', duration: const Duration(seconds: 10));
+
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(titles(), [
+          'Newest',
+          'Oldest',
+        ], reason: 'kept, undrawn, just before its 4 s');
+
+        async.elapse(const Duration(milliseconds: 1));
+        expect(
+          titles(),
+          ['Newest'],
+          reason: 'expired at 4 s, neither paused nor restarted while hidden',
+        );
+        controller.dispose();
+      });
+    });
   });
 
   group('pause', () {
