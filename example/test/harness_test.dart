@@ -30,6 +30,49 @@ void main() {
     expect(find.text('Event has been created'), findsNothing);
   });
 
+  testWidgets('dismissing the newest peels the deck one toast at a time', (
+    tester,
+  ) async {
+    await pumpHarness(tester);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Five in a row'));
+    await tester.pump();
+    expect(find.text('Toast 5 of 5'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss the newest'));
+    await tester.pumpAndSettle();
+    expect(find.text('Toast 5 of 5'), findsNothing);
+    expect(find.text('Toast 4 of 5'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss the newest'));
+    await tester.pumpAndSettle();
+    expect(find.text('Toast 4 of 5'), findsNothing);
+    expect(find.text('Toast 3 of 5'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss all'));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('dismissing the newest walks past ids whose toasts expired', (
+    tester,
+  ) async {
+    await pumpHarness(tester);
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Stays until dismissed'),
+    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Short (1 s)'));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
+    expect(find.text('Gone in a second'), findsNothing);
+    expect(find.text('This one waits for you'), findsOneWidget);
+
+    // The newest id the panel holds is the expired one, and nothing told it so.
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss the newest'));
+    await tester.pumpAndSettle();
+    expect(find.text('This one waits for you'), findsNothing);
+  });
+
   testWidgets('a toast sits above a dialog', (tester) async {
     await pumpHarness(tester);
 

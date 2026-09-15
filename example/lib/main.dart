@@ -95,7 +95,11 @@ class _PanelState extends State<_Panel> {
   /// any order against whatever "Show a toast to change" put up.
   static const ToastId _target = ToastId('target');
 
-  ToastId? _last;
+  /// Every id this panel has shown, oldest first. The package does not report
+  /// that a toast went away (#16) and has no way to ask what is on screen, so
+  /// finding the newest toast still up means walking this back and probing.
+  final List<ToastId> _shown = [];
+
   Timer? _progress;
 
   SonnerController get _toast => widget.controller;
@@ -106,7 +110,7 @@ class _PanelState extends State<_Panel> {
     // A new controller is a new set of toasts; the old id is on nothing.
     if (!identical(old.controller, widget.controller)) {
       _stopProgress();
-      _last = null;
+      _shown.clear();
     }
   }
 
@@ -121,8 +125,39 @@ class _PanelState extends State<_Panel> {
     _progress = null;
   }
 
-  ToastId _show(String title, {String? description, Duration? duration}) =>
-      _last = _toast.show(title, description: description, duration: duration);
+  ToastId _show(
+    String title, {
+    String? description,
+    Duration? duration,
+    ToastId? id,
+  }) {
+    final shown = _toast.show(
+      title,
+      description: description,
+      duration: duration,
+      id: id,
+    );
+    _shown.add(shown);
+    return shown;
+  }
+
+  /// Dismisses the newest toast still on screen.
+  ///
+  /// An id outlives its toast — it stays valid to hold and useless to dismiss —
+  /// and nothing tells the panel when one expires, so the ids it kept go stale
+  /// silently. `update` is the only public answer to "is this one still up?":
+  /// it returns false once the toast is gone. Walking back to the first id that
+  /// answers yes finds the newest toast on screen.
+  void _dismissNewest() {
+    while (_shown.isNotEmpty) {
+      final id = _shown.removeLast();
+      // A no-op update, so it only asks; it does restart that toast's
+      // countdown, which the dismiss on the next line makes moot.
+      if (!_toast.update(id)) continue;
+      _toast.dismiss(id);
+      return;
+    }
+  }
 
   /// Updates one toast ten times, 400 ms apart. Each update restarts the
   /// countdown, so it stays up while they keep coming and goes its full
@@ -249,11 +284,11 @@ class _PanelState extends State<_Panel> {
             duration: Duration.zero,
           ),
         ),
-        _Button('Dismiss the last one', () {
-          final last = _last;
-          if (last != null) _toast.dismiss(last);
+        _Button('Dismiss the newest', _dismissNewest),
+        _Button('Dismiss all', () {
+          _toast.dismissAll();
+          _shown.clear();
         }),
-        _Button('Dismiss all', _toast.dismissAll),
       ],
     ),
     _Section(
@@ -294,7 +329,7 @@ class _PanelState extends State<_Panel> {
       children: [
         _Button(
           'Show a toast to change',
-          () => _toast.show(
+          () => _show(
             'Checking credentials…',
             description: 'A description that a replace will drop.',
             duration: Duration.zero,
@@ -313,7 +348,7 @@ class _PanelState extends State<_Panel> {
             duration: const Duration(seconds: 4),
           ),
         ),
-        _Button('Replace it whole', () => _toast.show('Signed in', id: _target)),
+        _Button('Replace it whole', () => _show('Signed in', id: _target)),
         _Button('Update in a loop (upload)', _runProgress),
       ],
     ),
