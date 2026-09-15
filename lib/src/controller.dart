@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import 'config.dart';
@@ -7,23 +9,66 @@ import 'toast_state.dart';
 /// The default controller, usable from anywhere.
 final toast = SonnerController();
 
-/// Owns the toasts on screen and their ids. Holds no widgets; a host draws it.
+/// Owns the toasts on screen, their ids and their countdowns. Holds no widgets;
+/// a host draws it.
+///
+/// One periodic tick subtracts from every counting toast, and runs only while
+/// some toast is counting. Nothing here reads a clock.
+///
+/// The tick belongs to the controller, not to the widget tree, so unmounting a
+/// host does not stop it. A widget test that shows a toast with a timer must
+/// dismiss it, or pump past its duration, before the test body ends:
+/// `testWidgets` fails on a pending timer before `tearDown` runs.
 class SonnerController extends ChangeNotifier {
-  SonnerController({this.config = const SonnerConfig()});
+  SonnerController({this.config = const SonnerConfig()})
+    : assert(
+        config.duration >= Duration.zero,
+        'SonnerConfig.duration must not be negative; Duration.zero keeps '
+        'toasts until they are dismissed.',
+      );
 
-  /// How this controller's toasts are laid out.
+  static const _tick = Duration(milliseconds: 100);
+
+  /// How this controller's toasts are laid out and how long they stay.
   final SonnerConfig config;
 
   final List<ToastRecord> _toasts = [];
   int _serial = 0;
+  Timer? _ticker;
+
+  /// The zone [_ticker] runs in. A timer is bound to its zone, and one left in
+  /// a zone that has finished, such as an earlier test's, never fires again.
+  Zone? _tickerZone;
 
   /// Shows a toast and returns its id.
-  ToastId show(String title, {String? description}) {
-    final id = ToastId(AutoToastIdValue(_serial++));
-    _toasts.insert(
-      0,
-      ToastRecord(id, ToastState(title: title, description: description)),
+  ///
+  /// It dismisses itself after [duration], or after `config.duration` when
+  /// [duration] is null. [Duration.zero] keeps it until it is dismissed; a
+  /// negative [duration] is an error.
+  ToastId show(String title, {String? description, Duration? duration}) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    assert(
+      duration == null || duration >= Duration.zero,
+      'A negative duration is not allowed; Duration.zero keeps the toast '
+      'until it is dismissed.',
     );
+    final id = ToastId(AutoToastIdValue(_serial++));
+    final lifetime = duration ?? config.duration;
+    final record = ToastRecord(
+      id,
+      ToastState(title: title, description: description),
+    )..remaining = lifetime > Duration.zero ? lifetime : null;
+    _toasts.insert(0, record);
+    if (record.remaining != null) {
+      if (!identical(_tickerZone, Zone.current)) _stopTicker();
+      // Joining a tick already under way, the first tick comes early; skipping
+      // it makes the toast run up to one tick long rather than short.
+      record.skipTick = _ticker != null;
+      if (_ticker == null) {
+        _ticker = Timer.periodic(_tick, _onTick);
+        _tickerZone = Zone.current;
+      }
+    }
     notifyListeners();
     return id;
   }
@@ -33,6 +78,7 @@ class SonnerController extends ChangeNotifier {
     final index = _toasts.indexWhere((record) => record.id == id);
     if (index < 0) return;
     _toasts.removeAt(index);
+    _stopTickerIfIdle();
     notifyListeners();
   }
 
@@ -40,7 +86,45 @@ class SonnerController extends ChangeNotifier {
   void dismissAll() {
     if (_toasts.isEmpty) return;
     _toasts.clear();
+    _stopTickerIfIdle();
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  void _onTick(Timer _) {
+    for (final record in _toasts) {
+      final remaining = record.remaining;
+      if (remaining == null) continue;
+      if (record.skipTick) {
+        record.skipTick = false;
+      } else {
+        record.remaining = remaining - _tick;
+      }
+    }
+    final before = _toasts.length;
+    _toasts.removeWhere((record) {
+      final remaining = record.remaining;
+      return remaining != null && remaining <= Duration.zero;
+    });
+    if (_toasts.length == before) return;
+    _stopTickerIfIdle();
+    notifyListeners();
+  }
+
+  void _stopTickerIfIdle() {
+    if (_toasts.any((record) => record.remaining != null)) return;
+    _stopTicker();
+  }
+
+  void _stopTicker() {
+    _ticker?.cancel();
+    _ticker = null;
+    _tickerZone = null;
   }
 }
 
@@ -55,4 +139,12 @@ final class ToastRecord {
 
   final ToastId id;
   final ToastState state;
+
+  /// The time left before the toast dismisses itself, or null when it has no
+  /// timer.
+  Duration? remaining;
+
+  /// Whether the next tick passes this toast by, because it was shown between
+  /// two ticks.
+  bool skipTick = false;
 }

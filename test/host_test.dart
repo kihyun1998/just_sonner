@@ -6,7 +6,13 @@ import 'package:just_sonner/just_sonner.dart';
 void main() {
   late SonnerController controller;
 
-  setUp(() => controller = SonnerController());
+  // These tests are about layout and motion, so their toasts have no timer: a
+  // widget test must not end with one pending.
+  setUp(
+    () => controller = SonnerController(
+      config: const SonnerConfig(duration: Duration.zero),
+    ),
+  );
   tearDown(() => controller.dispose());
 
   Widget app({SonnerController? controller, ThemeData? theme}) => MaterialApp(
@@ -118,7 +124,7 @@ void main() {
         tester,
       ) async {
         final controller = SonnerController(
-          config: SonnerConfig(position: position),
+          config: SonnerConfig(position: position, duration: Duration.zero),
         );
         addTearDown(controller.dispose);
         await tester.pumpWidget(app(controller: controller));
@@ -148,7 +154,11 @@ void main() {
 
     testWidgets('width and offset come from the config', (tester) async {
       final controller = SonnerController(
-        config: const SonnerConfig(width: 300, offset: 40),
+        config: const SonnerConfig(
+          width: 300,
+          offset: 40,
+          duration: Duration.zero,
+        ),
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -182,7 +192,11 @@ void main() {
       'at the top, the newest is nearest the edge, the older gap below',
       (tester) async {
         final controller = SonnerController(
-          config: const SonnerConfig(position: SonnerPosition.topLeft, gap: 20),
+          config: const SonnerConfig(
+            position: SonnerPosition.topLeft,
+            gap: 20,
+            duration: Duration.zero,
+          ),
         );
         addTearDown(controller.dispose);
         await tester.pumpWidget(app(controller: controller));
@@ -240,7 +254,10 @@ void main() {
 
     testWidgets('slides down from the top edge', (tester) async {
       final controller = SonnerController(
-        config: const SonnerConfig(position: SonnerPosition.topCenter),
+        config: const SonnerConfig(
+          position: SonnerPosition.topCenter,
+          duration: Duration.zero,
+        ),
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -466,7 +483,9 @@ void main() {
   testWidgets('a host handed a different controller follows it', (
     tester,
   ) async {
-    final other = SonnerController();
+    final other = SonnerController(
+      config: const SonnerConfig(duration: Duration.zero),
+    );
     await tester.pumpWidget(app(controller: controller));
     controller.show('Before');
     await tester.pumpAndSettle();
@@ -487,6 +506,30 @@ void main() {
     other.dispose();
   });
 
+  testWidgets('a toast leaves the screen on its own after its duration', (
+    tester,
+  ) async {
+    final controller = SonnerController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(app(controller: controller));
+
+    controller.show('Saved');
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 3999));
+    expect(opacityOf(tester, 'Saved'), 1, reason: 'on screen, not exiting');
+
+    await tester.pump(const Duration(milliseconds: 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      opacityOf(tester, 'Saved'),
+      lessThan(1),
+      reason: 'dismissed at 4 s, so exiting',
+    );
+
+    await tester.pumpAndSettle();
+    expect(find.text('Saved'), findsNothing);
+  });
+
   group('with no controller', () {
     tearDown(toast.dismissAll);
 
@@ -497,6 +540,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('From anywhere'), findsOneWidget);
+
+      toast.dismissAll();
+      await tester.pumpAndSettle();
     });
 
     testWidgets('a host given a controller does not draw the exported toast', (
@@ -508,6 +554,9 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('Not mine'), findsNothing);
+
+      toast.dismissAll();
+      await tester.pumpAndSettle();
     });
   });
 }
