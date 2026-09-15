@@ -1,9 +1,11 @@
 import 'package:flutter/widgets.dart';
 
 import 'config.dart';
+import 'content_fade.dart';
 import 'controller.dart';
 import 'default_look.dart';
 import 'deck_layout.dart';
+import 'toast_state.dart';
 
 /// Mount mode 2: draws [controller]'s toasts above [child], or the exported
 /// `toast`'s when [controller] is null.
@@ -103,7 +105,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       vsync: this,
       duration: _enterDuration,
     );
-    return _Slot(record, controller..forward());
+    return _Slot(
+      record,
+      controller..forward(),
+      AnimationController(vsync: this),
+    );
   }
 
   /// Runs the exit over the full [_exitDuration] from wherever the enter got
@@ -123,7 +129,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final config = _controller.config;
     return ListenableBuilder(
-      listenable: Listenable.merge([for (final slot in _slots) slot.animation]),
+      listenable: Listenable.merge([
+        for (final slot in _slots) ...[slot.animation, slot.resize],
+      ]),
       builder: (context, _) => _buildDeck(config),
     );
   }
@@ -162,8 +170,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         presence: (slot) => slot.animation.value,
         depth: (slot) => slot.depth,
         natural: (slot) => slot.natural,
-        pinned: (slot) => slot.exiting || slot.hidden ? slot.height : null,
-        onPlaced: (slot, height) => slot.height = height,
+        covering: (slot) => slot.covering,
+        pinned: (slot) => slot.pinned,
+        onPlaced: (slot, height, covering) => slot
+          ..height = height
+          ..covers = covering,
       ),
       // Oldest first: children paint in order, so the newest is on top.
       children: [
@@ -201,15 +212,24 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 }
 
-/// A toast as the host draws it: the controller's record, and the animation
-/// that brings it in and takes it out.
+/// A toast as the host draws it: the controller's record, and the animations
+/// that bring it in and take it out and that ease the height it covers with.
 class _Slot {
-  _Slot(this.record, this.controller)
-    : animation = CurvedAnimation(parent: controller, curve: Curves.ease);
+  _Slot(this.record, this.controller, this.resize)
+    : animation = CurvedAnimation(parent: controller, curve: Curves.ease),
+      _resizeCurve = CurvedAnimation(parent: resize, curve: Curves.ease);
+
+  static const _fadeDuration = Duration(milliseconds: 200);
+  static const _resizeDuration = Duration(milliseconds: 400);
 
   final ToastRecord record;
   final AnimationController controller;
   final CurvedAnimation animation;
+
+  /// Runs from 0 to 1 while [covering] eases from the height the toast had to
+  /// the height it measures now.
+  final AnimationController resize;
+  final CurvedAnimation _resizeCurve;
 
   /// Whether the controller has let go of this toast and its exit has started.
   bool exiting = false;
@@ -233,17 +253,64 @@ class _Slot {
   /// The height it was last drawn at. Frozen once it is [exiting].
   double? height;
 
+  /// The height it last covered the toasts behind it with. Frozen once it is
+  /// [exiting].
+  double? covers;
+
   /// The height it last measured on its own, whatever it was drawn at.
   double? natural;
 
-  /// What the toast shows. Built once, so an animation frame that moves the
-  /// toast does not rebuild it.
-  late final Widget content = Semantics(
-    liveRegion: true,
-    child: DefaultToastLook(state: record.state),
-  );
+  /// Where [covering] eases from.
+  double _resizeFrom = 0;
 
-  void measured(double height) => natural = height;
+  /// The height the toast covers the ones behind it with: its [natural]
+  /// height, or on the way to it for 400 ms after that changed.
+  double? get covering {
+    final natural = this.natural;
+    if (natural == null || !resize.isAnimating) return natural;
+    return _resizeFrom + (natural - _resizeFrom) * _resizeCurve.value;
+  }
+
+  /// The heights it is drawn at and covers with while it is [exiting] or
+  /// [hidden], or null when it is laid out anew.
+  ({double height, double covering})? get pinned {
+    final height = this.height;
+    final covers = this.covers;
+    if (!(exiting || hidden) || height == null || covers == null) return null;
+    return (height: height, covering: covers);
+  }
+
+  void measured(double height) {
+    final previous = natural;
+    if (previous != null && previous != height) {
+      _resizeFrom = covering!;
+      // Measured during layout. `animateWith` starts from 0 without notifying
+      // the builder that is laying the toast out, and counts from this frame.
+      resize.animateWith(_Progress(_resizeDuration));
+    }
+    natural = height;
+  }
+
+  ToastState? _shown;
+  Widget? _content;
+
+  /// What the toast shows. Built again only when the record's state changes,
+  /// so an animation frame that moves the toast does not rebuild it; a new
+  /// state fades in over the old one.
+  Widget get content {
+    final state = record.state;
+    if (!identical(state, _shown)) {
+      _shown = state;
+      _content = Semantics(
+        liveRegion: true,
+        child: ContentFade(
+          duration: _fadeDuration,
+          child: DefaultToastLook(key: ObjectKey(state), state: state),
+        ),
+      );
+    }
+    return _content!;
+  }
 
   Animation<Offset>? _slide;
   bool? _slideFromTop;
@@ -262,5 +329,24 @@ class _Slot {
   void dispose() {
     animation.dispose();
     controller.dispose();
+    _resizeCurve.dispose();
+    resize.dispose();
   }
+}
+
+/// Runs from 0 to 1 over [duration], at a constant rate.
+class _Progress extends Simulation {
+  _Progress(Duration duration)
+    : _seconds = duration.inMicroseconds / Duration.microsecondsPerSecond;
+
+  final double _seconds;
+
+  @override
+  double x(double time) => (time / _seconds).clamp(0.0, 1.0);
+
+  @override
+  double dx(double time) => time < _seconds ? 1 / _seconds : 0;
+
+  @override
+  bool isDone(double time) => time > _seconds;
 }

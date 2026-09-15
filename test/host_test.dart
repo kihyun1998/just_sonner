@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
+import 'package:just_sonner/src/content_fade.dart';
 
 void main() {
   late SonnerController controller;
@@ -659,18 +660,6 @@ void main() {
     );
   });
 
-  double opacityOf(WidgetTester tester, String title) => tester
-      .widget<FadeTransition>(
-        find
-            .ancestor(
-              of: find.text(title),
-              matching: find.byType(FadeTransition),
-            )
-            .first,
-      )
-      .opacity
-      .value;
-
   group('enter', () {
     testWidgets(
       'slides up from the bottom edge and fades in over 400 ms, ease',
@@ -680,7 +669,7 @@ void main() {
         controller.show('Saved');
         await tester.pump();
         final start = toastRect(tester, 'Saved');
-        expect(opacityOf(tester, 'Saved'), 0);
+        expect(presenceOf(tester, 'Saved'), 0);
         expect(
           start.top,
           576,
@@ -690,10 +679,10 @@ void main() {
 
         await tester.pump(const Duration(milliseconds: 200));
         // CSS `ease`, cubic-bezier(0.25, 0.1, 0.25, 1), at t = 0.5.
-        expect(opacityOf(tester, 'Saved'), closeTo(0.8024, 0.001));
+        expect(presenceOf(tester, 'Saved'), closeTo(0.8024, 0.001));
 
         await tester.pump(const Duration(milliseconds: 200));
-        expect(opacityOf(tester, 'Saved'), 1);
+        expect(presenceOf(tester, 'Saved'), 1);
         expect(toastRect(tester, 'Saved').bottom, 576);
       },
     );
@@ -728,13 +717,13 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
         expect(toastRect(tester, 'Saved').top, greaterThan(resting.top));
-        expect(opacityOf(tester, 'Saved'), inExclusiveRange(0, 1));
+        expect(presenceOf(tester, 'Saved'), inExclusiveRange(0, 1));
 
         await tester.pump(const Duration(milliseconds: 99));
         expect(find.text('Saved'), findsOneWidget);
 
         await tester.pump(const Duration(milliseconds: 1));
-        expect(opacityOf(tester, 'Saved'), 0);
+        expect(presenceOf(tester, 'Saved'), 0);
 
         // An AnimationController reports `dismissed` on the first tick past
         // its duration.
@@ -890,6 +879,343 @@ void main() {
     });
   });
 
+  group('update and replace', () {
+    /// The opacity of the content fading in or out inside [title]'s toast.
+    double contentFadeOf(WidgetTester tester, String title) => tester
+        .widget<FadeTransition>(
+          find
+              .ancestor(
+                of: find.text(title),
+                matching: find.byType(FadeTransition),
+              )
+              .first,
+        )
+        .opacity
+        .value;
+
+    double drawnHeightOf(WidgetTester tester, String title) => tester
+        .getRect(
+          find.ancestor(
+            of: find.text(title),
+            matching: find.byType(SlideTransition),
+          ),
+        )
+        .height;
+
+    testWidgets(
+      'an update changes the toast in place, without entering again',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Behind');
+        final id = controller.show('Checking');
+        await tester.pumpAndSettle();
+        final before = toastRect(tester, 'Checking');
+
+        controller.update(id, title: 'Opening');
+        await tester.pump();
+        final toasts = find.ancestor(
+          of: find.byType(Text),
+          matching: find.byType(SlideTransition),
+        );
+        expect(
+          tester.widgetList(toasts).toSet(),
+          hasLength(2),
+          reason: 'still two toasts, not a third entering',
+        );
+        expect(find.text('Opening'), findsOneWidget);
+        expect(presenceOf(tester, 'Opening'), 1, reason: 'no re-enter');
+        expect(toastRect(tester, 'Opening'), before);
+
+        await tester.pumpAndSettle();
+        expect(find.text('Checking'), findsNothing);
+        expect(find.text('Opening'), findsOneWidget);
+        expect(toastRect(tester, 'Opening'), before);
+        expect(
+          toastRect(tester, 'Behind').bottom,
+          lessThan(before.bottom),
+          reason: 'still behind it',
+        );
+      },
+    );
+
+    testWidgets(
+      'new content fades in over the old in 200 ms, the old staying opaque',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Checking');
+        await tester.pumpAndSettle();
+
+        controller.update(id, title: 'Opening');
+        await tester.pump();
+        expect(paintedOpacityOf(tester, 'Checking'), 1);
+        expect(contentFadeOf(tester, 'Opening'), 0);
+
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(
+          paintedOpacityOf(tester, 'Checking'),
+          1,
+          reason: 'the card underneath is not see-through',
+        );
+        expect(contentFadeOf(tester, 'Opening'), moreOrLessEquals(0.5));
+
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(contentFadeOf(tester, 'Opening'), 1);
+        await tester.pump(const Duration(milliseconds: 1));
+        expect(find.text('Checking'), findsNothing);
+        expect(paintedOpacityOf(tester, 'Opening'), 1);
+      },
+    );
+
+    testWidgets('an update mid-fade makes the half-faded content the base', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('10%');
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: '20%');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.update(id, title: '30%');
+      await tester.pump();
+
+      expect(find.text('10%'), findsNothing, reason: 'at most two layers');
+      expect(paintedOpacityOf(tester, '20%'), 1, reason: 'now the base');
+      expect(contentFadeOf(tester, '30%'), 0);
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(paintedOpacityOf(tester, '20%'), 1);
+      expect(contentFadeOf(tester, '30%'), moreOrLessEquals(0.5));
+      await tester.pumpAndSettle();
+      expect(find.text('20%'), findsNothing);
+    });
+
+    testWidgets('a replace clears the description it does not give', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Checking', description: 'credentials');
+      await tester.pumpAndSettle();
+
+      controller.show('Connected', id: id);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Connected'), findsOneWidget);
+      expect(find.text('credentials'), findsNothing);
+    });
+
+    testWidgets('the outgoing content is not announced', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Checking');
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'Opening');
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.text('Opening')),
+        isSemantics(label: 'Opening', isLiveRegion: true),
+        reason: 'announced from the first frame, while still transparent',
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Checking'), findsOneWidget, reason: 'still fading');
+      expect(find.bySemanticsLabel('Checking'), findsNothing);
+      expect(
+        tester.getSemantics(find.text('Opening')),
+        isSemantics(label: 'Opening', isLiveRegion: true),
+      );
+      await tester.pumpAndSettle();
+      semantics.dispose();
+    });
+
+    testWidgets('a toast shown at the id of one exiting enters beside it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      const id = ToastId('connection');
+      controller.show('Old', id: id);
+      await tester.pumpAndSettle();
+
+      controller.dismiss(id);
+      controller.show('New', id: id);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(presenceOf(tester, 'Old'), inExclusiveRange(0, 1));
+      expect(presenceOf(tester, 'New'), inExclusiveRange(0, 1));
+      await tester.pumpAndSettle();
+      expect(find.text('Old'), findsNothing);
+      expect(presenceOf(tester, 'New'), 1);
+    });
+
+    testWidgets(
+      'the front jumps to a new height and the toasts behind ease to it over '
+      '400 ms',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Behind');
+        final id = controller.show('Front');
+        await tester.pumpAndSettle();
+        final short = drawnHeightOf(tester, 'Front');
+
+        controller.update(id, description: 'A second line');
+        await tester.pump();
+        final tall = drawnHeightOf(tester, 'A second line');
+        expect(tall, greaterThan(short), reason: 'the front jumps');
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(short));
+
+        await tester.pump(const Duration(milliseconds: 200));
+        // CSS `ease` at t = 0.5, as sonner's `transition: height 400ms`.
+        expect(
+          drawnHeightOf(tester, 'Behind'),
+          moreOrLessEquals(short + (tall - short) * 0.8024, epsilon: 0.05),
+        );
+
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(tall));
+        await tester.pumpAndSettle();
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(tall));
+
+        controller.show('Short again', id: id);
+        await tester.pump();
+        expect(drawnHeightOf(tester, 'Short again'), moreOrLessEquals(short));
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(tall));
+        await tester.pumpAndSettle();
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(short));
+      },
+    );
+
+    testWidgets('a change of height mid-ease goes on from where it got to', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      final id = controller.show('Front');
+      await tester.pumpAndSettle();
+
+      controller.update(id, description: 'A second line');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final midway = drawnHeightOf(tester, 'Behind');
+
+      controller.show('Front', id: id);
+      await tester.pump();
+      expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(midway));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(drawnHeightOf(tester, 'Behind'), lessThan(midway));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an update mid-enter keeps the enter going', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Checking');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final midway = presenceOf(tester, 'Checking');
+      expect(midway, inExclusiveRange(0, 1));
+
+      controller.update(id, title: 'Opening');
+      await tester.pump();
+      expect(presenceOf(tester, 'Opening'), moreOrLessEquals(midway));
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(presenceOf(tester, 'Opening'), greaterThan(midway));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('content keeps its State as it moves underneath', (
+      tester,
+    ) async {
+      final inits = <String>[];
+      Widget fade(String name) => Directionality(
+        textDirection: TextDirection.ltr,
+        child: ContentFade(
+          duration: const Duration(milliseconds: 200),
+          child: _Tracked(key: ValueKey(name), name: name, inits: inits),
+        ),
+      );
+      await tester.pumpWidget(fade('a'));
+      await tester.pumpWidget(fade('b'));
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pumpWidget(fade('c'));
+      await tester.pumpAndSettle();
+
+      expect(inits, ['a', 'b', 'c'], reason: 'each built once');
+    });
+
+    group('an ease meeting a toast that enters or leaves', () {
+      /// Shows Behind and a short Front, then makes Front tall and runs the
+      /// ease 200 ms in. Returns Front's id and its short and tall heights.
+      Future<(ToastId, double, double)> midEase(WidgetTester tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Behind');
+        final id = controller.show('Front');
+        await tester.pumpAndSettle();
+        final short = drawnHeightOf(tester, 'Front');
+        controller.update(id, description: 'A second line');
+        await tester.pump();
+        final tall = drawnHeightOf(tester, 'A second line');
+        await tester.pump(const Duration(milliseconds: 200));
+        return (id, short, tall);
+      }
+
+      testWidgets('a new toast entering does not shrink the eased front', (
+        tester,
+      ) async {
+        final (_, _, tall) = await midEase(tester);
+
+        controller.show('New');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+
+        // Barely covered yet, so drawn all but at its own height.
+        expect(
+          drawnHeightOf(tester, 'A second line'),
+          moreOrLessEquals(tall, epsilon: 0.5),
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('dismissing the eased front does not jump the ones behind', (
+        tester,
+      ) async {
+        final (id, _, _) = await midEase(tester);
+        final before = drawnHeightOf(tester, 'Behind');
+
+        controller.dismiss(id);
+        await tester.pump();
+
+        expect(drawnHeightOf(tester, 'Behind'), moreOrLessEquals(before));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets(
+        'a toast updated as the front leaves reaches its height as it leaves',
+        (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          final behind = controller.show('Behind');
+          final front = controller.show('Front');
+          await tester.pumpAndSettle();
+
+          controller.dismiss(front);
+          controller.update(behind, description: 'A second line');
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 190));
+          final leaving = drawnHeightOf(tester, 'A second line');
+
+          await tester.pumpAndSettle();
+          final own = drawnHeightOf(tester, 'A second line');
+          expect(
+            leaving,
+            moreOrLessEquals(own, epsilon: 1),
+            reason: 'drawn toward its own height, not the eased one',
+          );
+        },
+      );
+    });
+  });
+
   testWidgets('a toast is announced as a live region', (tester) async {
     final semantics = tester.ensureSemantics();
     await tester.pumpWidget(app(controller: controller));
@@ -982,12 +1308,12 @@ void main() {
     controller.show('Saved');
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 3999));
-    expect(opacityOf(tester, 'Saved'), 1, reason: 'on screen, not exiting');
+    expect(presenceOf(tester, 'Saved'), 1, reason: 'on screen, not exiting');
 
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pump(const Duration(milliseconds: 100));
     expect(
-      opacityOf(tester, 'Saved'),
+      presenceOf(tester, 'Saved'),
       lessThan(1),
       reason: 'dismissed at 4 s, so exiting',
     );
@@ -1051,4 +1377,43 @@ double paintedOpacityOf(WidgetTester tester, String title) {
     };
   }
   return opacity;
+}
+
+/// How far [title]'s toast has entered or exited, 0 to 1: the fade of its slot,
+/// not of the content inside it.
+double presenceOf(WidgetTester tester, String title) => tester
+    .widget<FadeTransition>(
+      find
+          .ancestor(
+            of: find.ancestor(
+              of: find.text(title),
+              matching: find.byType(SlideTransition),
+            ),
+            matching: find.byType(FadeTransition),
+          )
+          .first,
+    )
+    .opacity
+    .value;
+
+/// Records each time its State is created.
+class _Tracked extends StatefulWidget {
+  const _Tracked({super.key, required this.name, required this.inits});
+
+  final String name;
+  final List<String> inits;
+
+  @override
+  State<_Tracked> createState() => _TrackedState();
+}
+
+class _TrackedState extends State<_Tracked> {
+  @override
+  void initState() {
+    super.initState();
+    widget.inits.add(widget.name);
+  }
+
+  @override
+  Widget build(BuildContext context) => Text(widget.name);
 }

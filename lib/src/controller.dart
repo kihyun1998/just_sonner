@@ -77,39 +77,86 @@ class SonnerController extends ChangeNotifier {
   /// It dismisses itself after [duration], or after `config.duration` when
   /// [duration] is null. [Duration.zero] keeps it until it is dismissed; a
   /// negative [duration] is an error.
-  ToastId show(String title, {String? description, Duration? duration}) {
+  ///
+  /// When [id] names a toast on screen, that toast is **replaced**: it keeps
+  /// its place, takes this content whole, with every field not given back at
+  /// its default, and counts down again. Any other [id], including one whose
+  /// toast was dismissed, makes a new toast.
+  ///
+  /// Once attached, a new toast with no navigator to draw in is an error in
+  /// debug and dropped in release; a replace is applied either way.
+  ToastId show(
+    String title, {
+    String? description,
+    Duration? duration,
+    ToastId? id,
+  }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
       duration == null || duration >= Duration.zero,
       'A negative duration is not allowed; Duration.zero keeps the toast '
       'until it is dismissed.',
     );
-    final id = ToastId(AutoToastIdValue(_serial++));
+    id ??= ToastId(AutoToastIdValue(_serial++));
+    final existing = _recordOf(id);
     final problem = _mount?.problem();
-    if (problem != null) {
+    if (problem != null && existing == null) {
       if (kDebugMode) throw StateError(problem);
       debugPrint('just_sonner: $problem The toast "$title" was dropped.');
       return id;
     }
+    final state = ToastState(title: title, description: description);
     final lifetime = duration ?? config.duration;
-    final record = ToastRecord(
-      id,
-      ToastState(title: title, description: description),
-    )..remaining = lifetime > Duration.zero ? lifetime : null;
-    _toasts.insert(0, record);
-    if (record.remaining != null) {
-      if (!identical(_tickerZone, Zone.current)) _stopTicker();
-      // Joining a tick already under way, the first tick comes early; skipping
-      // it makes the toast run up to one tick long rather than short.
-      record.skipTick = _ticker != null;
-      if (_ticker == null) {
-        _ticker = Timer.periodic(_tick, _onTick);
-        _tickerZone = Zone.current;
-      }
+    if (existing != null) {
+      existing
+        ..state = state
+        ..duration = lifetime;
+      _startCountdown(existing);
+    } else {
+      final record = ToastRecord(id, state, lifetime);
+      _toasts.insert(0, record);
+      _startCountdown(record);
     }
     notifyListeners();
+    // A replace still lands when the toasts cannot be drawn, so the toast is
+    // not left counting down, or not, on content that is gone.
+    if (problem != null) {
+      if (kDebugMode) throw StateError(problem);
+      debugPrint('just_sonner: $problem "$title" replaced a toast not drawn.');
+      return id;
+    }
     _mount?.raise();
     return id;
+  }
+
+  /// **Updates** the toast with [id]: only the fields passed change, and it
+  /// keeps its place. Returns false when no toast with [id] is on screen.
+  ///
+  /// It counts down again whatever changed, from [duration] when it is passed
+  /// and from the toast's own duration otherwise.
+  bool update(
+    ToastId id, {
+    String? title,
+    String? description,
+    Duration? duration,
+  }) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    assert(
+      duration == null || duration >= Duration.zero,
+      'A negative duration is not allowed; Duration.zero keeps the toast '
+      'until it is dismissed.',
+    );
+    final record = _recordOf(id);
+    if (record == null) return false;
+    final state = record.state;
+    record.state = ToastState(
+      title: title ?? state.title,
+      description: description ?? state.description,
+    );
+    if (duration != null) record.duration = duration;
+    _startCountdown(record);
+    notifyListeners();
+    return true;
   }
 
   /// Dismisses the toast with [id]. An id not on screen is ignored.
@@ -156,6 +203,33 @@ class SonnerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  ToastRecord? _recordOf(ToastId id) {
+    for (final record in _toasts) {
+      if (record.id == id) return record;
+    }
+    return null;
+  }
+
+  /// Counts [record] down from its duration, from the start.
+  void _startCountdown(ToastRecord record) {
+    final duration = record.duration;
+    record
+      ..remaining = duration > Duration.zero ? duration : null
+      ..skipTick = false;
+    if (record.remaining == null) {
+      _stopTickerIfIdle();
+      return;
+    }
+    if (!identical(_tickerZone, Zone.current)) _stopTicker();
+    // Joining a tick already under way, the first tick comes early; skipping
+    // it makes the toast run up to one tick long rather than short.
+    record.skipTick = _ticker != null;
+    if (_ticker == null) {
+      _ticker = Timer.periodic(_tick, _onTick);
+      _tickerZone = Zone.current;
+    }
+  }
+
   void _stopTickerIfIdle() {
     if (_toasts.any((record) => record.remaining != null)) return;
     _stopTicker();
@@ -172,19 +246,26 @@ class SonnerController extends ChangeNotifier {
 List<ToastRecord> toastsOf(SonnerController controller) =>
     List.unmodifiable(controller._toasts);
 
-/// One toast on screen, as the controller holds it. Each `show` makes a new
-/// record, so a host can tell two toasts apart even where they share an id.
+/// One toast on screen, as the controller holds it. Each new toast gets a new
+/// record, so a host can tell two toasts apart even where they share an id; an
+/// update or a replace changes the record it already has.
 final class ToastRecord {
-  ToastRecord(this.id, this.state);
+  ToastRecord(this.id, this.state, this.duration);
 
   final ToastId id;
-  final ToastState state;
+
+  /// What it shows now.
+  ToastState state;
+
+  /// The time it counts down from when it starts or restarts. [Duration.zero]
+  /// means it has no timer.
+  Duration duration;
 
   /// The time left before the toast dismisses itself, or null when it has no
   /// timer.
   Duration? remaining;
 
-  /// Whether the next tick passes this toast by, because it was shown between
-  /// two ticks.
+  /// Whether the next tick passes this toast by, because it started counting
+  /// between two ticks.
   bool skipTick = false;
 }
