@@ -320,6 +320,29 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'Mixed heights',
+      issue: 19,
+      note:
+          'Press one, then the other. A toast behind the front is drawn at the '
+          'front’s height — stretched when it is shorter, cut when it is '
+          'taller — and eases to it over the 400 ms the new one takes to '
+          'enter. Watch that 400 ms, not just where it lands.',
+      children: [
+        _Button(
+          'A tall one, staying',
+          () => _show(
+            'Event has been created',
+            description: 'Monday, January 3rd at 6:00pm',
+            duration: Duration.zero,
+          ),
+        ),
+        _Button(
+          'A short one, staying',
+          () => _show('Event has been created', duration: Duration.zero),
+        ),
+      ],
+    ),
+    _Section(
       title: 'Update and replace',
       issue: 21,
       note:
