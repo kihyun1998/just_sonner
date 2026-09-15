@@ -24,15 +24,29 @@ import 'config.dart';
 /// height, as [natural] last measured it, and theirs.
 ///
 /// The height each toast is drawn at, the height it covers with and its
-/// distance from the edge are reported through [onPlaced]. A toast for which
-/// [pinned] returns heights is drawn at and covers with those instead, at the
-/// distance it gives if any, and is not reported.
+/// distance from the edge, on screen and before scrolling, are reported
+/// through [onPlaced]. A toast for which [pinned] returns heights is drawn at
+/// and covers with those instead, at the distance it gives if any, reaching as
+/// far into the scroll as the place it gives, and is not reported.
 ///
-/// The box around the toasts [inDeck] names, and the gaps between them, is
-/// reported through [onDeck].
+/// The box around the toasts [inDeck] names, and the gaps between them, cut to
+/// the layer, is reported through [onDeck]; while they do not fit and the deck
+/// [follows] the pointer, it runs the layer's whole length. A child with the id [backdrop], if any, is laid out
+/// over that box.
+///
+/// With a [scroll], the toasts [inDeck] names scroll between the edge and
+/// `offset` from the far side, an exiting toast shrinking out of that reach by
+/// its presence, and every toast not pinned to a distance is drawn that much,
+/// plus [unscrolled], closer to the edge. With an [anchor], the scroll first
+/// moves by as much as the anchored toast has moved from the distance it
+/// gives, so the toasts in view stay where they are. The anchor is kept while
+/// it is laid out anew and nothing else has moved the scroll since; otherwise
+/// the first fully present toast reaching into view takes its place. Either is
+/// reported through [onAnchor] with the scroll it was taken at.
 ///
 /// It lays out again whenever it is rebuilt, since what moves the toasts is
-/// read from [depth], [lift] and [presence] rather than held by the delegate.
+/// read from [depth], [lift] and [presence] rather than held by the delegate,
+/// and whenever [scroll] changes.
 class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   ToastDeckDelegate({
     required this.config,
@@ -47,7 +61,13 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     required this.inDeck,
     required this.onPlaced,
     required this.onDeck,
-  });
+    this.scroll,
+    this.follows = false,
+    this.unscrolled = 0,
+    this.anchor,
+    this.onAnchor,
+    this.backdrop,
+  }) : super(relayout: scroll);
 
   final SonnerConfig config;
   final List<T> order;
@@ -57,12 +77,25 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   final double Function(T id) lift;
   final double? Function(T id) natural;
   final double? Function(T id) covering;
-  final ({double height, double covering, double? distance})? Function(T id)
+  final ({double height, double covering, double? distance, double? place})?
+  Function(T id)
   pinned;
   final bool Function(T id) inDeck;
-  final void Function(T id, double height, double covering, double distance)
+  final void Function(
+    T id,
+    double height,
+    double covering,
+    double distance,
+    double place,
+  )
   onPlaced;
   final ValueChanged<Rect> onDeck;
+  final ViewportOffset? scroll;
+  final bool follows;
+  final double unscrolled;
+  final ({T? id, double distance, double pixels})? Function()? anchor;
+  final void Function(T? id, double distance, double pixels)? onAnchor;
+  final Object? backdrop;
 
   @override
   void performLayout(Size size) {
@@ -78,8 +111,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     // weighted by how much each covers.
     var covered = 0.0;
     var coveringHeight = 0.0;
-    double? nearest;
-    double? farthest;
+    final placed = <_Placed<T>>[];
     for (final id in order) {
       final pinnedHeights = pinned(id);
       final double own;
@@ -105,38 +137,157 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
         );
       }
       final covers = pinnedHeights?.covering ?? covering(id) ?? own;
-      final fromEdge =
-          pinnedHeights?.distance ??
-          config.offset + config.gap * depth(id) + lift(id) * expansion;
-      if (pinnedHeights == null) onPlaced(id, child.height, covers, fromEdge);
-
-      final top = config.position.isTop
-          ? fromEdge
-          : size.height - fromEdge - child.height;
-      positionChild(id, Offset(left, top));
-
-      if (inDeck(id)) {
-        nearest = math.min(nearest ?? fromEdge, fromEdge);
-        farthest = math.max(farthest ?? 0, fromEdge + child.height);
-      }
+      final distance = pinnedHeights?.distance;
+      placed.add((
+        id: id,
+        height: child.height,
+        covers: covers,
+        fromEdge:
+            distance ??
+            config.offset + config.gap * depth(id) + lift(id) * expansion,
+        pinned: pinnedHeights != null,
+        pinnedDistance: distance != null,
+        place: pinnedHeights?.place,
+      ));
 
       final weight = (1 - covered) * presence(id);
       coveringHeight += weight * covers;
       covered += weight;
     }
 
-    if (nearest == null || farthest == null) {
-      onDeck(Rect.zero);
-    } else {
-      final top = config.position.isTop ? nearest : size.height - farthest;
-      final bottom = config.position.isTop ? farthest : size.height - nearest;
-      onDeck(Rect.fromLTRB(left, top, left + config.width, bottom));
+    final (:pixels, :overflows) = _scroll(size, placed);
+    final scrolled = pixels + unscrolled;
+
+    double? nearest;
+    double? farthest;
+    for (final toast in placed) {
+      final fromEdge = toast.pinnedDistance
+          ? toast.fromEdge
+          : toast.fromEdge - scrolled;
+      if (!toast.pinned) {
+        onPlaced(
+          toast.id,
+          toast.height,
+          toast.covers,
+          fromEdge,
+          toast.fromEdge,
+        );
+      }
+
+      final top = config.position.isTop
+          ? fromEdge
+          : size.height - fromEdge - toast.height;
+      positionChild(toast.id, Offset(left, top));
+
+      if (inDeck(toast.id)) {
+        nearest = math.min(nearest ?? fromEdge, fromEdge);
+        farthest = math.max(farthest ?? fromEdge, fromEdge + toast.height);
+      }
     }
+
+    var deck = Rect.zero;
+    if (nearest != null && farthest != null) {
+      var top = config.position.isTop ? nearest : size.height - farthest;
+      var bottom = config.position.isTop ? farthest : size.height - nearest;
+      // A deck being scrolled moves its own ends across the margins, and must
+      // not slide out from under the pointer resting there. With no pointer on
+      // it nothing scrolls, and the margins are the app's.
+      if (overflows && follows) (top, bottom) = (0, size.height);
+      deck = Rect.fromLTRB(
+        left,
+        top,
+        left + config.width,
+        bottom,
+      ).intersect(Offset.zero & size);
+      if (deck.isEmpty) deck = Rect.zero;
+    }
+    onDeck(deck);
+
+    final backdrop = this.backdrop;
+    if (backdrop != null && hasChild(backdrop)) {
+      layoutChild(backdrop, BoxConstraints.tight(deck.size));
+      positionChild(backdrop, deck.topLeft);
+    }
+  }
+
+  /// Tells [scroll] how far the toasts in the deck reach, keeps the anchored
+  /// toast in place, and returns how far the deck is scrolled and whether it
+  /// has anywhere to scroll.
+  ({double pixels, bool overflows}) _scroll(
+    Size size,
+    List<_Placed<T>> placed,
+  ) {
+    final scroll = this.scroll;
+    if (scroll == null) return (pixels: 0, overflows: false);
+
+    final start = scroll.pixels;
+    var reach = 0.0;
+    for (final toast in placed) {
+      if (!inDeck(toast.id)) continue;
+      if (toast.pinnedDistance) {
+        // An exiting toast gives its place and the gap before it back as it
+        // goes, so the end of the scroll does not jump when it is removed.
+        final near = toast.place ?? toast.fromEdge + start;
+        final goes = (toast.height + config.gap) * presence(toast.id);
+        reach = math.max(reach, near + goes - config.gap);
+      } else if (!toast.pinned) {
+        reach = math.max(reach, toast.fromEdge + toast.height);
+      }
+    }
+    final extent = math.max(0.0, reach + config.offset - size.height);
+
+    final anchor = this.anchor?.call();
+    _Placed<T>? kept;
+    var to = start;
+    if (anchor != null) {
+      for (final toast in placed) {
+        if (toast.pinned || !identical(toast.id, anchor.id)) continue;
+        to += toast.fromEdge - anchor.distance;
+        if (start == anchor.pixels) kept = toast;
+        break;
+      }
+    }
+    // Kept within the reach here, so a reach shrinking under the scroll moves
+    // the deck with it rather than springing it back.
+    to = to.clamp(0.0, extent);
+    if (to != start) scroll.correctBy(to - start);
+    scroll.applyViewportDimension(size.height);
+    scroll.applyContentDimensions(0, extent);
+    final pixels = scroll.pixels;
+    final overflows = extent > 0;
+
+    if (anchor == null) {
+      onAnchor?.call(null, 0, pixels);
+      return (pixels: pixels, overflows: overflows);
+    }
+    if (kept == null) {
+      for (final toast in placed) {
+        if (toast.pinned || presence(toast.id) < 1) continue;
+        if (toast.fromEdge + toast.height - pixels <= config.offset) continue;
+        kept = toast;
+        break;
+      }
+    }
+    onAnchor?.call(kept?.id, kept?.fromEdge ?? 0, pixels);
+    return (pixels: pixels, overflows: overflows);
   }
 
   @override
   bool shouldRelayout(ToastDeckDelegate<T> oldDelegate) => true;
 }
+
+/// A toast as [ToastDeckDelegate] has laid it out: its `fromEdge` is before
+/// scrolling unless it is `pinnedDistance`, and it is `pinned` when its
+/// heights were given rather than measured.
+typedef _Placed<T> = ({
+  T id,
+  double height,
+  double covers,
+  double fromEdge,
+  bool pinned,
+  bool pinnedDistance,
+  double? place,
+});
 
 /// Draws [child] at the height its parent allows, stretching it when it would
 /// be shorter and clipping it when it would be taller, and reports through
