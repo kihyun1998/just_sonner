@@ -237,8 +237,9 @@ Both:
   visible window and never to one already in it — a toast already being read never has its
   remaining time shortened underneath the reader.
 - A toast entering `isLoading` stops counting; one leaving it counts again under the rule above.
-- A change of `builder` cross-fades the two builders' output (§6); the outgoing one ignores the
-  pointer, so a builder with its own gestures (flash's `FlashBar`) cannot act while fading out.
+- A change of `builder` fades the new builder's output in over the old one's (§6); the old one
+  ignores the pointer, so a builder with its own gestures (flash's `FlashBar`) cannot act while
+  the new one fades in.
 
 Also:
 
@@ -319,7 +320,9 @@ Mode 2 has no such rule — the host is above every route for the life of the ap
 
 Mode 1 must fail loudly rather than silently: once a controller is attached, showing a toast while
 its navigator is not built or has no overlay throws a `StateError` in debug and drops the toast with
-a single `debugPrint` in release. A controller that was never attached is not in mode 1 and is not
+a single `debugPrint` in release. A **replace** in that state is applied all the same — the toast
+takes the new content and counts down again, and only the raise is skipped — and then throws or
+prints the same way. A controller that was never attached is not in mode 1 and is not
 checked — mode 2 and unit tests show toasts on one.
 
 The host goes into the overlay on the first `show`, so `attach` can be called before the app is
@@ -354,6 +357,13 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - While a toast enters or leaves, the toasts behind it are drawn at a height between its own and
   the one before it, in proportion to how far in it is. A toast brought to the front grows or
   shrinks to its own height the same way.
+- A front whose own height changes in place (an update or replace with a longer or shorter
+  content, or anything else that re-wraps it) is drawn at its new height at once, and the toasts
+  behind it ease from the old height to the new over 400 ms, `ease` (sonner transitions `height`
+  on the toasts behind only; the front is `height: auto`). A change during the ease goes on from
+  where the ease got to. Only the height a toast covers the ones behind with eases: a toast is
+  always drawn from the height it measures, so one entering or leaving mid-ease moves no toast
+  in a single frame.
 - An exiting toast keeps the distance from the edge, the scale, the height and whether it takes
   taps that it had when it was dismissed.
 
@@ -374,7 +384,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 | Collapse ↔ expand | offsets, scales and heights animate | 400 ms | same transition |
 | Exit (dismiss or timeout) | slide toward the edge + fade; the rest close the gap | removed from the tree after 200 ms | sonner `TIME_BEFORE_UNMOUNT` |
 | Swipe out | continue in the swipe direction + fade | 200 ms | just_sonner |
-| Update / replace | content cross-fades (the two builders' output, if the builder changed); no re-enter | 200 ms | just_sonner |
+| Update / replace | the new content fades in over the old, linearly, while the old stays fully opaque underneath and goes once the new is in; an update arriving mid-fade makes the half-faded content the opaque base, so the card is never see-through and there are at most two layers (the two builders' output, if the builder changed). No re-enter. The new content sets the toast's height at once; the old lies over it from the top, cut to that height, and is not announced | 200 ms | just_sonner |
 | `config` assigned | offsets, scales and heights animate to the new config, in place; no toast re-enters or exits. Toasts that fall outside a lowered `visibleToasts` stop being painted, exactly as when a newer toast pushes them out | 400 ms | just_sonner |
 
 ## 7. Timers
@@ -476,6 +486,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - any `update` or replace restarts the countdown, including one that changes only `dismissible`
 - a replace resets an unset `duration` to `config.duration`, not to `backlogDuration`
 - `show(id:)` after dismissal creates a new toast with no leaked fields
+- `update` and replace keep the toast's record, so the host keeps its slot
 - `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
 - `promise(id:)` takes over a toast already on screen
 - timers pause on hover, drag and lifecycle; resume with the remaining time
@@ -498,9 +509,18 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `update` does not re-raise the host; `show`, replace and each `promise` state do
 - a re-raise keeps the host's State and a running animation
 - `attach` with a non-root navigator key asserts in debug
-- once attached, a `show` with no built navigator throws in debug and keeps no toast
+- once attached, a `show` with no built navigator throws in debug and keeps no toast; a replace
+  throws too but is still applied
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
-- A change of builder cross-fades, and the outgoing builder does not receive pointer events
+- An update or replace changes the toast in place without entering again, and its new content
+  fades in over the old in 200 ms with the old opaque underneath; one arriving mid-fade makes the
+  half-faded content the base; the outgoing content is not announced, and the incoming is from its
+  first frame
+- An update mid-enter keeps the enter going
+- A toast entering, leaving or updated as the front leaves moves no toast in one frame mid-ease
+- A front whose height changes in place jumps to it, and the toasts behind ease to it over 400 ms
+- A toast shown at the id of one still exiting enters beside it
+- A change of builder fades the new one in over the old, and the old builder does not receive pointer events
 - An `action` slot receives the toast, and can dismiss it or leave it standing
 - an unset `dismissible` blocks swipe and the close button while `isLoading`, and stops blocking
   when `update(id, isLoading: false)` lands, with no second call
@@ -558,7 +578,13 @@ outside v0.1 is in §2's non-goals.
 | A toast leaves the tree when its animation reports `dismissed`, which is the first tick **past** 200 ms; it is fully transparent at 200 ms | derived | #27 needs the animation reaching `dismissed` to count as removal, and `AnimationController` reports it only when elapsed time exceeds the duration (`_InterpolationSimulation.isDone` uses `>`, Flutter 3.41.9). An exiting toast keeps the distance from the edge it had when dismissed, as sonner freezes `offsetBeforeRemove`, and the newest toast paints on top, as sonner's `z-index: toasts.length - index` |
 | The visible window counts only toasts not yet dismissed | derived | `CONTEXT.md`'s *dismissed* is already off screen for the API, and §7 fixes a toast's duration when it reaches the window, including from `dismiss` — so the host and the controller need the same window. sonner counts an exiting toast by its index until it is removed 200 ms later, so there the next toast appears only then (`isVisible = index + 1 <= visibleToasts`, `index.tsx:105`; `removeToast` after `TIME_BEFORE_UNMOUNT`) |
 | A toast crossing the window's edge fades, driven by the toast entering or leaving; outside the window it takes no taps at once, and stops being painted when fully faded | derived | §6 says only that toasts outside are not painted; sonner fades `data-visible='false'` through its 400 ms opacity transition (`styles.css:319-322`) with `pointer-events: none` at once. Driving it by the moving toast's presence follows the exit row above rather than adding a clock |
-| Toasts behind the front are stretched or cut to the front's height, and a toast's position in the deck is counted by the presence of the toasts in front of it, so offsets, scales, the window fade and drawn heights all move with the toast entering or leaving. A toast's position only ever moves toward its place in the deck, and stops there | derived | a toast entering (400 ms) and one leaving (200 ms) at once run on different clocks, so their presences alone would carry the toasts behind them forward and back again — fading a toast inside the window and flashing one outside it — although neither ends anywhere new; letting a position move only toward its place keeps a net-zero change still, and a mixed one from wobbling, without a layout animation per toast. sonner draws them at `--front-toast-height` and transitions `height` over 400 ms. just_sonner does not fade content behind the front (§6), so a taller toast's overflow would show below a top deck; cutting it is what "drawn at the front toast's height" leaves visible. Blending the height keeps a toast from jumping when one enters or leaves (a front whose own height changes in place is #21's); a toast's natural height is measured on every layout, as §6 Expanded already requires |
+| Toasts behind the front are stretched or cut to the front's height, and a toast's position in the deck is counted by the presence of the toasts in front of it, so offsets, scales, the window fade and drawn heights all move with the toast entering or leaving. A toast's position only ever moves toward its place in the deck, and stops there | derived | a toast entering (400 ms) and one leaving (200 ms) at once run on different clocks, so their presences alone would carry the toasts behind them forward and back again — fading a toast inside the window and flashing one outside it — although neither ends anywhere new; letting a position move only toward its place keeps a net-zero change still, and a mixed one from wobbling, without a layout animation per toast. sonner draws them at `--front-toast-height` and transitions `height` over 400 ms. just_sonner does not fade content behind the front (§6), so a taller toast's overflow would show below a top deck; cutting it is what "drawn at the front toast's height" leaves visible. Blending the height keeps a toast from jumping when one enters or leaves (a front whose own height changes in place is the row below); a toast's natural height is measured on every layout, as §6 Expanded already requires |
+| When the front's own height changes in place, the toasts behind ease to it over 400 ms, `ease`, and the front itself is drawn at its new height at once | maintainer | shown while working #21 against leaving the toasts behind to jump in one frame and against easing the front as well. The spec was silent for the collapsed deck; sonner draws the toasts behind at `--front-toast-height` with `transition: height 400ms` and leaves the front at `height: auto`, which CSS does not transition (`styles.css:89, 297-301` at 8e4662b), so this follows sonner. **Not covered**: the expanded deck (#22), where every toast is drawn at its own measured height |
+| A toast has two heights in the deck: the one it is **drawn** from (its measured height) and the one it **covers** the toasts behind with (the eased one). An exiting toast keeps the covering height it had when it was dismissed, as it keeps its drawn height | derived | found by the adversarial pass while working #21: with one height doing both jobs, a toast entering, leaving, or updated as the front leaves moved a toast 3.3–4.3 px in one frame (probes: 70 → 66.74 as a new toast entered mid-ease; 66.44 → 70 behind a front dismissed mid-ease; 65.72 → 70 when an exiting front was removed). The ease belongs to what the toasts behind are drawn at (sonner eases only their `height`), so only the covering height carries it; freezing it on exit extends the row above that an exiting toast keeps what it had |
+| An update or replace changes the controller's `ToastRecord` in place — its state, its duration and its countdown — rather than making a new one | derived | the host matches slots to records by identity (#17), which is what lets a new toast at a dismissed id enter beside the old one while it exits; a new record for an update would make the toast exit and enter again. The countdown restarts through the same path `show` starts one by, so an update landing mid-tick skips the partial tick and never runs short (§7) |
+| Once attached, a **replace** with no navigator to draw in is still applied to the controller — content, duration and restarted countdown — and only the raise is skipped; it throws `StateError` in debug after applying, as a new toast's `show` does | maintainer | shown while working #21 that the new-toast rule (drop in release) applied to a replace left the old toast on screen with its old content and countdown, so a pinned or loading toast could stay stuck, while `update` was never checked at all. Chosen over documenting that stale state, over dismissing the toast, and over deferring. Applying before the debug throw keeps the controller's state the same in both modes (derived), which is also what lets a test observe it |
+| Update and replace **fade the new content in over the old**, which stays fully opaque underneath until the new is in; an update arriving mid-fade makes the half-faded content the opaque base | maintainer | shown while working #21, with probes: a symmetric 200 ms cross-fade fades the whole card, since the default look draws its own surface — one update dips it to about 75% opacity at 100 ms, and a toast updated in a loop (§4's progress example) never recovers, its newest content at 0.48 just before each next update at 100 ms, 0.24 at 50 ms, 0.00 at 16 ms; an update that changes nothing visible dips the same way. Chosen over no fade at all (sonner), over a cross-fade that snaps when interrupted (still 75% per lone update), and over keeping the cross-fade. **Not covered**: how a caller's builder with a translucent or rounded surface of its own reads over an opaque base (#27) |
+| The fade is linear; the incoming content sets the height at once and the outgoing content lies over it from the top, cut to that height, ignoring the pointer and left out of semantics, while the incoming keeps its semantics at opacity 0. Content keeps its State as it moves underneath. The ease of the toasts behind starts in the frame that measures the new height | derived | sonner changes content with no fade at all, so the curve takes the framework's default. Sizing by the incoming content makes the front's height change once, at the start, where sizing by the taller of the two would hold a shrinking toast for 200 ms and then jump; it is also what the ease above eases toward. `RenderOpacity` drops a child's semantics at alpha 0 (`proxy_box.dart`), which left the toast with no label for one frame, hence `alwaysIncludeSemantics`. Keeping State matters once builders with state arrive (#27). Starting the ease in the measuring frame, with `animateWith` rather than a post-frame callback, keeps it from starting a frame late |
 | An exiting toast keeps its scale, drawn height and whether it takes taps, as well as its distance from the edge, and still slides toward the edge | derived | a toast dismissed after leaving the window would otherwise take taps again while it fades out. It extends the frozen `offsetBeforeRemove` row above to the collapsed deck. §6 Motion says exit slides toward the edge, so sonner's `translateY(40%)` for a collapsed toast behind the front (`styles.css:339-343`) is not taken |
 | `visibleToasts` outside 1 to 20 is a debug assertion, checked when a controller is constructed | maintainer | shown that 0 draws nothing and says nothing, and that the toast at the back is scaled by `1 − 0.05 × (visibleToasts − 1)`, which reaches 0 at 21. First shown, wrongly, as reaching 0 at 20 and approved as 1 to 19; corrected before it landed, and 1 to 20 was chosen over keeping 19 (5% is already unreadable) and over asserting only `≥ 1`, for the reason the negative-`duration` row gives: a silent result hides the bug |
 | A toast outside the window is out of the semantics tree, and is announced as a live region when it reaches the window | maintainer | shown that hiding a toast with `Offstage` removes it from semantics, while sonner keeps hidden toasts inside its `aria-live` region and announces them when they are added. Chosen over announcing on `show` (which needs a hide that keeps semantics) and over deferring to #23, because it matches §7's promise that every toast reaches the screen — it is announced when it can be read. The wording of §6's first Collapsed line ("painted", not "laid out") is also the maintainer's: a hidden toast is laid out, since `Offstage` keeps its state |

@@ -129,6 +129,35 @@ void main() {
     },
   );
 
+  testWidgets('an update does not raise the toasts, and a replace does', (
+    tester,
+  ) async {
+    controller.attach(navigatorKey);
+    await tester.pumpWidget(app());
+    final id = controller.show('First');
+    await tester.pumpAndSettle();
+
+    var covered = 0;
+    final catcher = tapCatcher(() => covered++);
+    navigatorKey.currentState!.overlay!.insert(catcher);
+    await tester.pump();
+
+    controller.update(id, title: 'Updated');
+    await tester.pumpAndSettle();
+    await tester.tapAt(centreOf(tester, 'Updated'));
+    expect(covered, 1, reason: 'the update left the entry on top');
+
+    controller.show('Replaced', id: id);
+    await tester.pumpAndSettle();
+    await tester.tapAt(centreOf(tester, 'Replaced'));
+    expect(covered, 1, reason: 'the replace raised the toasts over it');
+
+    catcher
+      ..remove()
+      ..dispose();
+    await cleanUp(tester);
+  });
+
   testWidgets('raising the toasts keeps an enter that is under way', (
     tester,
   ) async {
@@ -141,7 +170,10 @@ void main() {
         .widget<FadeTransition>(
           find
               .ancestor(
-                of: find.text('First'),
+                of: find.ancestor(
+                  of: find.text('First'),
+                  matching: find.byType(SlideTransition),
+                ),
                 matching: find.byType(FadeTransition),
               )
               .first,
@@ -243,6 +275,23 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Kept'), findsOneWidget);
       expect(find.text('Lost'), findsNothing);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'once attached, a replace with no navigator throws but still applies',
+    (tester) async {
+      final id = controller.show('Checking');
+      controller.attach(navigatorKey);
+
+      expect(() => controller.show('Connected', id: id), throwsStateError);
+
+      await tester.pumpWidget(app());
+      controller.show('Next');
+      await tester.pumpAndSettle();
+      expect(find.text('Connected'), findsOneWidget);
+      expect(find.text('Checking'), findsNothing);
       await cleanUp(tester);
     },
   );
@@ -376,7 +425,10 @@ void main() {
         .widget<FadeTransition>(
           find
               .ancestor(
-                of: find.text('Entering'),
+                of: find.ancestor(
+                  of: find.text('Entering'),
+                  matching: find.byType(SlideTransition),
+                ),
                 matching: find.byType(FadeTransition),
               )
               .first,
@@ -476,7 +528,10 @@ void main() {
         .widget<FadeTransition>(
           find
               .ancestor(
-                of: find.text('Saved'),
+                of: find.ancestor(
+                  of: find.text('Saved'),
+                  matching: find.byType(SlideTransition),
+                ),
                 matching: find.byType(FadeTransition),
               )
               .first,

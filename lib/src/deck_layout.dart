@@ -12,12 +12,14 @@ import 'config.dart';
 /// toast moves back as another enters and forward as one leaves.
 ///
 /// A toast covers the ones behind it in proportion to its presence, and the
-/// height they are drawn at blends toward its height by that much. Where a
-/// toast is only partly covered it is drawn between its own height, as [natural]
-/// last measured it, and theirs.
+/// height they are drawn at blends toward the height it covers with,
+/// [covering], by that much; with no [covering], a toast covers with its own
+/// height. Where a toast is only partly covered it is drawn between its own
+/// height, as [natural] last measured it, and theirs.
 ///
-/// Drawn heights are reported through [onPlaced]. A toast for which [pinned]
-/// returns a height is drawn at it instead, and is not reported.
+/// The height each toast is drawn at and the height it covers with are
+/// reported through [onPlaced]. A toast for which [pinned] returns heights is
+/// drawn at and covers with those instead, and is not reported.
 ///
 /// It lays out again whenever it is rebuilt, since what moves the toasts is
 /// read from [depth] and [presence] rather than held by the delegate.
@@ -28,6 +30,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     required this.presence,
     required this.depth,
     required this.natural,
+    required this.covering,
     required this.pinned,
     required this.onPlaced,
   });
@@ -37,8 +40,9 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   final double Function(T id) presence;
   final double Function(T id) depth;
   final double? Function(T id) natural;
-  final double? Function(T id) pinned;
-  final void Function(T id, double height) onPlaced;
+  final double? Function(T id) covering;
+  final ({double height, double covering})? Function(T id) pinned;
+  final void Function(T id, double height, double covering) onPlaced;
 
   @override
   void performLayout(Size size) {
@@ -55,14 +59,14 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     var covered = 0.0;
     var coveringHeight = 0.0;
     for (final id in order) {
-      final pinnedHeight = pinned(id);
+      final pinnedHeights = pinned(id);
       final double own;
       final Size child;
-      if (pinnedHeight != null) {
-        own = pinnedHeight;
+      if (pinnedHeights != null) {
+        own = pinnedHeights.height;
         child = layoutChild(
           id,
-          BoxConstraints.tightFor(width: config.width, height: pinnedHeight),
+          BoxConstraints.tightFor(width: config.width, height: own),
         );
       } else if (covered == 0) {
         child = layoutChild(id, BoxConstraints.tightFor(width: config.width));
@@ -77,7 +81,8 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
           ),
         );
       }
-      if (pinnedHeight == null) onPlaced(id, child.height);
+      final covers = pinnedHeights?.covering ?? covering(id) ?? own;
+      if (pinnedHeights == null) onPlaced(id, child.height, covers);
 
       final fromEdge = config.offset + config.gap * depth(id);
       final top = config.position.isTop
@@ -86,7 +91,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       positionChild(id, Offset(left, top));
 
       final weight = (1 - covered) * presence(id);
-      coveringHeight += weight * own;
+      coveringHeight += weight * covers;
       covered += weight;
     }
   }
