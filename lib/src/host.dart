@@ -7,24 +7,40 @@ import 'deck_layout.dart';
 
 /// Mount mode 2: draws [controller]'s toasts above [child], or the exported
 /// `toast`'s when [controller] is null.
-class SonnerHost extends StatefulWidget {
+class SonnerHost extends StatelessWidget {
   const SonnerHost({super.key, this.controller, required this.child});
 
   final SonnerController? controller;
   final Widget child;
 
   @override
-  State<SonnerHost> createState() => _SonnerHostState();
+  Widget build(BuildContext context) => Stack(
+    children: [
+      child,
+      Positioned.fill(child: ToastLayer(controller: controller ?? toast)),
+    ],
+  );
 }
 
-class _SonnerHostState extends State<SonnerHost> with TickerProviderStateMixin {
+/// Lays out and animates [controller]'s toasts over whatever it is given to
+/// fill. Both mount modes draw their toasts with one.
+class ToastLayer extends StatefulWidget {
+  const ToastLayer({super.key, required this.controller});
+
+  final SonnerController controller;
+
+  @override
+  State<ToastLayer> createState() => _ToastLayerState();
+}
+
+class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   static const _enterDuration = Duration(milliseconds: 400);
   static const _exitDuration = Duration(milliseconds: 200);
 
   /// Newest first, as the controller orders its toasts.
   List<_Slot> _slots = [];
 
-  SonnerController get _controller => widget.controller ?? toast;
+  SonnerController get _controller => widget.controller;
 
   @override
   void initState() {
@@ -34,9 +50,9 @@ class _SonnerHostState extends State<SonnerHost> with TickerProviderStateMixin {
   }
 
   @override
-  void didUpdateWidget(SonnerHost oldWidget) {
+  void didUpdateWidget(ToastLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
-    final previous = oldWidget.controller ?? toast;
+    final previous = oldWidget.controller;
     if (identical(previous, _controller)) return;
     previous.removeListener(_onToastsChanged);
     _controller.addListener(_onToastsChanged);
@@ -106,18 +122,9 @@ class _SonnerHostState extends State<SonnerHost> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final config = _controller.config;
-    return Stack(
-      children: [
-        widget.child,
-        Positioned.fill(
-          child: ListenableBuilder(
-            listenable: Listenable.merge([
-              for (final slot in _slots) slot.animation,
-            ]),
-            builder: (context, _) => _buildDeck(config),
-          ),
-        ),
-      ],
+    return ListenableBuilder(
+      listenable: Listenable.merge([for (final slot in _slots) slot.animation]),
+      builder: (context, _) => _buildDeck(config),
     );
   }
 

@@ -98,6 +98,9 @@ class SonnerController extends ChangeNotifier {
   /// Mount mode 1 — insert this controller's host into the root overlay of [navigatorKey].
   void attach(GlobalKey<NavigatorState> navigatorKey);
 
+  /// Undoes [attach]: takes the host out of the overlay, and the controller is no longer in mode 1.
+  void detach();
+
   /// Shows a toast. An [id] that is on screen **replaces** that toast (see Update rules).
   ToastId show(String title, {
     String? description,
@@ -296,10 +299,14 @@ Consequences, stated so nobody expects otherwise:
   and no amount of re-raising helps. Caught in debug:
 
   ```dart
-  assert(Overlay.of(navigator.context, rootOverlay: true) == navigator.overlay,
+  assert(Overlay.maybeOf(navigator.context, rootOverlay: true) == null,
       'attach() needs the root navigator key, or dialogs will cover toasts. '
       'Use mount mode 2 (SonnerHost) instead.');
   ```
+
+  `navigator.context` is above the navigator's own overlay, so the lookup finds an overlay only
+  when there is one *above* the navigator — which is exactly the mistake. It runs in `attach` when
+  the navigator is already built, and on every `show`.
 
   The same assert catches an `Overlay` added in `MaterialApp.builder`, which also sits above the
   navigator's — use mode 2 there.
@@ -310,9 +317,20 @@ Consequences, stated so nobody expects otherwise:
 
 Mode 2 has no such rule — the host is above every route for the life of the app.
 
-Mode 1 must fail loudly rather than silently: showing a toast before `attach`, or while the
-navigator has no overlay, throws a `StateError` in debug and drops the toast with a single
-`debugPrint` in release.
+Mode 1 must fail loudly rather than silently: once a controller is attached, showing a toast while
+its navigator is not built or has no overlay throws a `StateError` in debug and drops the toast with
+a single `debugPrint` in release. A controller that was never attached is not in mode 1 and is not
+checked — mode 2 and unit tests show toasts on one.
+
+The host goes into the overlay on the first `show`, so `attach` can be called before the app is
+built. When a `show` during a build has to insert or raise the host, the overlay is changed at the
+end of that frame, since it cannot change mid-build; attaching elsewhere or disposing before then
+cancels it. When the overlay the host was inserted into has been replaced, the next `show` inserts it
+into the new one. Attaching another navigator takes the host out of the old overlay; `detach` and
+disposing the controller take it out altogether, and after `detach` the controller is not in mode 1.
+
+The host's entry keeps its State under an opaque entry (`maintainState: true`), so being covered
+and uncovered does not make the toasts enter again; their animations wait while it is covered.
 
 ## 6. Layout and animation
 
@@ -480,7 +498,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - `update` does not re-raise the host; `show`, replace and each `promise` state do
 - a re-raise keeps the host's State and a running animation
 - `attach` with a non-root navigator key asserts in debug
-- Show before `attach` throws in debug
+- once attached, a `show` with no built navigator throws in debug and keeps no toast
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
 - A change of builder cross-fades, and the outgoing builder does not receive pointer events
 - An `action` slot receives the toast, and can dismiss it or leave it standing
@@ -544,6 +562,12 @@ outside v0.1 is in §2's non-goals.
 | An exiting toast keeps its scale, drawn height and whether it takes taps, as well as its distance from the edge, and still slides toward the edge | derived | a toast dismissed after leaving the window would otherwise take taps again while it fades out. It extends the frozen `offsetBeforeRemove` row above to the collapsed deck. §6 Motion says exit slides toward the edge, so sonner's `translateY(40%)` for a collapsed toast behind the front (`styles.css:339-343`) is not taken |
 | `visibleToasts` outside 1 to 20 is a debug assertion, checked when a controller is constructed | maintainer | shown that 0 draws nothing and says nothing, and that the toast at the back is scaled by `1 − 0.05 × (visibleToasts − 1)`, which reaches 0 at 21. First shown, wrongly, as reaching 0 at 20 and approved as 1 to 19; corrected before it landed, and 1 to 20 was chosen over keeping 19 (5% is already unreadable) and over asserting only `≥ 1`, for the reason the negative-`duration` row gives: a silent result hides the bug |
 | A toast outside the window is out of the semantics tree, and is announced as a live region when it reaches the window | maintainer | shown that hiding a toast with `Offstage` removes it from semantics, while sonner keeps hidden toasts inside its `aria-live` region and announces them when they are added. Chosen over announcing on `show` (which needs a hide that keeps semantics) and over deferring to #23, because it matches §7's promise that every toast reaches the screen — it is announced when it can be read. The wording of §6's first Collapsed line ("painted", not "laid out") is also the maintainer's: a hidden toast is laid out, since `Offstage` keeps its state |
+| Mode 1 fails only on a controller that has been attached; a never-attached controller shows toasts as before | maintainer | shown that "show before `attach` throws" would also throw for every mode-2 app and every controller unit test, which never call `attach`. Chosen over also failing when no `SonnerHost` is listening (which throws for a `show` before `runApp` or before the host mounts) and over checking the exported `toast` alone; the cost accepted is that a mode-1 app which forgets `attach` shows nothing, silently |
+| The root-navigator assert is `Overlay.maybeOf(navigator.context, rootOverlay: true) == null` | derived | the expression first written here, `Overlay.of(navigator.context, rootOverlay: true) == navigator.overlay`, throws for a correct root key: `navigator.context` is above the navigator's own overlay, so a plain `MaterialApp` has no overlay to find (probe while working #20, Flutter 3.41.9: `Overlay.of` throws for the root key, and `maybeOf` is null for it and non-null for a nested navigator and for an `Overlay` in `builder`) |
+| A `show` during a build re-raises at the end of the frame; otherwise the re-raise is synchronous | derived | `OverlayState.insert` and `rearrange` call `setState`, which throws during a build (same probe). `OverlayEntry.remove` defers its own rebuild the same way (`overlay.dart`, `SchedulerPhase.persistentCallbacks`) |
+| The host's entry is inserted on the first `show`, re-inserted when the navigator's overlay has been replaced, and removed by `attach` to another key and by `dispose` | derived | the navigator may not be built when `attach` is called after `runApp`. State restoration swaps the overlay and the old entry is no longer mounted (probe: `restartAndRestore` gives a new `OverlayState`), so the overlay the entry went into is compared with the one read from the key on each `show` |
+| `SonnerController.detach()` undoes `attach`: the host leaves the overlay and the controller is no longer in mode 1 | maintainer | shown that once the exported `toast` is attached nothing returns it to "never attached", so a later mode-2 test that shows on `toast` throws `StateError` (probe while working #20) — the same shape as the tick outliving a test zone. Chosen over treating an unmounted navigator as unattached (which also silences a `show` before the app is built) and over only documenting it |
+| The mode-1 host's entry uses `maintainState: true` | maintainer | shown that with the default `false` an opaque entry inserted over the host unbuilds it, and uncovering it replays every toast's enter while their countdowns kept running (probe while working #20); flash's own entries use `true`, which keeps State and freezes tickers while covered. Chosen over accepting the replay |
 | `position` defaults to `bottomRight` | derived | the spec named no default; sonner's `Toaster` defaults to `'bottom-right'` (`index.tsx:608` at 8e4662b) |
 | The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
 
