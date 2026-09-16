@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'config.dart';
 import 'toast_state.dart';
 
 /// The look a toast has when no builder replaces it.
@@ -13,10 +14,24 @@ import 'toast_state.dart';
 /// what is written on them goes. sonner fades the children of a collapsed
 /// non-front toast the same way, and only for its own styled look.
 class DefaultToastLook extends StatelessWidget {
-  const DefaultToastLook({super.key, required this.state, required this.fade});
+  const DefaultToastLook({
+    super.key,
+    required this.state,
+    required this.config,
+    required this.fade,
+  });
 
   final ToastState state;
+
+  /// Read for the leading slot: [SonnerConfig.loadingIndicator] and
+  /// [SonnerConfig.leadingSize].
+  final SonnerConfig config;
+
   final Animation<double> fade;
+
+  /// The space between the leading slot and the title. Provisional, like the
+  /// rest of §9's dimensions: settled by feel in the example app (#29).
+  static const _slotGap = 12.0;
 
   @override
   Widget build(BuildContext context) {
@@ -24,6 +39,8 @@ class DefaultToastLook extends StatelessWidget {
     final colors = theme.colorScheme;
     final text = theme.textTheme;
     final description = state.description;
+    // While it is loading the slot holds the indicator, whatever `leading` is.
+    final leading = state.isLoading ? config.loadingIndicator : state.leading;
 
     return Material(
       color: colors.surfaceContainerHigh,
@@ -38,26 +55,42 @@ class DefaultToastLook extends StatelessWidget {
         alwaysIncludeSemantics: true,
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Column(
+          child: Row(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                state.title,
-                style: text.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: colors.onSurface,
+              // A toast with neither a leading widget nor the indicator has no
+              // slot at all, so its title starts at the padding edge.
+              if (leading != null) ...[
+                SizedBox.square(
+                  dimension: config.leadingSize,
+                  child: Center(child: leading),
+                ),
+                const SizedBox(width: _slotGap),
+              ],
+              Expanded(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      state.title,
+                      style: text.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w500,
+                        color: colors.onSurface,
+                      ),
+                    ),
+                    if (description != null) ...[
+                      const SizedBox(height: 2),
+                      Text(
+                        description,
+                        style: text.bodySmall?.copyWith(
+                          color: colors.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-              if (description != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  description,
-                  style: text.bodySmall?.copyWith(
-                    color: colors.onSurfaceVariant,
-                  ),
-                ),
-              ],
             ],
           ),
         ),

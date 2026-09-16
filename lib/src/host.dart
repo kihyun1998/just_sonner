@@ -389,7 +389,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                 scale: slot.scale,
                 child: ToastHeight(
                   onMeasured: slot.measured,
-                  child: slot.content,
+                  child: slot.contentIn(config),
                 ),
               ),
             ),
@@ -514,15 +514,17 @@ class _Slot {
   }
 
   ToastState? _shown;
+  SonnerConfig? _shownWith;
   Widget? _content;
 
   /// What the toast shows. Built again only when the record's state changes,
-  /// so an animation frame that moves the toast does not rebuild it; a new
-  /// state fades in over the old one.
-  Widget get content {
+  /// or the config the look reads does, so an animation frame that moves the
+  /// toast does not rebuild it; a new state fades in over the old one.
+  Widget contentIn(SonnerConfig config) {
     final state = record.state;
-    if (!identical(state, _shown)) {
+    if (!identical(state, _shown) || config != _shownWith) {
       _shown = state;
+      _shownWith = config;
       _content = Semantics(
         liveRegion: true,
         child: ContentFade(
@@ -530,6 +532,7 @@ class _Slot {
           child: DefaultToastLook(
             key: ObjectKey(state),
             state: state,
+            config: config,
             fade: contentFade,
           ),
         ),

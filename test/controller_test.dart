@@ -1,4 +1,5 @@
 import 'package:fake_async/fake_async.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
@@ -369,6 +370,127 @@ void main() {
     });
   });
 
+  group('loading', () {
+    test('a loading toast has no timer, and keeps its duration for later', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        final id = controller.show('Uploading', isLoading: true);
+        controller.addListener(() => notifications++);
+
+        expect(toastsOf(controller).single.remaining, isNull);
+        expect(async.periodicTimerCount, 0, reason: 'nothing to tick for');
+
+        async.elapse(const Duration(seconds: 60));
+        expect(notifications, 0, reason: 'it waits for its work, not a clock');
+
+        expect(controller.update(id, isLoading: false), isTrue);
+        async.elapse(const Duration(milliseconds: 3999));
+        expect(notifications, 1, reason: 'only the update so far');
+        async.elapse(const Duration(milliseconds: 101));
+        expect(
+          notifications,
+          2,
+          reason: 'it counts down config.duration once it stops loading',
+        );
+        controller.dispose();
+      });
+    });
+
+    test('entering isLoading stops a countdown already under way', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        final id = controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        async.elapse(const Duration(seconds: 3));
+        expect(toastsOf(controller).single.remaining, isNotNull);
+
+        controller.update(id, isLoading: true, title: 'Retrying');
+        expect(toastsOf(controller).single.remaining, isNull);
+        expect(async.periodicTimerCount, 0, reason: 'the tick stops with it');
+
+        async.elapse(const Duration(seconds: 60));
+        expect(notifications, 1, reason: 'the update, and nothing since');
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test('leaving isLoading counts down the toast’s own duration, not what '
+        'was left of it', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('Saved', duration: const Duration(hours: 1));
+        async.elapse(const Duration(minutes: 59));
+        controller.update(id, isLoading: true);
+        controller.update(id, isLoading: false);
+
+        expect(
+          toastsOf(controller).single.remaining,
+          const Duration(hours: 1),
+          reason: 'a restart, from the duration it was shown with',
+        );
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test('a loading toast can stop and start again at the same id', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('Step 1', isLoading: true);
+        controller.update(id, isLoading: false, title: 'Step 1 done');
+        expect(toastsOf(controller).single.remaining, isNotNull);
+
+        controller.update(id, isLoading: true, title: 'Step 2');
+        expect(toastsOf(controller).single.remaining, isNull);
+        async.elapse(const Duration(seconds: 60));
+        expect(toastsOf(controller), hasLength(1), reason: 'still waiting');
+
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test(
+      'a duration on a loading toast asserts, since it would be ignored',
+      () {
+        final controller = SonnerController();
+        addTearDown(controller.dispose);
+        expect(
+          () => controller.show(
+            'Uploading',
+            isLoading: true,
+            duration: const Duration(seconds: 4),
+          ),
+          throwsA(isA<AssertionError>()),
+        );
+      },
+    );
+
+    test('a loading toast with Duration.zero keeps no timer either way', () {
+      fakeAsync((async) {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: Duration.zero),
+        );
+        final id = controller.show('Uploading', isLoading: true);
+        expect(toastsOf(controller).single.remaining, isNull);
+
+        controller.update(id, isLoading: false);
+        expect(
+          toastsOf(controller).single.remaining,
+          isNull,
+          reason: 'Duration.zero means it waits to be dismissed',
+        );
+        async.elapse(const Duration(seconds: 60));
+        expect(toastsOf(controller), hasLength(1));
+        controller.dispose();
+      });
+    });
+  });
+
   group('update and replace', () {
     List<String> titles(SonnerController controller) => [
       for (final record in toastsOf(controller)) record.state.title,
@@ -438,6 +560,27 @@ void main() {
         isNull,
         reason: 'a replace clears what it does not give',
       );
+    });
+
+    test('a replace clears leading and isLoading too', () {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero),
+      );
+      addTearDown(controller.dispose);
+      const id = ToastId('connection');
+      controller.show(
+        'Checking',
+        isLoading: true,
+        leading: const SizedBox.shrink(),
+      );
+      controller.show('Loading', isLoading: true, id: id);
+      final record = toastsOf(controller)[0];
+      expect(record.state.isLoading, isTrue);
+
+      controller.show('Connected', id: id);
+
+      expect(record.state.isLoading, isFalse);
+      expect(record.state.leading, isNull);
     });
 
     test(

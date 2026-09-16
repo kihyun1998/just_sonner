@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart'
         AppLifecycleState,
         GlobalKey,
         NavigatorState,
+        Widget,
         WidgetsBinding,
         WidgetsBindingObserver;
 
@@ -107,6 +108,8 @@ class SonnerController extends ChangeNotifier {
   ToastId show(
     String title, {
     String? description,
+    bool isLoading = false,
+    Widget? leading,
     Duration? duration,
     ToastId? id,
   }) {
@@ -116,6 +119,12 @@ class SonnerController extends ChangeNotifier {
       'A negative duration is not allowed; Duration.zero keeps the toast '
       'until it is dismissed.',
     );
+    assert(
+      !isLoading || duration == null,
+      'A loading toast has no timer, so a duration would be ignored. Give it '
+      'one when it stops loading instead: update(id, isLoading: false, '
+      'duration: ...).',
+    );
     id ??= ToastId(AutoToastIdValue(_serial++));
     final existing = _recordOf(id);
     final problem = _mount?.problem();
@@ -124,7 +133,12 @@ class SonnerController extends ChangeNotifier {
       debugPrint('just_sonner: $problem The toast "$title" was dropped.');
       return id;
     }
-    final state = ToastState(title: title, description: description);
+    final state = ToastState(
+      title: title,
+      description: description,
+      isLoading: isLoading,
+      leading: leading,
+    );
     final lifetime = duration ?? config.duration;
     if (existing != null) {
       existing
@@ -161,6 +175,8 @@ class SonnerController extends ChangeNotifier {
     ToastId id, {
     String? title,
     String? description,
+    bool? isLoading,
+    Widget? leading,
     Duration? duration,
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
@@ -175,6 +191,8 @@ class SonnerController extends ChangeNotifier {
     record.state = ToastState(
       title: title ?? state.title,
       description: description ?? state.description,
+      isLoading: isLoading ?? state.isLoading,
+      leading: leading ?? state.leading,
     );
     if (duration != null) record.duration = duration;
     _startCountdown(record);
@@ -272,11 +290,14 @@ class SonnerController extends ChangeNotifier {
     return null;
   }
 
-  /// Counts [record] down from its duration, from the start.
+  /// Counts [record] down from its duration, from the start. A loading toast
+  /// has no timer; its duration is kept, so the countdown it starts when it
+  /// stops loading runs from the toast's own duration, as any restart does.
   void _startCountdown(ToastRecord record) {
     final duration = record.duration;
+    final counts = !record.state.isLoading && duration > Duration.zero;
     record
-      ..remaining = duration > Duration.zero ? duration : null
+      ..remaining = counts ? duration : null
       ..skipTick = false;
     if (record.remaining == null) {
       _stopTickerIfIdle();

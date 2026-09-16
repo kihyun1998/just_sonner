@@ -128,12 +128,16 @@ class _PanelState extends State<_Panel> {
   ToastId _show(
     String title, {
     String? description,
+    bool isLoading = false,
+    Widget? leading,
     Duration? duration,
     ToastId? id,
   }) {
     final shown = _toast.show(
       title,
       description: description,
+      isLoading: isLoading,
+      leading: leading,
       duration: duration,
       id: id,
     );
@@ -343,6 +347,63 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'Loading and the leading slot',
+      issue: 24,
+      note:
+          'A loading toast holds the config’s indicator in its slot and has '
+          'no timer — it waits for its work, not a clock. The slot is '
+          'otherwise the caller’s, and a toast with neither gets no slot at '
+          'all, so its title starts at the padding edge.',
+      children: [
+        _Button(
+          'A leading widget',
+          () => _show(
+            'Event has been created',
+            description: 'Monday, January 3rd at 6:00pm',
+            leading: const Icon(Icons.check_circle_outline, size: 20),
+          ),
+        ),
+        _Button(
+          'No slot at all',
+          () => _show(
+            'Event has been created',
+            description: 'Its title starts at the padding edge.',
+          ),
+        ),
+        _Button('Loading, then done', () {
+          final id = _show('Checking credentials…', isLoading: true);
+          Timer(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            _toast.update(
+              id,
+              title: 'Signed in',
+              description: 'It counts down only now.',
+              isLoading: false,
+              leading: const Icon(Icons.check_circle_outline, size: 20),
+            );
+          });
+        }),
+        _Button('Loading, and staying', () {
+          _show(
+            'Uploading…',
+            description: 'No timer while it loads.',
+            isLoading: true,
+          );
+        }),
+        _Button('Three steps at one id', () {
+          final id = _show('Checking credentials…', isLoading: true);
+          Timer(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            _toast.update(id, title: 'Opening the session…');
+          });
+          Timer(const Duration(seconds: 4), () {
+            if (!mounted) return;
+            _toast.update(id, title: 'Connected', isLoading: false);
+          });
+        }),
+      ],
+    ),
+    _Section(
       title: 'Update and replace',
       issue: 21,
       note:
@@ -434,7 +495,7 @@ class _PanelState extends State<_Panel> {
       title: 'Not built yet',
       note: 'Each of these gets its own section here as it lands.',
       children: [
-        _Missing(24, 'Loading toasts, the leading slot, and promise'),
+        _Missing(46, 'promise, and ToastContent'),
         _Missing(25, 'The action slot, the close button, and dismissible'),
         _Missing(26, 'Swipe a toast away'),
         _Missing(27, 'Replace the look with a builder, and the flash adapter'),
