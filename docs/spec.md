@@ -1,7 +1,7 @@
 # just_sonner — v0.1 specification
 
 Status: **settled** (2026-09-14). Every question §11 held is decided and written up; §12 records
-each one with its basis. Implementation is under way, one slice per issue (#17–#29). Scope is **desktop only** for v0.1 (§2).
+each one with its basis. Implementation is under way, one slice per issue. Scope is **desktop only** for v0.1 (§2).
 
 A stacking toast system for Flutter in the spirit of [sonner](https://github.com/emilkowalski/sonner):
 toasts pile up instead of replacing each other, collapse into a deck and fan out on hover, and a
