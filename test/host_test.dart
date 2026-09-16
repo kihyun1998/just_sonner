@@ -77,6 +77,13 @@ void main() {
     find.ancestor(of: find.text(title), matching: find.byType(Material)).first,
   );
 
+  double scaleOf(WidgetTester tester, String title) => tester
+      .widget<Transform>(
+        find.ancestor(of: find.text(title), matching: find.byType(Transform)),
+      )
+      .transform
+      .storage[0];
+
   group('position', () {
     // The test surface is 800 × 600.
     const expectations = {
@@ -651,13 +658,6 @@ void main() {
       await tester.tapAt(Offset(600, peekOf(2, height)));
       expect(taps, 0, reason: 'it takes taps');
     });
-
-    double scaleOf(WidgetTester tester, String title) => tester
-        .widget<Transform>(
-          find.ancestor(of: find.text(title), matching: find.byType(Transform)),
-        )
-        .transform
-        .storage[0];
 
     testWidgets(
       'a toast shown as the front leaves holds the ones behind still',
@@ -1443,13 +1443,6 @@ void main() {
     }
 
     const away = Offset(40, 40);
-
-    double scaleOf(WidgetTester tester, String title) => tester
-        .widget<Transform>(
-          find.ancestor(of: find.text(title), matching: find.byType(Transform)),
-        )
-        .transform
-        .storage[0];
 
     /// Shows each of [toasts] alone and returns the height it is drawn at on
     /// its own, then shows them all, oldest first.
@@ -2902,6 +2895,464 @@ void main() {
         reason: 'nothing on a covered toast offers itself to be pressed',
       );
       semantics.dispose();
+    });
+  });
+
+  group('swipe', () {
+    /// Presses [title]'s card and drags it [by] over [taking], holding on.
+    Future<TestGesture> dragBy(
+      WidgetTester tester,
+      String title,
+      Offset by, {
+      Duration taking = const Duration(seconds: 1),
+    }) async {
+      final gesture = await tester.startGesture(
+        toastRect(tester, title).center,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(by, timeStamp: taking);
+      await tester.pump();
+      return gesture;
+    }
+
+    /// Drags [title]'s card [by] over [taking], and lets go.
+    Future<void> swipe(
+      WidgetTester tester,
+      String title,
+      Offset by, {
+      Duration taking = const Duration(seconds: 1),
+    }) async {
+      final gesture = await dragBy(tester, title, by, taking: taking);
+      await gesture.up();
+      await tester.pump();
+    }
+
+    testWidgets('a drag past 45 px in an allowed direction dismisses', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      // 60 px over a second: past the threshold and well under the speed.
+      await swipe(tester, 'Saved', const Offset(0, 60));
+
+      expect(toastsOf(controller), isEmpty);
+      await tester.pumpAndSettle();
+      expect(find.text('Saved'), findsNothing);
+    });
+
+    testWidgets('a drag short of it, and slow, springs the toast back', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      await swipe(tester, 'Saved', const Offset(0, 30));
+
+      expect(toastsOf(controller), hasLength(1));
+      await tester.pumpAndSettle();
+      expect(toastRect(tester, 'Saved'), at);
+    });
+
+    testWidgets('a drag short of it, but fast, dismisses on speed alone', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      // 20 px in 100 ms: 0.2 px/ms, past the speed and well short of 45 px.
+      await swipe(
+        tester,
+        'Saved',
+        const Offset(0, 20),
+        taking: const Duration(milliseconds: 100),
+      );
+
+      expect(toastsOf(controller), isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a swiped toast leaves the way it was swiped, over 200 ms', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      // Right, which `bottomRight` allows and which the exit slide — down,
+      // the edge the toast entered from — would not take it.
+      await swipe(tester, 'Saved', const Offset(60, 0));
+
+      await tester.pump(const Duration(milliseconds: 100));
+      final going = toastRect(tester, 'Saved');
+      expect(
+        going.left,
+        greaterThan(at.left + 60),
+        reason: 'it carries on past where the drag left it',
+      );
+      expect(going.top, at.top, reason: 'and not toward the edge below it');
+      expect(presenceOf(tester, 'Saved'), inExclusiveRange(0, 1));
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(presenceOf(tester, 'Saved'), 0);
+      // An AnimationController reports `dismissed` on the first tick past its
+      // duration.
+      await tester.pump(const Duration(milliseconds: 1));
+      await tester.pump();
+      expect(find.text('Saved'), findsNothing);
+    });
+
+    testWidgets('a drag the position does not allow is damped, not blocked', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      // Up, which `bottomRight` does not allow.
+      final gesture = await dragBy(tester, 'Saved', const Offset(0, -60));
+
+      expect(
+        at.top - toastRect(tester, 'Saved').top,
+        closeTo(13.33, 0.05),
+        reason: '60 px damped by 1 / (1.5 + 60 / 20)',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(toastsOf(controller), hasLength(1));
+      await tester.pumpAndSettle();
+      expect(toastRect(tester, 'Saved'), at);
+    });
+
+    testWidgets('a fast flick the wrong way is fast enough and still stays', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      // The damped 13.33 px in 100 ms is 0.133 px/ms, past the speed: the
+      // direction is what refuses it.
+      await swipe(
+        tester,
+        'Saved',
+        const Offset(0, -60),
+        taking: const Duration(milliseconds: 100),
+      );
+
+      expect(toastsOf(controller), hasLength(1));
+      await tester.pumpAndSettle();
+    });
+
+    /// A controller whose toasts have no timer, configured by [config].
+    SonnerController controllerWith(SonnerConfig config) {
+      final made = SonnerController(config: config);
+      addTearDown(made.dispose);
+      return made;
+    }
+
+    testWidgets("the position's own words name the directions", (tester) async {
+      final left = controllerWith(
+        const SonnerConfig(
+          duration: Duration.zero,
+          position: SonnerPosition.bottomLeft,
+        ),
+      );
+      await tester.pumpWidget(app(controller: left));
+      left.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(60, 0));
+      expect(
+        toastsOf(left),
+        hasLength(1),
+        reason: 'right is the way `bottomLeft` does not allow',
+      );
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(-60, 0));
+      expect(toastsOf(left), isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('another position names another set', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(0, -60));
+      expect(
+        toastsOf(controller),
+        hasLength(1),
+        reason: 'up is the way `bottomRight` does not allow',
+      );
+      await tester.pumpAndSettle();
+
+      // The directions are read at each pointer-down, so the day the config
+      // can be set on a live controller (#28) they follow it there too.
+      final top = controllerWith(
+        const SonnerConfig(
+          duration: Duration.zero,
+          position: SonnerPosition.topRight,
+        ),
+      );
+      await tester.pumpWidget(app(controller: top));
+      top.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(0, -60));
+      expect(toastsOf(top), isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('config.swipeDirections wins over the position', (
+      tester,
+    ) async {
+      final upward = controllerWith(
+        const SonnerConfig(
+          duration: Duration.zero,
+          swipeDirections: {SwipeDirection.up},
+        ),
+      );
+      await tester.pumpWidget(app(controller: upward));
+      upward.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(0, 60));
+      expect(
+        toastsOf(upward),
+        hasLength(1),
+        reason: 'down is what `bottomRight` names, and the config took it away',
+      );
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(0, -60));
+      expect(toastsOf(upward), isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a toast the deck covers takes a swipe like any other', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      final behind = toastRect(tester, 'Behind');
+      final front = toastRect(tester, 'Front');
+      expect(behind.top, lessThan(front.top), reason: 'its strip peeks out');
+
+      // The strip above the front, which only the covered toast is under.
+      final strip = Offset(front.center.dx, (behind.top + front.top) / 2);
+      final gesture = await tester.startGesture(
+        strip,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(
+        const Offset(0, 60),
+        timeStamp: const Duration(seconds: 1),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(toastsOf(controller).map((toast) => toast.state.title), ['Front']);
+      await gesture.removePointer();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a toast the user may not dismiss takes no swipe', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Pinned', dismissible: false);
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Pinned');
+
+      final gesture = await dragBy(tester, 'Pinned', const Offset(0, 60));
+      expect(
+        toastRect(tester, 'Pinned'),
+        at,
+        reason: 'the drag does not move it either',
+      );
+      await gesture.up();
+      await tester.pump();
+      expect(toastsOf(controller), hasLength(1));
+
+      controller.dismiss(id);
+      await tester.pumpAndSettle();
+      expect(
+        toastsOf(controller),
+        isEmpty,
+        reason: 'what it takes away is the user, not the app',
+      );
+    });
+
+    testWidgets('a loading toast takes one the moment it stops loading', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Uploading', isLoading: true);
+      // Not pumpAndSettle: the indicator never settles (see the note on
+      // SonnerConfig.loadingIndicator).
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      await swipe(tester, 'Uploading', const Offset(0, 60));
+      expect(
+        toastsOf(controller),
+        hasLength(1),
+        reason: 'unset `dismissible` follows `isLoading`',
+      );
+
+      controller.update(id, isLoading: false, title: 'Uploaded');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Uploaded', const Offset(0, 60));
+      expect(
+        toastsOf(controller),
+        isEmpty,
+        reason: 'and the caller never mentions `dismissible`',
+      );
+      await tester.pumpAndSettle();
+    });
+
+    /// A mouse that presses [title] and drags it [by], holding on, from a
+    /// pointer that was already resting on the deck.
+    Future<TestGesture> pressAndDrag(
+      WidgetTester tester,
+      String title,
+      Offset by,
+    ) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      final at = toastRect(tester, title).center;
+      await mouse.addPointer(location: at);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      await mouse.down(at);
+      await tester.pump();
+      await mouse.moveBy(by, timeStamp: const Duration(seconds: 1));
+      await tester.pump();
+      return mouse;
+    }
+
+    testWidgets('a drag holds the timers, and keeps holding off the deck', (
+      tester,
+    ) async {
+      final counting = controllerWith(
+        const SonnerConfig(duration: Duration(seconds: 1)),
+      );
+      await tester.pumpWidget(app(controller: counting));
+      counting.show('Saved');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final mouse = await pressAndDrag(tester, 'Saved', const Offset(0, 20));
+      // Off the deck with the button still down, which the hover lets go of.
+      await mouse.moveTo(
+        const Offset(40, 40),
+        timeStamp: const Duration(seconds: 2),
+      );
+      await tester.pump(const Duration(seconds: 3));
+      expect(
+        toastsOf(counting),
+        hasLength(1),
+        reason: 'the drag holds them where the pointer no longer does',
+      );
+
+      await mouse.up();
+      await tester.pump(const Duration(milliseconds: 1100));
+      expect(toastsOf(counting), isEmpty, reason: 'and lets go when it ends');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a toast that stops being dismissible mid-drag lets go', (
+      tester,
+    ) async {
+      final counting = controllerWith(
+        const SonnerConfig(duration: Duration(seconds: 1)),
+      );
+      await tester.pumpWidget(app(controller: counting));
+      final id = counting.show('Saved', duration: Duration.zero);
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      final gesture = await dragBy(tester, 'Saved', const Offset(0, 60));
+      counting.update(id, isLoading: true);
+      await tester.pump();
+      await gesture.up();
+      await gesture.removePointer();
+      await tester.pump();
+      expect(
+        toastsOf(counting),
+        hasLength(1),
+        reason: 'past the threshold, and the user may not dismiss it now',
+      );
+
+      counting.show('Counts');
+      await tester.pump(const Duration(milliseconds: 1500));
+      expect(
+        toastsOf(counting).map((toast) => toast.state.title),
+        ['Saved'],
+        reason:
+            'the drag let the timers go, though its recognizer said nothing',
+      );
+      expect(toastRect(tester, 'Saved'), at, reason: 'and it came back');
+      counting.dismissAll();
+      await tester.pump(const Duration(seconds: 1));
+    });
+
+    testWidgets('a host gone from under a press ignores it going up', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      final gesture = await dragBy(tester, 'Saved', const Offset(0, 60));
+      await tester.pumpWidget(const SizedBox.expand());
+      await gesture.up();
+      await tester.pump();
+
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a press keeps the deck fanned out until it lets go', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      expect(scaleOf(tester, 'Behind'), closeTo(0.95, 0.001));
+
+      final mouse = await pressAndDrag(tester, 'Front', const Offset(0, 20));
+      await tester.pumpAndSettle();
+      expect(scaleOf(tester, 'Behind'), 1, reason: 'the pointer fans it out');
+
+      await mouse.moveTo(
+        const Offset(40, 40),
+        timeStamp: const Duration(seconds: 2),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        scaleOf(tester, 'Behind'),
+        1,
+        reason: 'and the press holds it open, off the deck and all',
+      );
+
+      await mouse.up();
+      await tester.pumpAndSettle();
+      expect(scaleOf(tester, 'Behind'), closeTo(0.95, 0.001));
     });
   });
 

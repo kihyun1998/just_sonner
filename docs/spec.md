@@ -159,6 +159,10 @@ abstract interface class ToastView {
 extension type const ToastId(Object value) {}
 
 enum SonnerPosition { topLeft, topCenter, topRight, bottomLeft, bottomCenter, bottomRight }
+
+/// A way a toast can be swiped out (§8). `SonnerConfig.swipeDirections` is a `Set` of these, or null
+/// for the ones the position names.
+enum SwipeDirection { up, down, left, right }
 ```
 
 A test, or an app that wants its own instance, constructs another `SonnerController`; it has the
@@ -395,7 +399,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   height ease as the collapsed deck.
 - **While the pointer is over the deck, every toast is drawn**, not only `visibleToasts`: the ones
   beyond the window fade in over the same 400 ms, `ease`, take taps, join the semantics tree, and
-  fade out and leave it again when the pointer goes. `expandByDefault` alone still draws only
+  fade out and leave it again when the pointer goes — or, where a press that started on the deck is
+  still down, when it lets go. `expandByDefault` alone still draws only
   `visibleToasts`. Nothing marks the hidden toasts while the pointer is away.
 - **Toasts that do not fit scroll**, between the edge and `offset` from the far side, with the
   mouse wheel or a trackpad pan over the deck, gaps included. A mouse drag does not scroll (it
@@ -404,7 +409,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - **A toast entering or leaving while the pointer is over the deck does not move the toasts in
     view**: the scroll moves with them, so a new toast arrives out of sight at the edge.
   - **When the pointer leaves, the scroll goes back to the edge**, easing with the collapse over
-    400 ms, and the next hover starts there.
+    400 ms, and the next hover starts there. A press still down keeps it where it is, with the rest
+    of the deck.
   - An exiting toast keeps the place **on screen** it was dismissed at, so a scroll during its exit
     moves the toasts around it and not it.
 - The hover region is the box around the toasts in the deck — the window, or every toast while the
@@ -415,9 +421,17 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   deck while the next one closes the gap (sonner keeps an exiting toast hoverable). Each pointer
   device holds on its own. The region takes the taps
   that land in it, gaps too (sonner's gaps are part of each toast, `::after`).
-- The deck is expanded while the pointer is over it or `expandByDefault` is set. Collapse ↔ expand
+- The deck is expanded while the pointer is over it, while a **press that started on it** is still
+  down, or while `expandByDefault` is set. Collapse ↔ expand
   is one value for the whole deck, eased from wherever it is toward where it is headed; an exiting
   toast keeps the distance from the edge it had when dismissed, whatever the deck does after.
+- **A press holds the deck as it found it until it lets go**, wherever the pointer travels in
+  between: expanded, every toast drawn, the scroll where it was. A drag carries the pointer off the
+  deck by design (§8), and the hover region reports an exit while the button is down, so without
+  this the deck folds up around the hand that is swiping a toast out of it. Each pointer device
+  holds on its own, as hovering does. It is a **collapse** rule and not a timer one: a press that
+  stays put is a pointer over the deck, which pauses already (§7), and one that becomes a drag is
+  held by the drag.
 
 ### Motion
 
@@ -426,7 +440,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 | Enter | slide in from the screen edge + fade | 400 ms, `ease` | sonner `styles.css` (`transform 400ms, opacity 400ms, height 400ms`) |
 | Collapse ↔ expand | offsets, scales and heights animate | 400 ms | same transition |
 | Exit (dismiss or timeout) | slide toward the edge + fade; the rest close the gap | removed from the tree after 200 ms | sonner `TIME_BEFORE_UNMOUNT` |
-| Swipe out | continue in the swipe direction + fade | 200 ms | just_sonner |
+| Swipe out | continue in the swipe direction, a whole toast further, `easeOut` + fade | 200 ms | sonner `styles.css` (`swipe-out-*`) |
+| Swipe back | the toast eases back to its place from where the drag left it | 400 ms, `ease` | sonner (its base transform transition) |
 | Update / replace | the new content fades in over the old, linearly, while the old stays fully opaque underneath and goes once the new is in; an update arriving mid-fade makes the half-faded content the opaque base, so the card is never see-through and there are at most two layers (the two builders' output, if the builder changed). No re-enter. The new content sets the toast's height at once; the old lies over it from the top, cut to that height, and is not announced | 200 ms | just_sonner |
 | `config` assigned | offsets, scales and heights animate to the new config, in place; no toast re-enters or exits. Toasts that fall outside a lowered `visibleToasts` stop being painted, exactly as when a newer toast pushes them out | 400 ms | just_sonner |
 
@@ -450,7 +465,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   A pointer-down that never becomes a drag needs no rule of its own: pressing something in the
   deck means the pointer is over the deck, which already pauses. (sonner has a separate
   `interacting` flag for this; its other job, keeping the deck expanded until pointer-up, is a
-  collapse rule, not a timer one.)
+  collapse rule and lives in §6 Expanded.)
 
   **`inactive` does not pause.** The app is still on screen there — Flutter's own docs describe it
   as "at least one view is visible, but none have input focus" — on desktop, a window that merely
@@ -495,12 +510,33 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 
 - Directions default from the position's own words (sonner `getDefaultSwipeDirections`):
   `top-right` allows up and right, `bottom-left` allows down and left, `top-center` allows up only.
+  `config.swipeDirections` is a `Set<SwipeDirection>?` over `up`, `down`, `left` and `right`; unset
+  means the position's, so changing the position changes them, and an empty set takes the swipe
+  away and leaves the close button to `dismissible`.
 - **A swipe is a pointer drag, never a trackpad pan.** A two-finger trackpad pan scrolls the
   expanded deck (§6), and a vertical swipe that also took trackpad pans would win it from the
   scroll. The mouse wheel and a mouse drag never meet: a drag does not scroll, and a wheel is not a
   drag.
 - Dismiss when the drag passes 45 px or its speed is above 0.11 px/ms (distance over the time since
-  the pointer went down), in an allowed direction; otherwise spring back.
+  the pointer went down), in an allowed direction; otherwise spring back over **400 ms**, `ease`,
+  from wherever the drag left the toast (§6 Motion).
+- **The swipe locks to one axis** on the first move of more than a pixel — the one the pointer has
+  gone further along — and follows it for the rest of the drag.
+- **A drag the toast does not allow is damped, not blocked.** It moves `Δ / (1.5 + |Δ| / 20)`, and
+  never further than the pointer itself went, so the toast answers the hand everywhere and goes
+  nowhere it may not. The 45 px and the speed are read from **what the toast moved**, not from the
+  pointer, which is why the direction is asked first: a flick the wrong way is damped to a short
+  distance in a short time and so is fast enough, and the direction is what refuses it. sonner does
+  each of these, and says so in a comment at the same place.
+- **A toast the deck covers takes a swipe like any other.** Its card takes the pointer (§9) and only
+  its controls leave reach, and a press on its strip fans the deck out under the hand anyway (§6).
+  sonner does the same: its pointer handlers sit on every toast, front or not.
+- A toast that **stops being dismissible under a drag** — an `update` sets it loading — springs
+  back and the drag lets go of the timers there, whatever it had moved: the swipe is the user's,
+  and the toast is no longer theirs to dismiss.
+- The speed is measured between the drag's own **pointer timestamps**, from the pointer going down
+  to its last move. A drag that reports no time at all — no engine does, a test can — is decided on
+  distance alone rather than on a division by zero.
 - `dismissible: false` disables swipe and the close button — the two ways a **user** dismisses a
   toast. It does not affect `dismiss(id)` or `ToastView.dismiss()`, which the app, or a widget in
   the `action` slot, can always call.
@@ -619,7 +655,16 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   a gap, and stop at the far offset; a toast entering keeps the toasts in view in place; leaving
   eases the scroll back to the edge; an exiting toast keeps its place on screen under a scroll;
   toasts more than 20 deep never scale below zero
-- Swipe below and above the threshold
+- Swipe below and above the threshold, and short of it but fast; a swiped toast leaving the way it
+  was swiped rather than toward its edge; a toast the deck covers taking a swipe; a drag the
+  position does not allow moving the damped distance and staying, including one fast enough to
+  pass the speed; the directions the position
+  names, another position naming another set, and `config.swipeDirections` winning over both; a
+  toast the user may not dismiss taking no swipe while `dismiss(id)` still works, and a loading one
+  taking a swipe the moment it stops loading; a drag holding the timers after it has carried the
+  pointer off the deck, and letting go when it ends; a toast that stops being dismissible mid-drag
+  springing back and letting the timers go; a host taken out of the tree under a press ignoring the
+  pointer going up; a press keeping the deck fanned out until it lets go
 - **Mode 1 z-order: a toast shown while a dialog is open appears above the dialog**
 - **and a toast shown *before* a dialog opens is still above it afterwards**
 - `update` does not re-raise the host; `show`, replace and each `promise` state do
@@ -737,6 +782,10 @@ outside v0.1 is in §2's non-goals.
 | A toast entering or leaving while the pointer is over the deck does not move the toasts in view: the scroll follows the first fully present toast reaching into view | maintainer | shown while working #41 against keeping pixels from the edge (a plain reversed `ListView` at 400 px moved the item being read by 70 px in one frame when one was inserted) and against anchoring only away from the edge. Consequence: at the edge too, a toast shown while the pointer is over an overflowing deck arrives out of sight, and its timer waits with the rest. Only at full expansion, since the collapse moves every distance |
 | An exiting toast under a scroll keeps its place on screen | maintainer | shown while working #41 against keeping it in the deck's scrolled coordinates, which follows a scroll but is dragged along when the pointer leaves and the scroll eases back — the movement the pinned-distance row exists to prevent |
 | A toast is in the semantics tree while it is drawn: toasts beyond the window join it under the pointer and leave it when the pointer goes | maintainer | shown while working #41 against keeping every toast in the tree (which reverses the hide by `Offstage`) and against keeping only the window. Found on the way, from the engine sources in Flutter 3.41.9: `Semantics(liveRegion: true)` announces nothing on Windows, macOS or Linux — the flag reaches the embedder (`embedder_semantics_update.cc:51`) and the common accessibility bridge never reads it; only Android announces. `SemanticsService.sendAnnouncement`, the one path the desktop embedders implement, was shown as a proposal and not taken up here |
+| A press that started on the deck keeps it fanned out, drawn in full and where it was scrolled to, until it lets go — a collapse rule, not a timer one | maintainer | shown while working #26, from the measurement taken in #22: pressing a toast and dragging it off the deck with the button down collapses the deck before release, because `MouseTracker` re-hit-tests every move and the region reports an exit (holders went to 0 and the toast behind scaled back to 0.95 with the button held). A swipe carries the pointer off the deck by design, so the deck folded up around the hand swiping a toast out of it. sonner holds the same thing open through `interacting` (`index.tsx:843-857` at 8e4662b), which §7 had already named a collapse rule while leaving it undecided. Chosen over leaving the collapse alone and holding only the timers. **Not covered**: the touch equivalent (§2 leaves touch to a later version) |
+| `config.swipeDirections` is a `Set<SwipeDirection>?` over `up` / `down` / `left` / `right`, unset meaning the position's own | maintainer | chosen over sonner's `'top' \| 'bottom' \| 'left' \| 'right'`, which reads against §8's own sentence ("`top-right` allows up and right"): the position names a corner, the swipe names a way to move. Nullable rather than a set that starts full, so "follow the position" survives a position change and an empty set can mean none. **Not covered**: `copyWith` cannot put it back to unset, being the config's first optional field |
+| A drag the toast does not allow is damped rather than blocked, the swipe locks to an axis on its first move past a pixel, the threshold and speed are read from the damped distance, and a drag let go short springs back over 400 ms | derived | §8 was silent on all four, so the reference decides (`index.tsx:380-426`, `styles.css:349-352` at 8e4662b, read raw). The order matters and sonner's own comment says why: a flick the wrong way is damped to a short distance in a short time, which passes the speed, so the direction has to be asked first — asking it last would dismiss a toast in a direction it forbids |
+| The speed is measured between the drag's own pointer timestamps, and a drag reporting no time is decided on distance alone | derived | sonner reads two `Date` values; a Flutter drag carries `sourceTimeStamp` from the engine, which a widget test can set and `DateTime.now()` is not. `DragStartBehavior.down` makes the first of them the pointer-down, as §8 says. The zero-time case is only reachable from a test — `tester.drag` stamps every event at zero — where dividing by it would dismiss every toast and hide the rule |
 | A toast's collapsed scale is never below zero | derived | found while working #41: `1 − 0.05 × depth × (1 − expansion)` goes negative past depth 20 late in a collapse, and toasts that deep are now drawn while the deck collapses with the pointer gone. Before, they were offstage |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)

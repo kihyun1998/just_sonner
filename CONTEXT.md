@@ -44,6 +44,13 @@ A toast that has no timer and shows the loading indicator in its leading slot. A
 carries, not a kind of toast — a toast can start loading, stop, and start again at the same id.
 _Avoid_: loading type, pending, busy
 
+**Swipe**:
+Dragging a toast off the screen to dismiss it. The ways out come from the position's own words
+unless `config.swipeDirections` names them; a drag the other way is damped rather than blocked, and
+one let go short of the threshold springs back. What **Dismissible** governs, along with the close
+button.
+_Avoid_: drag (for this), fling, pan, swipe-to-dismiss
+
 **Toast**:
 One notification, with an id, content and a lifetime.
 _Avoid_: toast (for the thing that shows toasts — that is the controller)
