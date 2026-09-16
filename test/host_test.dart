@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/rendering.dart';
@@ -2577,6 +2579,329 @@ void main() {
           await tester.pumpAndSettle();
         },
       );
+    });
+  });
+
+  group('action slot and close button', () {
+    const away = Offset(40, 40);
+
+    /// A toast's box before it is scaled.
+    Rect boxOf(WidgetTester tester, String title) => tester.getRect(
+      find.ancestor(
+        of: find.text(title),
+        matching: find.byType(SlideTransition),
+      ),
+    );
+
+    /// A mouse resting at [at], taken away when the test ends.
+    Future<TestGesture> mouseAt(WidgetTester tester, Offset at) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: at);
+      addTearDown(mouse.removePointer);
+      await tester.pump();
+      return mouse;
+    }
+
+    Widget tappableApp(void Function() onTap) => MaterialApp(
+      builder: (context, child) =>
+          SonnerHost(controller: controller, child: child!),
+      home: GestureDetector(
+        onTap: onTap,
+        child: const ColoredBox(color: Color(0xFFFFFFFF)),
+      ),
+    );
+
+    Finder closeButton() => find.byIcon(Icons.close);
+
+    testWidgets('the action slot is placed at the trailing edge and is handed '
+        'the toast', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      ToastView? given;
+      controller.show(
+        'Item deleted',
+        action: (context, t) {
+          given = t;
+          return TextButton(onPressed: () {}, child: const Text('Undo'));
+        },
+      );
+      await tester.pumpAndSettle();
+
+      expect(given, isNotNull);
+      expect(given!.id, toastsOf(controller).single.id);
+      expect(given!.state.title, 'Item deleted');
+
+      final card = tester.getRect(
+        find
+            .ancestor(
+              of: find.text('Item deleted'),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      final undo = tester.getRect(find.text('Undo'));
+      expect(
+        undo.left,
+        greaterThan(tester.getRect(find.text('Item deleted')).right),
+      );
+      expect(undo.right, lessThanOrEqualTo(card.right));
+    });
+
+    testWidgets('the widget in the slot decides whether pressing dismisses', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show(
+        'Item deleted',
+        action: (context, t) =>
+            TextButton(onPressed: t.dismiss, child: const Text('Undo')),
+      );
+      controller.show(
+        'Connection failed',
+        action: (context, t) => TextButton(
+          onPressed: () => controller.update(t.id, title: 'Retrying'),
+          child: const Text('Retry'),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Retry'));
+      await tester.pumpAndSettle();
+      expect(find.text('Retrying'), findsOneWidget, reason: 'it stands');
+      expect(toastsOf(controller), hasLength(2));
+
+      // The other toast is behind, so expand the deck to reach its button.
+      final mouse = await mouseAt(tester, boxOf(tester, 'Retrying').center);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(find.text('Item deleted'), findsNothing, reason: 'it closed');
+      await mouse.moveTo(away);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+      'ToastView.dismiss completes once the toast has left the tree',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        late ToastView view;
+        controller.show(
+          'Saved',
+          action: (context, t) {
+            view = t;
+            return const SizedBox();
+          },
+        );
+        await tester.pumpAndSettle();
+
+        var done = false;
+        unawaited(view.dismiss().then((_) => done = true));
+        await tester.pump();
+        expect(done, isFalse, reason: 'the exit is still running');
+        expect(find.text('Saved'), findsOneWidget);
+
+        await tester.pumpAndSettle();
+        expect(done, isTrue);
+        expect(find.text('Saved'), findsNothing);
+      },
+    );
+
+    testWidgets('the slot is handed an animation that runs 0 to 1 on enter', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      late ToastView view;
+      controller.show(
+        'Saved',
+        action: (context, t) {
+          view = t;
+          return const SizedBox();
+        },
+      );
+      await tester.pump();
+      expect(view.animation.value, 0);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(view.animation.value, inExclusiveRange(0, 1));
+      await tester.pumpAndSettle();
+      expect(view.animation.value, 1);
+    });
+
+    testWidgets('holdTimer pauses until the toast is updated', (tester) async {
+      final controller = SonnerController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      late ToastView view;
+      final id = controller.show(
+        'Dragging',
+        action: (context, t) {
+          view = t;
+          return const SizedBox();
+        },
+      );
+      await tester.pumpAndSettle();
+
+      view.holdTimer();
+      await tester.pump(const Duration(seconds: 10));
+      expect(find.text('Dragging'), findsOneWidget, reason: 'held');
+
+      controller.update(id, title: 'Dropped');
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Dropped'),
+        findsNothing,
+        reason: 'the update let the hold go, and it counted down',
+      );
+    });
+
+    testWidgets('the close button follows the config, and show overrules it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Plain');
+      await tester.pumpAndSettle();
+      expect(
+        closeButton(),
+        findsNothing,
+        reason: 'config.closeButton is false',
+      );
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+      controller.show('Asked', closeButton: true);
+      await tester.pumpAndSettle();
+      expect(closeButton(), findsOneWidget);
+
+      await tester.tap(closeButton());
+      await tester.pumpAndSettle();
+      expect(find.text('Asked'), findsNothing);
+    });
+
+    testWidgets('dismissible false takes the close button away, and dismiss '
+        'still works', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero, closeButton: true),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Pinned', dismissible: false);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Pinned'), findsOneWidget);
+      expect(
+        closeButton(),
+        findsNothing,
+        reason: 'the close button is a way a user dismisses',
+      );
+
+      controller.dismiss(id);
+      await tester.pumpAndSettle();
+      expect(
+        find.text('Pinned'),
+        findsNothing,
+        reason: 'dismissible governs the user, not the app',
+      );
+    });
+
+    testWidgets('a loading toast has no close button until it stops loading', (
+      tester,
+    ) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero, closeButton: true),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Uploading', isLoading: true);
+      // Not pumpAndSettle: the indicator never settles.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(closeButton(), findsNothing);
+
+      controller.update(id, isLoading: false);
+      await tester.pumpAndSettle();
+      expect(
+        closeButton(),
+        findsOneWidget,
+        reason: 'it hands itself back with no second call',
+      );
+    });
+
+    testWidgets('a covered toast takes no taps on its content, and still stops '
+        'one reaching the app', (tester) async {
+      var taps = 0;
+      var pressed = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      controller.show(
+        'Behind',
+        action: (context, t) =>
+            TextButton(onPressed: () => pressed++, child: const Text('Undo')),
+      );
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      // The strip of the covered toast that pokes out above the front.
+      final behind = boxOf(tester, 'Behind');
+      final at = Offset(behind.center.dx, behind.top + 4);
+      await tester.tapAt(at);
+      await tester.pumpAndSettle();
+
+      expect(pressed, 0, reason: 'nothing is drawn there to press');
+      expect(taps, 0, reason: 'the card still stops it reaching the app');
+
+      // Expanded, every toast reads and its button works again.
+      final mouse = await mouseAt(tester, boxOf(tester, 'Front').center);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Undo'));
+      await tester.pumpAndSettle();
+      expect(pressed, 1);
+      await mouse.moveTo(away);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a covered toast keeps its content in the semantics tree', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      await tester.pumpWidget(app(controller: controller));
+      controller.show(
+        'Behind',
+        closeButton: true,
+        action: (context, t) =>
+            TextButton(onPressed: () {}, child: const Text('Undo')),
+      );
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      expect(contentOpacityOf(tester, 'Behind'), 0, reason: 'not drawn');
+      expect(
+        tester.getSemantics(find.text('Behind')),
+        isSemantics(label: 'Behind', isLiveRegion: true),
+        reason: 'what the deck hides is the reading, not the announcement',
+      );
+      expect(
+        find.byIcon(Icons.close),
+        findsOneWidget,
+        reason: 'still in the tree, ready for the deck to open',
+      );
+      final announced = tester.getSemantics(find.text('Behind')).label;
+      expect(
+        announced,
+        isNot(contains('Close')),
+        reason: 'a covered toast announces its content, not its controls',
+      );
+      expect(
+        tester.getSemantics(find.text('Undo')).owner,
+        isNull,
+        reason:
+            'the action slot goes with it — its node is detached, so a '
+            'screen reader is not offered it either',
+      );
+      expect(
+        tester.getSemantics(find.text('Behind')),
+        isSemantics(hasTapAction: false),
+        reason: 'nothing on a covered toast offers itself to be pressed',
+      );
+      semantics.dispose();
     });
   });
 

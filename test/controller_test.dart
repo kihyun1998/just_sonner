@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
     show holdTimers, releaseTimers, toastsOf;
-import 'package:just_sonner/src/toast_state.dart' show ToastState;
 
 void main() {
   group('countdown', () {
@@ -708,6 +707,140 @@ void main() {
       expect(reported, hasLength(1));
       expect(reported.single.library, 'just_sonner');
       expect(reported.single.exception, isStateError);
+    });
+  });
+
+  group('slots, close button and dismissible', () {
+    SonnerController pinned([SonnerConfig? config]) {
+      final controller = SonnerController(
+        config: config ?? const SonnerConfig(duration: Duration.zero),
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    Widget noop(BuildContext context, ToastView toast) => const SizedBox();
+
+    test('unset dismissible follows isLoading, read by read', () {
+      final controller = pinned();
+      final id = controller.show('Uploading', isLoading: true);
+      final record = toastsOf(controller).single;
+      expect(record.state.dismissible, isNull, reason: 'stored as unset');
+      expect(record.state.dismissibleNow, isFalse);
+
+      controller.update(id, isLoading: false);
+
+      expect(record.state.dismissible, isNull, reason: 'still unset');
+      expect(
+        record.state.dismissibleNow,
+        isTrue,
+        reason: 'it hands itself back with no second call',
+      );
+    });
+
+    test('dismissible given wins over isLoading, both ways', () {
+      final controller = pinned();
+      controller.show('Closeable', isLoading: true, dismissible: true);
+      controller.show('Pinned', dismissible: false);
+
+      // Newest first.
+      expect(toastsOf(controller)[1].state.dismissibleNow, isTrue);
+      expect(toastsOf(controller)[0].state.dismissibleNow, isFalse);
+    });
+
+    test('closeButton resolves show over config, and false by default', () {
+      bool drawn(SonnerController c, int at) =>
+          toastsOf(c)[at].state.closeButtonNow(c.config.closeButton);
+
+      final off = pinned();
+      off.show('Plain');
+      off.show('Asked', closeButton: true);
+      expect(drawn(off, 1), isFalse, reason: 'the config says no');
+      expect(drawn(off, 0), isTrue, reason: 'the toast overrules it');
+
+      final on = pinned(
+        const SonnerConfig(duration: Duration.zero, closeButton: true),
+      );
+      on.show('Follows');
+      on.show('Declines', closeButton: false);
+      expect(drawn(on, 1), isTrue, reason: 'the config says yes');
+      expect(drawn(on, 0), isFalse, reason: 'the toast overrules it');
+    });
+
+    test('a toast the user may not dismiss has no close button', () {
+      final controller = pinned(
+        const SonnerConfig(duration: Duration.zero, closeButton: true),
+      );
+      controller.show('Uploading', isLoading: true);
+      expect(
+        toastsOf(controller).single.state.closeButtonNow(true),
+        isFalse,
+        reason: 'the close button is a way a user dismisses, and it may not',
+      );
+    });
+
+    test('update patches the slots, and a replace clears them', () {
+      final controller = pinned(
+        const SonnerConfig(duration: Duration.zero, closeButton: true),
+      );
+      const id = ToastId('connection');
+      controller.show(
+        'Checking',
+        action: noop,
+        closeButton: false,
+        dismissible: false,
+        id: id,
+      );
+      final record = toastsOf(controller).single;
+
+      controller.update(id, title: 'Opening');
+      expect(record.state.action, same(noop), reason: 'not passed, not lost');
+      expect(record.state.closeButton, isFalse);
+      expect(record.state.dismissible, isFalse);
+
+      controller.show('Connected', id: id);
+      expect(record.state.action, isNull);
+      expect(
+        record.state.closeButton,
+        isNull,
+        reason: 'back to following the config',
+      );
+      expect(record.state.closeButtonNow(true), isTrue);
+      expect(record.state.dismissible, isNull);
+    });
+
+    test(
+      'an update of dismissible alone restarts the countdown, never short',
+      () {
+        fakeAsync((async) {
+          final controller = SonnerController();
+          final id = controller.show('Checking');
+          async.elapse(const Duration(milliseconds: 3050));
+          var notifications = 0;
+          controller.addListener(() => notifications++);
+
+          controller.update(id, dismissible: false);
+          expect(notifications, 1);
+          notifications = 0;
+
+          async.elapse(const Duration(milliseconds: 4000));
+          expect(notifications, 0, reason: 'a full 4 s has not passed');
+          async.elapse(const Duration(milliseconds: 100));
+          expect(notifications, 1, reason: 'gone within one tick of 4 s');
+          controller.dispose();
+        });
+      },
+    );
+
+    test('a promise state carries the slots its content gives', () async {
+      final controller = pinned();
+      await controller.promise(
+        Future<void>.value(),
+        loading: const ToastContent('Connecting'),
+        success: (_) => ToastContent('Connected', action: noop),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+      expect(toastsOf(controller).single.state.action, same(noop));
     });
   });
 

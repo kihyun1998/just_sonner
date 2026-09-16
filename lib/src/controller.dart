@@ -12,6 +12,7 @@ import 'package:flutter/widgets.dart'
 
 import 'config.dart';
 import 'toast_content.dart';
+import 'toast_view.dart';
 import 'root_overlay.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
@@ -112,6 +113,9 @@ class SonnerController extends ChangeNotifier {
     bool isLoading = false,
     Widget? leading,
     Duration? duration,
+    bool? dismissible,
+    ToastSlot? action,
+    bool? closeButton,
     ToastId? id,
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
@@ -139,6 +143,9 @@ class SonnerController extends ChangeNotifier {
       description: description,
       isLoading: isLoading,
       leading: leading,
+      action: action,
+      closeButton: closeButton,
+      dismissible: dismissible,
     );
     final lifetime = duration ?? config.duration;
     if (existing != null) {
@@ -179,6 +186,9 @@ class SonnerController extends ChangeNotifier {
     bool? isLoading,
     Widget? leading,
     Duration? duration,
+    bool? dismissible,
+    ToastSlot? action,
+    bool? closeButton,
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
@@ -194,6 +204,9 @@ class SonnerController extends ChangeNotifier {
       description: description ?? state.description,
       isLoading: isLoading ?? state.isLoading,
       leading: leading ?? state.leading,
+      action: action ?? state.action,
+      closeButton: closeButton ?? state.closeButton,
+      dismissible: dismissible ?? state.dismissible,
     );
     if (duration != null) record.duration = duration;
     _startCountdown(record);
@@ -264,6 +277,9 @@ class SonnerController extends ChangeNotifier {
         state.title,
         description: state.description,
         leading: state.leading,
+        dismissible: state.dismissible,
+        action: state.action,
+        closeButton: state.closeButton,
         isLoading: isLoading,
         // What makes the spec's ‘ignored’ true in release. In debug the
         // assert in [promise] stops the caller first, so no test reaches this

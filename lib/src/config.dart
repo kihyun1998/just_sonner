@@ -25,6 +25,7 @@ class SonnerConfig {
     this.expandByDefault = false,
     this.loadingIndicator = const CircularProgressIndicator(strokeWidth: 2),
     this.leadingSize = 20,
+    this.closeButton = false,
   });
 
   final SonnerPosition position;
@@ -63,6 +64,10 @@ class SonnerConfig {
   /// Pass an indicator that ends, or none at all, to settle.
   final Widget loadingIndicator;
 
+  /// Whether toasts carry a close button. `show(closeButton:)` wins over it,
+  /// and a toast the user may not dismiss has none either way.
+  final bool closeButton;
+
   /// The side of the leading slot's box. The box is fixed at this size, so a
   /// look that imposes a minimum width cannot stretch the indicator into an
   /// ellipse, and a toast with a slot lines its title up with every other.
@@ -78,6 +83,7 @@ class SonnerConfig {
     bool? expandByDefault,
     Widget? loadingIndicator,
     double? leadingSize,
+    bool? closeButton,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -88,6 +94,7 @@ class SonnerConfig {
     expandByDefault: expandByDefault ?? this.expandByDefault,
     loadingIndicator: loadingIndicator ?? this.loadingIndicator,
     leadingSize: leadingSize ?? this.leadingSize,
+    closeButton: closeButton ?? this.closeButton,
   );
 
   @override
@@ -101,7 +108,8 @@ class SonnerConfig {
       other.duration == duration &&
       other.expandByDefault == expandByDefault &&
       other.loadingIndicator == loadingIndicator &&
-      other.leadingSize == leadingSize;
+      other.leadingSize == leadingSize &&
+      other.closeButton == closeButton;
 
   @override
   int get hashCode => Object.hash(
@@ -114,5 +122,6 @@ class SonnerConfig {
     expandByDefault,
     loadingIndicator,
     leadingSize,
+    closeButton,
   );
 }
