@@ -1,13 +1,7 @@
 ## Agent skills
 
-### Issue tracker
-
-Issues are tracked in GitHub Issues for `kihyun1998/just_sonner` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
-
-### Triage labels
-
-Default five-role vocabulary (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`). See `docs/agents/triage-labels.md`.
-
-### Domain docs
-
-Single-context: one root `CONTEXT.md` plus `docs/adr/`. See `docs/agents/domain.md`.
+| When | Read |
+|---|---|
+| Creating, reading, labelling or closing an issue or PR (GitHub, via `gh`) | `docs/agents/issue-tracker.md` |
+| A skill names a triage role | `docs/agents/triage-labels.md` |
+| Exploring the code, or naming a domain concept | `docs/agents/domain.md` |
