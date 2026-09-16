@@ -342,8 +342,19 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   every toast (§6 Expanded).
 - The front toast is drawn at its own height.
 - Toast *i* behind the front (i = 1, 2, …) is drawn **at the front toast's height**, shifted away
-  from the screen edge by `gap × i`, and scaled by `1 − 0.05 × i`. Its content is not faded — a
-  builder decides that (sonner fades only its own styled toasts).
+  from the screen edge by `gap × i`, and scaled by `1 − 0.05 × i`. Its **card** is not faded — the
+  deck stays a pile of cards.
+- **A covered toast draws no content.** How much of a toast the deck covers is the running product
+  of the presences of the toasts in front of it — 0 for the front, 1 behind one fully present — and
+  what it draws of its content is `1 − covered × (1 − expansion)`. So the content fades out over
+  the 400 ms a new toast takes to enter, comes back over the 200 ms the front takes to leave, and
+  is fully drawn wherever the deck is expanded. Without it, a toast behind paints its text under a
+  front that is still entering and therefore see-through, and a taller one behind a shorter front
+  shows a description sliced by the cut to the front's height.
+  The package applies this to its own look and hands the fraction to a builder, which decides for
+  itself (sonner fades the children of a collapsed non-front toast, and only for its own styled
+  look). The fade is painted, not structural: a covered toast keeps its place in the semantics
+  tree, since what the deck hides is the reading, not the announcement.
 - The deck occupies the front toast's height plus `gap × (visible − 1)` (just_sonner — sonner
   leaves the region to CSS).
 - The window counts only toasts that are not dismissed, so dismissing the front brings the next
@@ -512,6 +523,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   button sits in the corner whenever `closeButton` resolves true.
 - `Semantics(liveRegion: true)` on each toast; toasts never request focus. On desktop the flag
   announces nothing in Flutter 3.41.9 (§12).
+- The content — the leading slot, title, description, action and close button, everything inside
+  the card — is drawn at the fraction §6 Collapsed gives, so the look fades itself away while the
+  deck covers it and the card it sits on does not.
 
 ## 10. Proof
 
@@ -546,6 +560,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   controller under the pointer lets the timers go
 - a mode-1 toast shown while the app is hidden waits before its host is built
 - Only `visibleToasts` are hit-testable while the pointer is away
+- A covered toast draws no content and keeps its card: the front reads, the one behind it does not,
+  and a taller toast behind a shorter front shows no sliced description. The content fades out over
+  the 400 ms the new front takes to enter, never more solid than the gap the entering front has
+  left to fill; it comes back as a toast is brought to the front, and wherever the deck expands
 - The pointer over the deck draws every toast, which take taps and are in the semantics tree;
   `expandByDefault` alone draws `visibleToasts` and fades the rest in on hover
 - Toasts that do not fit scroll with the wheel (both directions of position), a trackpad pan and in
@@ -620,6 +638,7 @@ outside v0.1 is in §2's non-goals.
 | Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
 | ~~Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without~~ | maintainer | **Superseded**: reversed by the maintainer (row below). Its picture had new toasts waiting behind a full window, which the newest-first deck does not do |
 | Toasts beyond `visibleToasts` count down like the rest; there is no `backlogDuration` | maintainer | reversed while working #23, on an adversarial pass with a simulation of the controller's tick (100 ms, a skip on joining, newest first). The row above was decided on a picture where new toasts wait behind a full window; on this deck every toast reaches the window at `show`, and the toasts behind are older ones already seen. Taken literally it cleared a burst of 10 in 5.3 s rather than 2, and gave a fourth toast on a full deck 400 ms. Shown alongside: waiting only for toasts never yet in the window, a first-in-first-out window (a new toast hidden for 3 s behind three 4 s ones), and waiting with no short duration (16.4 s for the burst). Chosen with sonner's result in view — 7 of a burst of 10 never drawn — on the premise, also the maintainer's, that hovering will fan every toast out into a scrollable list, which is not specified yet. Until #41 drew every toast under the pointer, a hidden toast whose time ran out left with no way to see it. Hovering already pauses every timer (§7) |
+| A covered toast draws no content, and the default look applies it to itself | maintainer | found by pressing the example app (#45): for the 400 ms a short toast takes to enter, the taller one behind it painted title and description at full opacity under a front still at 0.297, and its description was sliced by the cut to the front's height — two sets of text on top of each other. sonner does not have this because it fades the children of a collapsed non-front styled toast to zero. §6's old wording left the decision to a builder, but `ToastView` gave a builder nothing to decide with, so nothing ever faded. The fraction is the coverage the deck's layout already computes, so it eases with the enter, the exit and collapse ↔ expand for free, and the card is left alone so the deck still reads as a pile |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The tick is started again when a toast is shown in a different `Zone` from the one the running tick was created in | maintainer | a `Timer` is bound to its zone, and the exported `toast` outlives test zones: measured while working #18, a toast left counting by one test kept `_ticker` pointing at a timer in that test's finished fake-time zone, and every later test's toasts silently never expired. Shown against documenting "clean up inside the test body" instead, which leaves the failure silent. Only a zone change restarts it — restarting on every `show` would let a burst of toasts shown faster than one tick hold every countdown back. **Not decided**: whether the tick should move to the host, as `SnackBar`'s timer lives in `ScaffoldMessengerState`; §7 keeps it on the controller |
 | A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |

@@ -351,7 +351,7 @@ void main() {
       },
     );
 
-    testWidgets('the toasts behind the front are not faded', (tester) async {
+    testWidgets('the cards behind the front are not faded', (tester) async {
       await tester.pumpWidget(app(controller: controller));
       for (var n = 0; n < 3; n++) {
         controller.show('Toast $n');
@@ -361,6 +361,86 @@ void main() {
       for (var n = 0; n < 3; n++) {
         expect(paintedOpacityOf(tester, 'Toast $n'), 1, reason: 'Toast $n');
       }
+    });
+
+    testWidgets('a covered toast draws no content, so a taller one behind a '
+        'shorter front shows no sliced description', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Tall', description: 'A second line, making it taller');
+      controller.show('Short');
+      await tester.pumpAndSettle();
+
+      expect(contentOpacityOf(tester, 'Short'), 1, reason: 'the front reads');
+      expect(contentOpacityOf(tester, 'Tall'), 0);
+      expect(
+        contentOpacityOf(tester, 'A second line, making it taller'),
+        0,
+        reason: 'the description the front cuts through is not drawn at all',
+      );
+      expect(
+        paintedOpacityOf(tester, 'Tall'),
+        1,
+        reason: 'its card still shows, so the deck is a pile of cards',
+      );
+    });
+
+    testWidgets('the content of the toast behind fades out over the 400 ms the '
+        'new front takes to enter', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Tall', description: 'A second line, making it taller');
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Tall'), 1);
+
+      controller.show('Short');
+      await tester.pump();
+
+      // The frames where the entering toast is still see-through are the ones
+      // that showed two sets of text on top of each other.
+      var last = 1.0;
+      for (final step in [100, 100, 100]) {
+        await tester.pump(Duration(milliseconds: step));
+        final behind = contentOpacityOf(tester, 'Tall');
+        expect(behind, lessThan(last), reason: 'it keeps fading');
+        expect(
+          behind,
+          moreOrLessEquals(
+            1 - paintedOpacityOf(tester, 'Short'),
+            epsilon: 1e-9,
+          ),
+          reason:
+              'a crossfade on one clock: what the front has still to gain '
+              'is what the one behind has still to lose, so the text you can '
+              'see through the front is never more than the text it hides',
+        );
+        last = behind;
+      }
+
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Tall'), 0);
+    });
+
+    testWidgets('a toast brought back to the front draws its content again', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      final front = controller.show('Front');
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Behind'), 0);
+
+      controller.dismiss(front);
+      await tester.pump();
+      expect(
+        contentOpacityOf(tester, 'Behind'),
+        0,
+        reason: 'the exit has not moved yet, so it is still covered',
+      );
+
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(contentOpacityOf(tester, 'Behind'), inExclusiveRange(0, 1));
+
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Behind'), 1);
     });
 
     /// The y of a point only toast [i] of a resting bottomRight deck covers:
@@ -887,7 +967,7 @@ void main() {
         .widget<FadeTransition>(
           find
               .ancestor(
-                of: find.text(title),
+                of: _cardOf(title),
                 matching: find.byType(FadeTransition),
               )
               .first,
@@ -1470,6 +1550,35 @@ void main() {
         expect(find.text('Front'), findsNothing, reason: 'resumed and expired');
       },
     );
+
+    testWidgets('the expanded deck draws the content of every toast, and hides '
+        'it again as it collapses', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind', description: 'A second line');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Behind'), 0);
+
+      final mouse = await mouseAt(tester, boxOf(tester, 'Front').center);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        contentOpacityOf(tester, 'Behind'),
+        inExclusiveRange(0, 1),
+        reason: 'it comes back with the fan-out, not at the end of it',
+      );
+
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Behind'), 1);
+      expect(
+        contentOpacityOf(tester, 'A second line'),
+        1,
+        reason: 'expanded, every toast is drawn at its own height to be read',
+      );
+
+      await mouse.moveTo(away);
+      await tester.pumpAndSettle();
+      expect(contentOpacityOf(tester, 'Behind'), 0);
+    });
 
     testWidgets(
       'expandByDefault fans the deck out without hover, and does not pause',
@@ -2574,11 +2683,11 @@ Matcher _sizeCloseTo(Size expected) => predicate<Size>(
   'a size close to $expected',
 );
 
-/// The opacity [title]'s toast is painted with: every fade above it multiplied.
-double paintedOpacityOf(WidgetTester tester, String title) {
+/// Every fade above [of], multiplied.
+double _fadesAbove(WidgetTester tester, Finder of) {
   var opacity = 1.0;
   final above = find.ancestor(
-    of: find.text(title),
+    of: of,
     matching: find.byWidgetPredicate(
       (widget) => widget is Opacity || widget is FadeTransition,
     ),
@@ -2592,6 +2701,21 @@ double paintedOpacityOf(WidgetTester tester, String title) {
   }
   return opacity;
 }
+
+/// The toast's card in [title]'s toast.
+Finder _cardOf(String title) =>
+    find.ancestor(of: find.text(title), matching: find.byType(Material)).first;
+
+/// The opacity [title]'s toast is painted with: every fade above its card, so
+/// the enter, the window and a change of content, but not the fade the deck
+/// puts on the content of a covered toast.
+double paintedOpacityOf(WidgetTester tester, String title) =>
+    _fadesAbove(tester, _cardOf(title));
+
+/// The opacity [title] itself is painted with: [paintedOpacityOf] and the
+/// covered-content fade inside the card together.
+double contentOpacityOf(WidgetTester tester, String title) =>
+    _fadesAbove(tester, find.text(title));
 
 /// How far [title]'s toast has entered or exited, 0 to 1: the fade of its slot,
 /// not of the content inside it.

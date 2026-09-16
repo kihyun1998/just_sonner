@@ -23,6 +23,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **The deck** (#19, #22, #23, #41) — rest the pointer on the deck. It fans out, draws every toast
   rather than `visibleToasts`, and every timer stops while the pointer is there. A deck taller
   than the screen scrolls, and the toast under the pointer keeps its place while it does.
+- **Mixed heights** (#19, #45) — press one, then the other. A toast behind the front is drawn at the
+  front's height, and draws no content while it is covered: the deck is a pile of cards with only
+  the front one written on. Hovering fans them out and every toast reads again.
 - **Update and replace** (#21) — both keep the toast's place and restart its countdown. Update
   patches the fields passed; replace swaps the content whole, so a description it is not given
   disappears. "Update in a loop" shows a toast staying up while updates keep arriving.
