@@ -135,6 +135,9 @@ class _PanelState extends State<_Panel> {
     bool isLoading = false,
     Widget? leading,
     Duration? duration,
+    bool? dismissible,
+    ToastSlot? action,
+    bool? closeButton,
     ToastId? id,
   }) {
     final shown = _toast.show(
@@ -143,6 +146,9 @@ class _PanelState extends State<_Panel> {
       isLoading: isLoading,
       leading: leading,
       duration: duration,
+      dismissible: dismissible,
+      action: action,
+      closeButton: closeButton,
       id: id,
     );
     _shown.add(shown);
@@ -560,6 +566,85 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'Action slot and close button',
+      issue: 25,
+      note:
+          'The action slot is yours: it is handed the toast, so the widget in '
+          'it decides whether pressing also dismisses. The close button is the '
+          'package’s, because it is the pointer equivalent of a swipe — and '
+          '`dismissible` governs both, unset meaning “not while it loads”.',
+      children: [
+        _Button('Undo — the button closes it', () {
+          _show(
+            'Item deleted',
+            description: 'Monday, January 3rd at 6:00pm',
+            duration: Duration.zero,
+            action: (context, t) =>
+                TextButton(onPressed: t.dismiss, child: const Text('Undo')),
+          );
+        }),
+        _Button('Retry — the button keeps it', () {
+          _show(
+            'Connection failed',
+            duration: Duration.zero,
+            action: (context, t) => TextButton(
+              onPressed: () =>
+                  _toast.update(t.id, title: 'Retrying…', isLoading: true),
+              child: const Text('Retry'),
+            ),
+          );
+        }),
+        _Button('Two buttons in the one slot', () {
+          _show(
+            'Discard your changes?',
+            duration: Duration.zero,
+            action: (context, t) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextButton(onPressed: t.dismiss, child: const Text('Keep')),
+                TextButton(onPressed: t.dismiss, child: const Text('Discard')),
+              ],
+            ),
+          );
+        }),
+        _Button('With a close button', () {
+          _show(
+            'Event has been created',
+            description: 'The X is the package’s, not yours.',
+            duration: Duration.zero,
+            closeButton: true,
+          );
+        }),
+        _Button('Loading, so no close button yet', () {
+          final id = _show(
+            'Uploading…',
+            description: 'The X arrives when it stops loading.',
+            isLoading: true,
+            closeButton: true,
+          );
+          Timer(const Duration(seconds: 3), () {
+            if (!mounted) return;
+            _toast.update(
+              id,
+              title: 'Uploaded',
+              description: 'Now you can close it.',
+              isLoading: false,
+              duration: Duration.zero,
+            );
+          });
+        }),
+        _Button('Pinned — dismissible: false', () {
+          _show(
+            'You cannot close this one',
+            description: 'Use “Dismiss all”. dismissible governs the user.',
+            duration: Duration.zero,
+            dismissible: false,
+            closeButton: true,
+          );
+        }),
+      ],
+    ),
+    _Section(
       title: 'Over a dialog',
       issue: 20,
       note:
@@ -618,7 +703,6 @@ class _PanelState extends State<_Panel> {
       title: 'Not built yet',
       note: 'Each of these gets its own section here as it lands.',
       children: [
-        _Missing(25, 'The action slot, the close button, and dismissible'),
         _Missing(26, 'Swipe a toast away'),
         _Missing(27, 'Replace the look with a builder, and the flash adapter'),
         _Missing(28, 'Change the config while toasts are on screen'),

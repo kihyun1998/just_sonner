@@ -538,6 +538,16 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - The content — the leading slot, title, description, action and close button, everything inside
   the card — is drawn at the fraction §6 Collapsed gives, so the look fades itself away while the
   deck covers it and the card it sits on does not.
+- **A covered toast's controls are not there to be used.** The `action` slot and the close button
+  leave the pointer's reach and the semantics tree while the fraction is 0, and come back with it.
+  What is not drawn cannot be pressed — the close button sits in the strip a covered toast leaves
+  above the front, so without the rule a press aimed at nothing would answer. The card goes on
+  taking taps, so the deck still stops one reaching the app underneath, and the title and
+  description keep their place in the semantics tree: a covered toast announces its **content**,
+  not its controls, so a screen reader is not offered a Close that does nothing.
+- The close button carries a **semantics label**, not a tooltip. A tooltip needs an `Overlay` above
+  it and mount mode 2 puts the host above the app's `Navigator`, where there is none — so a tooltip
+  would throw in every mode-2 app. sonner labels its close button the same way (`aria-label`).
 
 ## 10. Proof
 
@@ -565,6 +575,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - a toast pushed beyond `visibleToasts` keeps counting down, neither paused nor restarted, and is
   dismissed there when its time runs out
 - the tick stops when the last counting toast goes, and starts again with the next one
+- unset `dismissible` follows `isLoading` read by read, so `update(id, isLoading: false)` hands the
+  toast back with no second call; a given `dismissible` wins either way; an update of `dismissible`
+  alone restarts the countdown; `update` patches `action`, `closeButton` and `dismissible` and a
+  replace clears all three
 - a loading toast has no timer and keeps its duration, so leaving `isLoading` counts down the
   toast's own duration rather than what was left of it; entering it stops a countdown under way and
   stops the tick; it can stop and start again at the same id; `show(isLoading: true, duration:)`
@@ -581,6 +595,15 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   controller under the pointer lets the timers go
 - a mode-1 toast shown while the app is hidden waits before its host is built
 - Only `visibleToasts` are hit-testable while the pointer is away
+- The `action` slot is placed at the trailing edge and handed the toast; its widget can dismiss the
+  toast or leave it standing. `ToastView.dismiss` completes once the toast has left the tree, and
+  the animation it is handed runs 0 → 1 as the toast enters
+- `holdTimer` pauses the timers until its toast is dismissed, updated or replaced
+- The close button follows `show(closeButton:) ?? config.closeButton`; a toast the user may not
+  dismiss has none, so a loading toast gains one the moment `update(id, isLoading: false)` lands,
+  with no second call; `dismissible: false` takes it away and leaves `dismiss(id)` working
+- A covered toast's action and close button take no taps and are out of the semantics tree, while
+  its card still stops a tap reaching the app underneath
 - The leading slot: a toast with neither `leading` nor `isLoading` has no slot and its title starts
   at the padding edge; `leading` puts the caller's widget before the title; the slot is a fixed
   square of `config.leadingSize` whatever it holds; while `isLoading` it holds
@@ -668,6 +691,8 @@ outside v0.1 is in §2's non-goals.
 | Toasts beyond `visibleToasts` count down like the rest; there is no `backlogDuration` | maintainer | reversed while working #23, on an adversarial pass with a simulation of the controller's tick (100 ms, a skip on joining, newest first). The row above was decided on a picture where new toasts wait behind a full window; on this deck every toast reaches the window at `show`, and the toasts behind are older ones already seen. Taken literally it cleared a burst of 10 in 5.3 s rather than 2, and gave a fourth toast on a full deck 400 ms. Shown alongside: waiting only for toasts never yet in the window, a first-in-first-out window (a new toast hidden for 3 s behind three 4 s ones), and waiting with no short duration (16.4 s for the burst). Chosen with sonner's result in view — 7 of a burst of 10 never drawn — on the premise, also the maintainer's, that hovering will fan every toast out into a scrollable list, which is not specified yet. Until #41 drew every toast under the pointer, a hidden toast whose time ran out left with no way to see it. Hovering already pauses every timer (§7) |
 | A covered toast draws no content, and the default look applies it to itself | maintainer | found by pressing the example app (#45): for the 400 ms a short toast takes to enter, the taller one behind it painted title and description at full opacity under a front still at 0.297, and its description was sliced by the cut to the front's height — two sets of text on top of each other. sonner does not have this because it fades the children of a collapsed non-front styled toast to zero. §6's old wording left the decision to a builder, but `ToastView` gave a builder nothing to decide with, so nothing ever faded. The fraction is the coverage the deck's layout already computes, so it eases with the enter, the exit and collapse ↔ expand for free, and the card is left alone so the deck still reads as a pile |
 | A `promise` state that cannot be shown is reported, never thrown at the caller | maintainer | raised against #24 before it was split: §5 makes a `show` with no built navigator throw a `StateError` in debug, and every `promise` state goes through `show`, so in debug a mounting mistake would replace the caller's own result or throw past it. The assert is there to tell a developer the toasts are not mounted — a different job from the caller's future, which is their work and not the toast's to lose. `FlutterError.reportError` keeps it loud in debug without taking the control flow, and a `success` or `error` callback that throws is treated the same way rather than getting its own rule |
+| A covered toast's controls leave the pointer's reach and the semantics tree; its text does not | maintainer | falls out of #45, which stopped a covered toast drawing its content: once a toast carries buttons, the close button sits in the 14 px strip a covered toast leaves above the front, so an invisible control would answer a press aimed at nothing. Hit testing had only the window rule (`IgnorePointer` outside the deck), which does not reach a toast that is inside the window and merely covered. Scoped to the controls rather than the whole toast, so the card still stops a tap reaching the app underneath — a rule the deck already had and that a blanket `IgnorePointer` would have broken. Semantics goes with the pointer because an inert invisible Close is worse than silence, while the title and description stay, which is #45's decision unchanged |
+| The close button is labelled, not tooltipped | derived | a `Tooltip` needs an `Overlay` ancestor, and mount mode 2 puts the host **above** the app's `Navigator`, so there is none — the first widget test of the close button threw `No Overlay widget found`. A semantics label is what sonner uses (`aria-label`) and needs nothing above it |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The tick is started again when a toast is shown in a different `Zone` from the one the running tick was created in | maintainer | a `Timer` is bound to its zone, and the exported `toast` outlives test zones: measured while working #18, a toast left counting by one test kept `_ticker` pointing at a timer in that test's finished fake-time zone, and every later test's toasts silently never expired. Shown against documenting "clean up inside the test body" instead, which leaves the failure silent. Only a zone change restarts it — restarting on every `show` would let a burst of toasts shown faster than one tick hold every countdown back. **Not decided**: whether the tick should move to the host, as `SnackBar`'s timer lives in `ScaffoldMessengerState`; §7 keeps it on the controller |
 | A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |

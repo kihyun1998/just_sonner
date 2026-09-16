@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
@@ -10,7 +11,9 @@ import 'content_fade.dart';
 import 'controller.dart';
 import 'default_look.dart';
 import 'deck_layout.dart';
+import 'toast_id.dart';
 import 'toast_state.dart';
+import 'toast_view.dart';
 
 /// Mount mode 2: draws [controller]'s toasts above [child], or the exported
 /// `toast`'s when [controller] is null.
@@ -132,7 +135,14 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  void _onToastsChanged() => setState(_sync);
+  void _onToastsChanged() {
+    // A hold a widget took with `holdTimer` lasts until its toast is updated,
+    // replaced or dismissed, and every one of those arrives here.
+    for (final slot in _slots) {
+      slot.releaseIfChanged();
+    }
+    setState(_sync);
+  }
 
   void _setPointer(int device, {required bool over}) {
     final was = _hovered;
@@ -214,6 +224,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       record,
       controller..forward(),
       AnimationController(vsync: this),
+      _controller,
     );
   }
 
@@ -279,9 +290,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         slot.contentFade.value = 1 - covered * (1 - expansion);
         liftPlace += covers;
       }
-      covered += (1 - covered) * slot.animation.value;
-      sum += slot.animation.value;
-      lifted += slot.animation.value * covers;
+      covered += (1 - covered) * slot.presence.value;
+      sum += slot.presence.value;
+      lifted += slot.presence.value * covers;
     }
 
     final reveal = _reveal.value;
@@ -320,7 +331,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
               config: config,
               order: _slots,
               expansion: expansion,
-              presence: (slot) => slot.animation.value,
+              presence: (slot) => slot.presence.value,
               depth: (slot) => slot.depth,
               lift: (slot) => slot.lift,
               natural: (slot) => slot.natural,
@@ -382,14 +393,18 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         child: Opacity(
           opacity: fade,
           child: FadeTransition(
-            opacity: slot.animation,
+            opacity: slot.presence,
             child: SlideTransition(
               position: slot.slide(fromTop: config.position.isTop),
               child: Transform.scale(
                 scale: slot.scale,
                 child: ToastHeight(
                   onMeasured: slot.measured,
-                  child: slot.contentIn(config),
+                  // Read after `_buildDeck` has set it for this frame.
+                  child: slot.contentIn(
+                    config,
+                    pressable: slot.contentFade.value > 0,
+                  ),
                 ),
               ),
             ),
@@ -402,17 +417,62 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
 /// A toast as the host draws it: the controller's record, and the animations
 /// that bring it in and take it out and that ease the height it covers with.
-class _Slot {
-  _Slot(this.record, this.controller, this.resize)
-    : animation = CurvedAnimation(parent: controller, curve: Curves.ease),
+final class _Slot implements ToastView {
+  _Slot(this.record, this.controller, this.resize, this.owner)
+    : presence = CurvedAnimation(parent: controller, curve: Curves.ease),
       _resizeCurve = CurvedAnimation(parent: resize, curve: Curves.ease);
 
   static const _fadeDuration = Duration(milliseconds: 200);
   static const _resizeDuration = Duration(milliseconds: 400);
 
   final ToastRecord record;
+
   final AnimationController controller;
-  final CurvedAnimation animation;
+
+  /// How far in it is, 0 to 1, on the eased curve the enter and exit run.
+  final CurvedAnimation presence;
+
+  @override
+  AnimationController get animation => controller;
+
+  /// The controller whose toast this is, for [dismiss] and [holdTimer].
+  final SonnerController owner;
+
+  /// Completes once the toast has left the tree, for [dismiss].
+  final Completer<void> _removed = Completer<void>();
+
+  /// The content the toast held when [holdTimer] took the timers, so the hold
+  /// can be let go once it is updated or replaced.
+  ToastState? _heldAt;
+
+  @override
+  ToastId get id => record.id;
+
+  @override
+  ToastState get state => record.state;
+
+  @override
+  Future<void> dismiss() {
+    owner.dismiss(record.id);
+    return _removed.future;
+  }
+
+  @override
+  void holdTimer() {
+    if (exiting) return;
+    _heldAt = record.state;
+    holdTimers(owner, this);
+  }
+
+  /// Lets go of a [holdTimer] hold once the toast has been updated, replaced
+  /// or dismissed. A hold on content that has not changed stays.
+  void releaseIfChanged() {
+    final held = _heldAt;
+    if (held == null) return;
+    if (identical(held, record.state) && !exiting) return;
+    _heldAt = null;
+    releaseTimers(owner, this);
+  }
 
   /// Runs from 0 to 1 while [covering] eases from the height the toast had to
   /// the height it measures now.
@@ -515,25 +575,31 @@ class _Slot {
 
   ToastState? _shown;
   SonnerConfig? _shownWith;
+  bool? _shownPressable;
   Widget? _content;
 
   /// What the toast shows. Built again only when the record's state changes,
-  /// or the config the look reads does, so an animation frame that moves the
-  /// toast does not rebuild it; a new state fades in over the old one.
-  Widget contentIn(SonnerConfig config) {
+  /// when the config the look reads does, or when the deck covering it takes
+  /// its content out of reach — so an animation frame that only moves the
+  /// toast does not rebuild it, and a new state fades in over the old one.
+  Widget contentIn(SonnerConfig config, {required bool pressable}) {
     final state = record.state;
-    if (!identical(state, _shown) || config != _shownWith) {
+    if (!identical(state, _shown) ||
+        config != _shownWith ||
+        pressable != _shownPressable) {
       _shown = state;
       _shownWith = config;
+      _shownPressable = pressable;
       _content = Semantics(
         liveRegion: true,
         child: ContentFade(
           duration: _fadeDuration,
           child: DefaultToastLook(
             key: ObjectKey(state),
-            state: state,
+            toast: this,
             config: config,
             fade: contentFade,
+            pressable: pressable,
           ),
         ),
       );
@@ -556,7 +622,12 @@ class _Slot {
   }
 
   void dispose() {
-    animation.dispose();
+    if (_heldAt != null) {
+      _heldAt = null;
+      releaseTimers(owner, this);
+    }
+    if (!_removed.isCompleted) _removed.complete();
+    presence.dispose();
     controller.dispose();
     _resizeCurve.dispose();
     resize.dispose();

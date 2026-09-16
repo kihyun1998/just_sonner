@@ -32,6 +32,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Update and replace** (#21) — both keep the toast's place and restart its countdown. Update
   patches the fields passed; replace swaps the content whole, so a description it is not given
   disappears. "Update in a loop" shows a toast staying up while updates keep arriving.
+- **Action slot and close button** (#25) — the slot is yours and is handed the toast, so its widget
+  decides whether pressing also dismisses; the X is the package's. `dismissible` governs both, and
+  unset means "not while it loads" — watch the X appear the moment loading stops.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** — `SonnerConfig` is fixed at construction today, so changing one of these controls

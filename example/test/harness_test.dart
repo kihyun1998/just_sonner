@@ -98,6 +98,10 @@ void main() {
     await tester.pump();
     expect(find.text('Event has been created'), findsOneWidget);
 
+    // The panel grows a section per issue, so scroll the control into view
+    // rather than trusting where it happens to sit today.
+    await tester.ensureVisible(find.text('expandByDefault'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('expandByDefault'));
     await tester.pumpAndSettle();
     expect(find.text('Event has been created'), findsNothing);
