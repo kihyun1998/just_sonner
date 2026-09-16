@@ -9,6 +9,12 @@ The place at a toast's trailing edge that the caller fills with its own widget. 
 handed the toast, so it decides for itself whether acting on it also dismisses it.
 _Avoid_: action button, primary action
 
+**Covered**:
+How much of a toast the deck hides: the running product of the presences of the toasts in front of
+it, 0 for the front and 1 behind one fully present. A covered toast draws no content and its
+controls are not there to be used, while its card stays. The expansion undoes it.
+_Avoid_: hidden (that is a toast outside the window), behind, obscured
+
 **Deck**:
 The group of visible toasts, in one of two states: collapsed (front toast in full, the rest peeking out) or expanded (fanned out into a list).
 _Avoid_: stack (for the visible group), collapsed stack
@@ -20,6 +26,12 @@ _Avoid_: closed, hidden
 **Removed**:
 A dismissed toast whose exit animation has finished and which has left the widget tree.
 _Avoid_: dismissed (for this moment), unmounted
+
+**Dismissible**:
+Whether the **user** may dismiss a toast, by the close button or a swipe. Never about the app or a
+widget in a slot: `dismiss(id)` and `ToastView.dismiss()` work whatever it says. Unset means
+`!isLoading`, and is resolved on each read rather than when the toast was shown.
+_Avoid_: closeable, locked, pinned
 
 **Leading slot**:
 The box before a toast's title. The caller fills it with a `leading` widget; while the toast is
