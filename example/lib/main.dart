@@ -645,6 +645,58 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'Swipe',
+      issue: 26,
+      note:
+          'Drag a toast off and it goes; a drag that is short and slow springs '
+          'it back. The way out comes from the position’s own words — '
+          '${config.position.name} allows '
+          '${config.swipeDirectionsNow.map((it) => it.name).join(' and ')} — '
+          'and a drag the other way is damped rather than blocked, so the '
+          'toast answers the hand without going anywhere. Past 45 px, or '
+          'faster than 0.11 px/ms, it leaves the way it was pushed. Change '
+          '“position” and “swipeDirections” below to try the rest.',
+      children: [
+        _Button('One to swipe', () {
+          _show(
+            'Drag me off the screen',
+            description: 'A short, slow drag comes back.',
+            duration: Duration.zero,
+          );
+        }),
+        _Button('Three to swipe', () {
+          for (var i = 3; i >= 1; i--) {
+            _show('Swipe $i of 3', duration: Duration.zero);
+          }
+        }),
+        _Button('Pinned — dismissible: false', () {
+          _show(
+            'This one does not move',
+            description: 'dismissible governs the swipe as well as the X.',
+            duration: Duration.zero,
+            dismissible: false,
+          );
+        }),
+        _Button('Loading, then swipeable', () {
+          final id = _show(
+            'Uploading…',
+            description: 'No swipe while it loads.',
+            isLoading: true,
+          );
+          Timer(const Duration(seconds: 3), () {
+            if (!mounted) return;
+            _toast.update(
+              id,
+              title: 'Uploaded',
+              description: 'Now it takes a swipe, with no second call.',
+              isLoading: false,
+              duration: Duration.zero,
+            );
+          });
+        }),
+      ],
+    ),
+    _Section(
       title: 'Over a dialog',
       issue: 20,
       note:
@@ -690,6 +742,34 @@ class _PanelState extends State<_Panel> {
             config.copyWith(duration: Duration(seconds: value)),
           ),
         ),
+        _Dropdown<Set<SwipeDirection>?>(
+          label: 'swipeDirections',
+          value: config.swipeDirections,
+          values: const [
+            null,
+            {SwipeDirection.up},
+            {SwipeDirection.down},
+            {SwipeDirection.left},
+            {SwipeDirection.right},
+            <SwipeDirection>{},
+          ],
+          nameOf: (value) => switch (value) {
+            null => 'from the position',
+            final set when set.isEmpty => 'none',
+            final set => set.map((it) => it.name).join(', '),
+          },
+          // Built rather than copied: `copyWith` cannot put an optional field
+          // back to unset, and unset is what "from the position" means.
+          onChanged: (value) => widget.onConfig(
+            SonnerConfig(
+              position: config.position,
+              visibleToasts: config.visibleToasts,
+              duration: config.duration,
+              expandByDefault: config.expandByDefault,
+              swipeDirections: value,
+            ),
+          ),
+        ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
           title: const Text('expandByDefault'),
@@ -703,7 +783,6 @@ class _PanelState extends State<_Panel> {
       title: 'Not built yet',
       note: 'Each of these gets its own section here as it lands.',
       children: [
-        _Missing(26, 'Swipe a toast away'),
         _Missing(27, 'Replace the look with a builder, and the flash adapter'),
         _Missing(28, 'Change the config while toasts are on screen'),
       ],

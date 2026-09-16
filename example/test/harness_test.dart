@@ -76,7 +76,12 @@ void main() {
   testWidgets('a toast sits above a dialog', (tester) async {
     await pumpHarness(tester);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Open a dialog'));
+    // The panel grows a section per issue, so scroll the button into view
+    // rather than trusting where it happens to sit today.
+    final open = find.widgetWithText(OutlinedButton, 'Open a dialog');
+    await tester.ensureVisible(open);
+    await tester.pumpAndSettle();
+    await tester.tap(open);
     await tester.pumpAndSettle();
     expect(find.text('A dialog'), findsOneWidget);
 
@@ -87,6 +92,18 @@ void main() {
     await tester.tap(find.widgetWithText(FilledButton, 'Close'));
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('the swipe section puts a toast up to drag', (tester) async {
+    await pumpHarness(tester);
+
+    final one = find.widgetWithText(OutlinedButton, 'One to swipe');
+    await tester.ensureVisible(one);
+    await tester.pumpAndSettle();
+    await tester.tap(one);
+    await tester.pump();
+
+    expect(find.text('Drag me off the screen'), findsOneWidget);
   });
 
   testWidgets('a config control rebuilds the controller and clears the deck', (

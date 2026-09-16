@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 /// Where on the screen the toasts sit.
@@ -10,6 +11,29 @@ enum SonnerPosition {
   bottomRight;
 
   bool get isTop => this == topLeft || this == topCenter || this == topRight;
+
+  /// The directions a swipe may take a toast in, from this position's own
+  /// words: [topRight] allows up and right, [bottomLeft] down and left, and
+  /// [topCenter] up only.
+  Set<SwipeDirection> get swipeDirections => {
+    isTop ? SwipeDirection.up : SwipeDirection.down,
+    switch (this) {
+      topLeft || bottomLeft => SwipeDirection.left,
+      topRight || bottomRight => SwipeDirection.right,
+      topCenter || bottomCenter => null,
+    },
+  }.nonNulls.toSet();
+}
+
+/// A direction a toast can be swiped away in.
+enum SwipeDirection {
+  up,
+  down,
+  left,
+  right;
+
+  /// Whether it runs along [Axis.horizontal] rather than up or down.
+  bool get isHorizontal => this == left || this == right;
 }
 
 /// How a controller's toasts are laid out and how long they stay.
@@ -26,6 +50,7 @@ class SonnerConfig {
     this.loadingIndicator = const CircularProgressIndicator(strokeWidth: 2),
     this.leadingSize = 20,
     this.closeButton = false,
+    this.swipeDirections,
   });
 
   final SonnerPosition position;
@@ -68,6 +93,19 @@ class SonnerConfig {
   /// and a toast the user may not dismiss has none either way.
   final bool closeButton;
 
+  /// The directions a swipe may take a toast in, or null for the ones
+  /// [position]'s own words name. Read through [swipeDirectionsNow].
+  ///
+  /// An empty set takes the swipe away and leaves the close button, which is
+  /// `dismissible`'s to govern rather than this.
+  final Set<SwipeDirection>? swipeDirections;
+
+  /// The directions a swipe may take a toast in now: [swipeDirections], or
+  /// the ones [position] names while that is unset — so changing the position
+  /// changes them.
+  Set<SwipeDirection> get swipeDirectionsNow =>
+      swipeDirections ?? position.swipeDirections;
+
   /// The side of the leading slot's box. The box is fixed at this size, so a
   /// look that imposes a minimum width cannot stretch the indicator into an
   /// ellipse, and a toast with a slot lines its title up with every other.
@@ -84,6 +122,7 @@ class SonnerConfig {
     Widget? loadingIndicator,
     double? leadingSize,
     bool? closeButton,
+    Set<SwipeDirection>? swipeDirections,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -95,6 +134,7 @@ class SonnerConfig {
     loadingIndicator: loadingIndicator ?? this.loadingIndicator,
     leadingSize: leadingSize ?? this.leadingSize,
     closeButton: closeButton ?? this.closeButton,
+    swipeDirections: swipeDirections ?? this.swipeDirections,
   );
 
   @override
@@ -109,7 +149,8 @@ class SonnerConfig {
       other.expandByDefault == expandByDefault &&
       other.loadingIndicator == loadingIndicator &&
       other.leadingSize == leadingSize &&
-      other.closeButton == closeButton;
+      other.closeButton == closeButton &&
+      setEquals(other.swipeDirections, swipeDirections);
 
   @override
   int get hashCode => Object.hash(
@@ -123,5 +164,6 @@ class SonnerConfig {
     loadingIndicator,
     leadingSize,
     closeButton,
+    swipeDirections == null ? null : Object.hashAllUnordered(swipeDirections!),
   );
 }

@@ -1,6 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart'
+    show
+        DragStartBehavior,
+        DragStartDetails,
+        DragUpdateDetails,
+        PanGestureRecognizer,
+        PointerDeviceKind;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart'
     show PointerEnterEventListener, PointerExitEventListener;
@@ -11,6 +18,7 @@ import 'content_fade.dart';
 import 'controller.dart';
 import 'default_look.dart';
 import 'deck_layout.dart';
+import 'swipe.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
 import 'toast_view.dart';
@@ -48,6 +56,22 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   static const _exitDuration = Duration(milliseconds: 200);
   static const _expandDuration = Duration(milliseconds: 400);
 
+  /// How long a toast let go of short of the threshold takes to come back.
+  static const _springDuration = Duration(milliseconds: 400);
+
+  /// A swipe takes pointer drags and never a trackpad pan, which scrolls the
+  /// expanded deck instead.
+  static const _swipeDevices = {
+    PointerDeviceKind.mouse,
+    PointerDeviceKind.touch,
+    PointerDeviceKind.stylus,
+    PointerDeviceKind.invertedStylus,
+    PointerDeviceKind.unknown,
+  };
+
+  /// The slide of a toast that stays where it is put.
+  static const _still = AlwaysStoppedAnimation(Offset.zero);
+
   /// Newest first, as the controller orders its toasts.
   List<_Slot> _slots = [];
 
@@ -56,6 +80,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   final Set<int> _pointers = {};
 
   bool get _hovered => _pointers.isNotEmpty;
+
+  /// The pointer devices pressed on the deck. A press keeps the deck as it
+  /// found it until it lets go, wherever it travels in between — dragging a
+  /// toast out from under the pointer must not fold the deck up around the
+  /// hand doing it.
+  final Set<int> _pressed = {};
+
+  /// Whether the deck is under a pointer, or under a press that started
+  /// there: it is fanned out, draws every toast and keeps its scroll while
+  /// either holds.
+  bool get _interacting => _hovered || _pressed.isNotEmpty;
 
   /// Where the deck is, for hit testing: the toasts in the window, or every
   /// toast while the pointer is over it, and those exiting, and the gaps
@@ -66,13 +101,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   late final _Eased _expand = _Eased(this, _expandTarget);
 
   double get _expandTarget =>
-      _hovered || _controller.config.expandByDefault ? 1 : 0;
+      _interacting || _controller.config.expandByDefault ? 1 : 0;
 
   /// How far the toasts beyond the window are drawn, from 0 hidden to 1 in
   /// full: they are while the pointer is over the deck.
   late final _Eased _reveal = _Eased(this, _revealTarget);
 
-  double get _revealTarget => _hovered ? 1 : 0;
+  double get _revealTarget => _interacting ? 1 : 0;
 
   final ScrollController _scroll = ScrollController();
 
@@ -140,6 +175,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // replaced or dismissed, and every one of those arrives here.
     for (final slot in _slots) {
       slot.releaseIfChanged();
+      // A toast the user may no longer dismiss loses its recognizer at the
+      // next build, and a recognizer taken away mid-drag reports nothing: the
+      // drag ends here instead, and the toast goes back to its place.
+      if (slot.drag != null && !slot.record.state.dismissibleNow) {
+        slot.endDrag();
+        slot.swipe.springBack(_springDuration);
+      }
     }
     setState(_sync);
   }
@@ -157,8 +199,27 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       holdTimers(_controller, this);
     } else {
       releaseTimers(_controller, this);
-      _unscrollDeck();
+      if (!_interacting) _unscrollDeck();
     }
+    _retarget();
+  }
+
+  /// Takes a press on the deck, or lets one go. It holds no timer of its own:
+  /// a press that stays is a pointer over the deck, which pauses already, and
+  /// one that becomes a swipe is held by the drag.
+  void _setPressed(int device, {required bool down}) {
+    // The hit test a press was routed through outlives this host: a pointer
+    // that went down on the deck reports going up through it even once the
+    // host has left the tree, and nothing here is alive to answer with.
+    if (!mounted) return;
+    final was = _interacting;
+    if (down) {
+      _pressed.add(device);
+    } else {
+      _pressed.remove(device);
+    }
+    if (_interacting == was) return;
+    if (!_interacting) _unscrollDeck();
     _retarget();
   }
 
@@ -185,6 +246,53 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   void _retarget() {
     _expand.retarget(_expandTarget, _expandDuration);
     _reveal.retarget(_revealTarget, _expandDuration);
+  }
+
+  /// The recognizer that swipes [slot] away.
+  GestureRecognizerFactoryWithHandlers<PanGestureRecognizer> _swipeOf(
+    _Slot slot,
+  ) => GestureRecognizerFactoryWithHandlers<PanGestureRecognizer>(
+    () =>
+        PanGestureRecognizer(debugOwner: this, supportedDevices: _swipeDevices),
+    (recognizer) {
+      // Measured from where and when the pointer went down, so a flick counts
+      // for as long as the hand was on the toast.
+      recognizer.dragStartBehavior = DragStartBehavior.down;
+      recognizer.onStart = (details) => _swipeStart(slot, details);
+      recognizer.onUpdate = (details) => _swipeUpdate(slot, details);
+      recognizer.onEnd = (_) => _swipeEnd(slot);
+      recognizer.onCancel = () => _swipeEnd(slot);
+    },
+  );
+
+  void _swipeStart(_Slot slot, DragStartDetails details) {
+    slot.drag = SwipeDrag(
+      directions: _controller.config.swipeDirectionsNow,
+      at: details.sourceTimeStamp ?? Duration.zero,
+    );
+    // The drag holds the timers itself, so they keep pausing once it has
+    // carried the pointer off the deck.
+    holdTimers(_controller, slot.dragHold);
+  }
+
+  void _swipeUpdate(_Slot slot, DragUpdateDetails details) {
+    final drag = slot.drag;
+    if (drag == null) return;
+    drag.moveBy(details.delta, at: details.sourceTimeStamp);
+    slot.swipe.follow(drag.offset);
+  }
+
+  void _swipeEnd(_Slot slot) {
+    final drag = slot.drag;
+    if (drag == null) return;
+    slot.endDrag();
+    final out = drag.outcome;
+    if (out == null) {
+      slot.swipe.springBack(_springDuration);
+      return;
+    }
+    slot.swipedOut = out;
+    _controller.dismiss(slot.record.id);
   }
 
   /// Matches the slots to the controller's toasts. A toast the controller no
@@ -241,6 +349,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       record,
       controller..forward(),
       AnimationController(vsync: this),
+      _Sprung(this),
       _controller,
     );
   }
@@ -249,6 +358,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// to, then removes the slot.
   void _exit(_Slot slot) {
     slot.exiting = true;
+    // A toast dismissed under a drag takes its recognizer with it, and a
+    // recognizer disposed of reports nothing.
+    slot.endDrag();
     late final AnimationStatusListener onExit;
     onExit = (status) {
       if (status != AnimationStatus.dismissed) return;
@@ -271,7 +383,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         _expand,
         _reveal,
         _unscroll,
-        for (final slot in _slots) ...[slot.animation, slot.resize],
+        for (final slot in _slots) ...[slot.animation, slot.resize, slot.swipe],
       ]),
       builder: (context, _) => _buildDeck(context, config),
     );
@@ -287,7 +399,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // of the toasts in front counted the same way, moves by the same rule.
     final expansion = _expand.value;
     final visible = config.visibleToasts;
-    final hovered = _hovered;
+    final interacting = _interacting;
     var sum = 0.0;
     var index = 0;
     var lifted = 0.0;
@@ -305,7 +417,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           // collapses with it drawn.
           ..scale = math.max(0, 1 - 0.05 * slot.depth * (1 - expansion))
           ..drawn = true
-          ..inDeck = index < visible || hovered
+          ..inDeck = index < visible || interacting
           ..index = index++;
         // Covered content is not drawn, and the expansion brings it back: the
         // deck fanned out draws every toast at its own height, to be read.
@@ -325,67 +437,72 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           slot.depth >= visible;
     }
     final isTop = config.position.isTop;
-    return _DeckRegion(
-      deck: () => _deck,
-      onEnter: (event) => _setPointer(event.device, over: true),
-      onExit: (event) => _setPointer(event.device, over: false),
-      child: NotificationListener<Notification>(
-        // The deck's scroll is its own: an app watching for its content
-        // scrolling under an app bar must not hear it.
-        onNotification: (notification) => switch (notification) {
-          ScrollNotification(:final context?) ||
-          ScrollMetricsNotification(:final context) => identical(
-            Scrollable.maybeOf(context)?.position,
-            _scroll.position,
-          ),
-          _ => false,
-        },
-        child: Scrollable(
-          controller: _scroll,
-          axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
-          hitTestBehavior: HitTestBehavior.deferToChild,
-          excludeFromSemantics: true,
-          scrollBehavior: ScrollConfiguration.of(
-            context,
-          ).copyWith(scrollbars: false, overscroll: false),
-          viewportBuilder: (context, position) => CustomMultiChildLayout(
-            delegate: ToastDeckDelegate<_Slot>(
-              config: config,
-              order: _slots,
-              expansion: expansion,
-              presence: (slot) => slot.presence.value,
-              depth: (slot) => slot.depth,
-              lift: (slot) => slot.lift,
-              natural: (slot) => slot.natural,
-              covering: (slot) => slot.covering,
-              pinned: (slot) => slot.pinned,
-              inDeck: (slot) => slot.inDeck,
-              onPlaced: (slot, height, covering, distance, place) => slot
-                ..height = height
-                ..covers = covering
-                ..distance = distance
-                ..place = place,
-              onDeck: (deck) => _deck = deck,
-              scroll: position,
-              follows: hovered,
-              unscrolled: _unscrolled,
-              // Read at layout, which a scroll runs without a build.
-              anchor: () => _hovered && _expand.value == 1
-                  ? (id: _anchor, distance: _anchorAt, pixels: _anchorPixels)
-                  : null,
-              onAnchor: (slot, distance, pixels) {
-                _anchor = slot;
-                _anchorAt = distance;
-                _anchorPixels = pixels;
-              },
-              backdrop: _backdrop,
+    return Listener(
+      onPointerDown: (event) => _setPressed(event.device, down: true),
+      onPointerUp: (event) => _setPressed(event.device, down: false),
+      onPointerCancel: (event) => _setPressed(event.device, down: false),
+      child: _DeckRegion(
+        deck: () => _deck,
+        onEnter: (event) => _setPointer(event.device, over: true),
+        onExit: (event) => _setPointer(event.device, over: false),
+        child: NotificationListener<Notification>(
+          // The deck's scroll is its own: an app watching for its content
+          // scrolling under an app bar must not hear it.
+          onNotification: (notification) => switch (notification) {
+            ScrollNotification(:final context?) ||
+            ScrollMetricsNotification(:final context) => identical(
+              Scrollable.maybeOf(context)?.position,
+              _scroll.position,
             ),
-            children: [
-              LayoutId(id: _backdrop, child: const _Backdrop()),
-              // Oldest first: children paint in order, so the newest is on top.
-              for (final slot in _slots.reversed)
-                LayoutId(id: slot, child: _buildToast(slot, config, visible)),
-            ],
+            _ => false,
+          },
+          child: Scrollable(
+            controller: _scroll,
+            axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
+            hitTestBehavior: HitTestBehavior.deferToChild,
+            excludeFromSemantics: true,
+            scrollBehavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false, overscroll: false),
+            viewportBuilder: (context, position) => CustomMultiChildLayout(
+              delegate: ToastDeckDelegate<_Slot>(
+                config: config,
+                order: _slots,
+                expansion: expansion,
+                presence: (slot) => slot.presence.value,
+                depth: (slot) => slot.depth,
+                lift: (slot) => slot.lift,
+                natural: (slot) => slot.natural,
+                covering: (slot) => slot.covering,
+                pinned: (slot) => slot.pinned,
+                inDeck: (slot) => slot.inDeck,
+                onPlaced: (slot, height, covering, distance, place) => slot
+                  ..height = height
+                  ..covers = covering
+                  ..distance = distance
+                  ..place = place,
+                onDeck: (deck) => _deck = deck,
+                scroll: position,
+                follows: interacting,
+                unscrolled: _unscrolled,
+                // Read at layout, which a scroll runs without a build.
+                anchor: () => _interacting && _expand.value == 1
+                    ? (id: _anchor, distance: _anchorAt, pixels: _anchorPixels)
+                    : null,
+                onAnchor: (slot, distance, pixels) {
+                  _anchor = slot;
+                  _anchorAt = distance;
+                  _anchorPixels = pixels;
+                },
+                backdrop: _backdrop,
+              ),
+              children: [
+                LayoutId(id: _backdrop, child: const _Backdrop()),
+                // Oldest first: children paint in order, so the newest is on top.
+                for (final slot in _slots.reversed)
+                  LayoutId(id: slot, child: _buildToast(slot, config, visible)),
+              ],
+            ),
           ),
         ),
       ),
@@ -408,6 +525,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // unless the pointer over the deck is drawing every toast.
     final reveal = _reveal.value;
     final fade = reveal + (1 - reveal) * (visible - slot.depth).clamp(0.0, 1.0);
+    final swipe = slot.swipeOffset(config);
     return Offstage(
       offstage: slot.hidden,
       child: IgnorePointer(
@@ -417,15 +535,31 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           child: FadeTransition(
             opacity: slot.presence,
             child: SlideTransition(
-              position: slot.slide(fromTop: config.position.isTop),
-              child: Transform.scale(
-                scale: slot.scale,
-                child: ToastHeight(
-                  onMeasured: slot.measured,
-                  // Read after `_buildDeck` has set it for this frame.
-                  child: slot.contentIn(
-                    config,
-                    pressable: slot.contentFade.value > 0,
+              // A toast swiped away leaves the way the swipe took it, and not
+              // toward the edge every other toast enters and leaves by.
+              position: slot.swipedOut == null
+                  ? slot.slide(fromTop: config.position.isTop)
+                  : _still,
+              // The swipe and the deck's scale in one transform: where a
+              // toast is drawn is one answer.
+              child: Transform(
+                transform: Matrix4.translationValues(swipe.dx, swipe.dy, 0)
+                  ..scaleByDouble(slot.scale, slot.scale, 1, 1),
+                alignment: Alignment.center,
+                child: RawGestureDetector(
+                  // A toast the user may not dismiss takes no swipe; its
+                  // recognizer goes rather than turning itself off, so no
+                  // pointer of its own is claimed.
+                  gestures: slot.record.state.dismissibleNow && !slot.exiting
+                      ? {PanGestureRecognizer: _swipeOf(slot)}
+                      : const {},
+                  child: ToastHeight(
+                    onMeasured: slot.measured,
+                    // Read after `_buildDeck` has set it for this frame.
+                    child: slot.contentIn(
+                      config,
+                      pressable: slot.contentFade.value > 0,
+                    ),
                   ),
                 ),
               ),
@@ -440,7 +574,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 /// A toast as the host draws it: the controller's record, and the animations
 /// that bring it in and take it out and that ease the height it covers with.
 final class _Slot implements ToastView {
-  _Slot(this.record, this.controller, this.resize, this.owner)
+  _Slot(this.record, this.controller, this.resize, this.swipe, this.owner)
     : presence = CurvedAnimation(parent: controller, curve: Curves.ease),
       _resizeCurve = CurvedAnimation(parent: resize, curve: Curves.ease);
 
@@ -494,6 +628,36 @@ final class _Slot implements ToastView {
     if (identical(held, record.state) && !exiting) return;
     _heldAt = null;
     releaseTimers(owner, this);
+  }
+
+  /// Where a swipe has taken it from the place the deck gives it.
+  final _Sprung swipe;
+
+  /// The swipe under way on it, or null while none is.
+  SwipeDrag? drag;
+
+  /// The direction a swipe dismissed it in, or null when none did.
+  SwipeDirection? swipedOut;
+
+  /// What holds the timers while a swipe drags it — its own, so a hold a
+  /// widget took with [holdTimer] and a drag do not let go of each other's.
+  late final Object dragHold = Object();
+
+  /// Ends any drag under way, letting the timers it held go.
+  void endDrag() {
+    if (drag == null) return;
+    drag = null;
+    releaseTimers(owner, dragHold);
+  }
+
+  /// Where the swipe draws it: as far as the drag has taken it, and, once a
+  /// swipe has dismissed it, a whole toast further on its way out.
+  Offset swipeOffset(SonnerConfig config) {
+    final out = swipedOut;
+    if (out == null) return swipe.value;
+    final size = out.isHorizontal ? config.width : height ?? 0;
+    final left = 1 - Curves.easeOut.transform(controller.value);
+    return swipe.value + out.step * size * left;
   }
 
   /// Runs from 0 to 1 while [covering] eases from the height the toast had to
@@ -646,6 +810,7 @@ final class _Slot implements ToastView {
   }
 
   void dispose() {
+    endDrag();
     if (_heldAt != null) {
       _heldAt = null;
       releaseTimers(owner, this);
@@ -657,6 +822,48 @@ final class _Slot implements ToastView {
     controller.dispose();
     _resizeCurve.dispose();
     resize.dispose();
+    swipe.dispose();
+  }
+}
+
+/// Where a swipe draws a toast, from the place the deck gives it: set as the
+/// drag moves it, and eased back to nothing when the drag lets go short of
+/// dismissing it.
+class _Sprung extends ChangeNotifier {
+  _Sprung(TickerProvider vsync)
+    : _progress = AnimationController(vsync: vsync, value: 1) {
+    _progress.addListener(notifyListeners);
+  }
+
+  /// Runs from 0 to 1 while [value] eases from [_from] to [_to].
+  final AnimationController _progress;
+  Offset _from = Offset.zero;
+  Offset _to = Offset.zero;
+
+  Offset get value =>
+      Offset.lerp(_from, _to, Curves.ease.transform(_progress.value))!;
+
+  /// Draws the toast [offset] from its place, from now until it is told
+  /// otherwise.
+  void follow(Offset offset) {
+    _progress.stop();
+    _from = offset;
+    _to = offset;
+    notifyListeners();
+  }
+
+  /// Eases back to the toast's place over [duration].
+  void springBack(Duration duration) {
+    if (value == Offset.zero) return;
+    _from = value;
+    _to = Offset.zero;
+    _progress.animateWith(_Progress(duration));
+  }
+
+  @override
+  void dispose() {
+    _progress.dispose();
+    super.dispose();
   }
 }
 
