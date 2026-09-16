@@ -259,6 +259,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     var index = 0;
     var lifted = 0.0;
     var liftPlace = 0.0;
+    // How much the toasts in front cover this one, the same running product
+    // the deck's layout takes: 0 for the front, 1 behind one fully present.
+    var covered = 0.0;
     for (final slot in _slots) {
       final covers = (slot.exiting ? slot.covers : slot.covering) ?? 0;
       if (!slot.exiting) {
@@ -271,8 +274,12 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           ..drawn = true
           ..inDeck = index < visible || hovered
           ..index = index++;
+        // Covered content is not drawn, and the expansion brings it back: the
+        // deck fanned out draws every toast at its own height, to be read.
+        slot.contentFade.value = 1 - covered * (1 - expansion);
         liftPlace += covers;
       }
+      covered += (1 - covered) * slot.animation.value;
       sum += slot.animation.value;
       lifted += slot.animation.value * covers;
     }
@@ -431,6 +438,12 @@ class _Slot {
   /// Whether [depth] has been worked out at least once.
   bool drawn = false;
 
+  /// How much of its content the look draws: 1 in front of the collapsed deck
+  /// or anywhere in the expanded one, 0 once a toast in front covers it. The
+  /// card is not faded, so the deck stays a pile of cards. Frozen once it is
+  /// [exiting], with the rest of what the deck drew it with.
+  final _Driven contentFade = _Driven(1);
+
   /// Its place among the toasts that are not exiting, newest first. Frozen
   /// once it is [exiting].
   int index = 0;
@@ -514,7 +527,11 @@ class _Slot {
         liveRegion: true,
         child: ContentFade(
           duration: _fadeDuration,
-          child: DefaultToastLook(key: ObjectKey(state), state: state),
+          child: DefaultToastLook(
+            key: ObjectKey(state),
+            state: state,
+            fade: contentFade,
+          ),
         ),
       );
     }
@@ -591,6 +608,43 @@ class _Backdrop extends StatelessWidget {
   @override
   Widget build(BuildContext context) =>
       const MetaData(behavior: HitTestBehavior.opaque);
+}
+
+/// An [Animation] whose value is set from outside, for one that follows the
+/// whole deck rather than a clock of its own.
+///
+/// It is set while the deck builds, which a [FadeTransition] answers by
+/// repainting rather than rebuilding — so the toast it belongs to keeps the
+/// cached content that made [_Slot.content] worth caching.
+class _Driven extends Animation<double>
+    with AnimationLocalListenersMixin, AnimationLocalStatusListenersMixin {
+  _Driven(this._value);
+
+  double _value;
+
+  @override
+  double get value => _value;
+
+  set value(double next) {
+    if (next == _value) return;
+    final was = status;
+    _value = next;
+    notifyListeners();
+    if (status != was) notifyStatusListeners(status);
+  }
+
+  @override
+  AnimationStatus get status {
+    if (_value <= 0) return AnimationStatus.dismissed;
+    if (_value >= 1) return AnimationStatus.completed;
+    return AnimationStatus.forward;
+  }
+
+  @override
+  void didRegisterListener() {}
+
+  @override
+  void didUnregisterListener() {}
 }
 
 /// Runs from 0 to 1 over [duration], at a constant rate.
