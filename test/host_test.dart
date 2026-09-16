@@ -174,6 +174,130 @@ void main() {
     });
   });
 
+  group('leading slot', () {
+    /// The box the slot is drawn in, or null when the toast has no slot.
+    Rect? slotOf(WidgetTester tester, String title) {
+      final card = find
+          .ancestor(of: find.text(title), matching: find.byType(Material))
+          .first;
+      final slot = find.descendant(of: card, matching: find.byType(SizedBox));
+      final boxes = tester
+          .widgetList<SizedBox>(slot)
+          .where((box) => box.width != null && box.width == box.height);
+      if (boxes.isEmpty) return null;
+      return tester.getRect(
+        find
+            .descendant(
+              of: card,
+              matching: find.byWidgetPredicate(
+                (w) => w is SizedBox && w.width != null && w.width == w.height,
+              ),
+            )
+            .first,
+      );
+    }
+
+    double titleLeftOf(WidgetTester tester, String title) =>
+        tester.getRect(find.text(title)).left;
+
+    testWidgets('a toast with neither leading nor isLoading has no slot, and '
+        'its title starts at the padding edge', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Bare');
+      await tester.pumpAndSettle();
+
+      expect(slotOf(tester, 'Bare'), isNull);
+      final card = tester.getRect(
+        find
+            .ancestor(of: find.text('Bare'), matching: find.byType(Material))
+            .first,
+      );
+      expect(titleLeftOf(tester, 'Bare'), moreOrLessEquals(card.left + 16));
+    });
+
+    testWidgets('leading places the caller’s widget before the title', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved', leading: const Icon(Icons.check));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.check), findsOneWidget);
+      final slot = slotOf(tester, 'Saved')!;
+      expect(slot.right, lessThanOrEqualTo(titleLeftOf(tester, 'Saved')));
+      final card = tester.getRect(
+        find
+            .ancestor(of: find.text('Saved'), matching: find.byType(Material))
+            .first,
+      );
+      expect(slot.left, moreOrLessEquals(card.left + 16));
+    });
+
+    testWidgets('the slot is a fixed square of config.leadingSize, whatever it '
+        'holds', (tester) async {
+      final wide = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero, leadingSize: 20),
+      );
+      addTearDown(wide.dispose);
+      await tester.pumpWidget(app(controller: wide));
+      // A widget that would take the whole width if the slot let it.
+      wide.show('Stretchy', leading: const SizedBox(width: 400, height: 400));
+      await tester.pumpAndSettle();
+
+      expect(slotOf(tester, 'Stretchy')!.size, const Size(20, 20));
+    });
+
+    testWidgets('while isLoading the slot holds the config indicator instead '
+        'of leading', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show(
+        'Uploading',
+        isLoading: true,
+        leading: const Icon(Icons.check),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(
+        find.byIcon(Icons.check),
+        findsNothing,
+        reason: 'the indicator wins',
+      );
+      expect(slotOf(tester, 'Uploading')!.size, const Size(20, 20));
+
+      controller.update(id, isLoading: false);
+      await tester.pumpAndSettle();
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(
+        find.byIcon(Icons.check),
+        findsOneWidget,
+        reason: 'the leading widget it kept all along comes back',
+      );
+    });
+
+    testWidgets('a covered toast draws no slot either', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind', isLoading: true);
+      controller.show('Front');
+      // Not pumpAndSettle: the indicator never settles (see the note on
+      // SonnerConfig.loadingIndicator).
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(
+        find.byType(CircularProgressIndicator),
+        findsOneWidget,
+        reason: 'still in the tree, and still a live region',
+      );
+      expect(
+        contentOpacityOf(tester, 'Behind'),
+        0,
+        reason: 'the slot rides the same fade as the rest of the content',
+      );
+    });
+  });
+
   group('deck', () {
     /// Where toast [i] behind the front of a bottomRight deck is drawn: a box
     /// of [height], its bottom `gap × i` above the front's, scaled by

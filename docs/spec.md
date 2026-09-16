@@ -518,7 +518,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   toast with neither gets **no slot at all** — the title starts at the padding edge. The slot is a
   centred box of `config.leadingSize` (20) and is **fixed**, so a parent that imposes a minimum
   width cannot stretch the spinner into an ellipse (observed with flash's `FlashBar`, which wraps
-  its icon in `minWidth: 42`).
+  its icon in `minWidth: 42`). The space between the slot and the title is 12 — provisional, like
+  the rest of this section's dimensions.
+- `config.loadingIndicator` defaults to an indefinite `CircularProgressIndicator`, which never
+  settles: a widget test with a loading toast on screen pumps by hand rather than with
+  `pumpAndSettle`. That is Flutter-wide for any spinner, not something the package adds, and the
+  field's doc comment says so.
 - Title, optional description, then the `action` slot at the trailing edge (§4 Slots). The close
   button sits in the corner whenever `closeButton` resolves true.
 - `Semantics(liveRegion: true)` on each toast; toasts never request focus. On desktop the flag
@@ -548,6 +553,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - a toast pushed beyond `visibleToasts` keeps counting down, neither paused nor restarted, and is
   dismissed there when its time runs out
 - the tick stops when the last counting toast goes, and starts again with the next one
+- a loading toast has no timer and keeps its duration, so leaving `isLoading` counts down the
+  toast's own duration rather than what was left of it; entering it stops a countdown under way and
+  stops the tick; it can stop and start again at the same id; `show(isLoading: true, duration:)`
+  asserts; a replace clears `leading` and `isLoading` like any other field not given
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the hidden toasts in the list
 
 ### Host (widget tests)
@@ -560,6 +569,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   controller under the pointer lets the timers go
 - a mode-1 toast shown while the app is hidden waits before its host is built
 - Only `visibleToasts` are hit-testable while the pointer is away
+- The leading slot: a toast with neither `leading` nor `isLoading` has no slot and its title starts
+  at the padding edge; `leading` puts the caller's widget before the title; the slot is a fixed
+  square of `config.leadingSize` whatever it holds; while `isLoading` it holds
+  `config.loadingIndicator` instead of `leading`, which comes back when loading stops; a covered
+  toast draws no slot either
 - A covered toast draws no content and keeps its card: the front reads, the one behind it does not,
   and a taller toast behind a shorter front shows no sliced description. The content fades out over
   the 400 ms the new front takes to enter, never more solid than the gap the entering front has

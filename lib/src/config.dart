@@ -1,4 +1,4 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 /// Where on the screen the toasts sit.
 enum SonnerPosition {
@@ -23,6 +23,8 @@ class SonnerConfig {
     this.visibleToasts = 3,
     this.duration = const Duration(seconds: 4),
     this.expandByDefault = false,
+    this.loadingIndicator = const CircularProgressIndicator(strokeWidth: 2),
+    this.leadingSize = 20,
   });
 
   final SonnerPosition position;
@@ -51,6 +53,21 @@ class SonnerConfig {
   /// does both.
   final bool expandByDefault;
 
+  /// What the leading slot holds while a toast is loading, in place of its
+  /// `leading` widget. One spinner style for the whole app.
+  ///
+  /// The default never settles, as an indefinite progress indicator does not.
+  /// A widget test with a loading toast on screen must pump by hand rather
+  /// than `pumpAndSettle`, which waits for a frame that never stops being
+  /// scheduled — the same as any Flutter test with a spinner in the tree.
+  /// Pass an indicator that ends, or none at all, to settle.
+  final Widget loadingIndicator;
+
+  /// The side of the leading slot's box. The box is fixed at this size, so a
+  /// look that imposes a minimum width cannot stretch the indicator into an
+  /// ellipse, and a toast with a slot lines its title up with every other.
+  final double leadingSize;
+
   SonnerConfig copyWith({
     SonnerPosition? position,
     double? width,
@@ -59,6 +76,8 @@ class SonnerConfig {
     int? visibleToasts,
     Duration? duration,
     bool? expandByDefault,
+    Widget? loadingIndicator,
+    double? leadingSize,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -67,6 +86,8 @@ class SonnerConfig {
     visibleToasts: visibleToasts ?? this.visibleToasts,
     duration: duration ?? this.duration,
     expandByDefault: expandByDefault ?? this.expandByDefault,
+    loadingIndicator: loadingIndicator ?? this.loadingIndicator,
+    leadingSize: leadingSize ?? this.leadingSize,
   );
 
   @override
@@ -78,7 +99,9 @@ class SonnerConfig {
       other.offset == offset &&
       other.visibleToasts == visibleToasts &&
       other.duration == duration &&
-      other.expandByDefault == expandByDefault;
+      other.expandByDefault == expandByDefault &&
+      other.loadingIndicator == loadingIndicator &&
+      other.leadingSize == leadingSize;
 
   @override
   int get hashCode => Object.hash(
@@ -89,5 +112,7 @@ class SonnerConfig {
     visibleToasts,
     duration,
     expandByDefault,
+    loadingIndicator,
+    leadingSize,
   );
 }
