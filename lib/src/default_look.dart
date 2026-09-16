@@ -30,7 +30,7 @@ class DefaultToastLook extends StatelessWidget {
   final Animation<double> fade;
 
   /// The space between the leading slot and the title. Provisional, like the
-  /// rest of §9's dimensions: settled by feel in the example app (#29).
+  /// rest of §9's dimensions: settled by feel in the example app.
   static const _slotGap = 12.0;
 
   @override
