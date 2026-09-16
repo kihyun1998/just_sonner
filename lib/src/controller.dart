@@ -11,6 +11,7 @@ import 'package:flutter/widgets.dart'
         WidgetsBindingObserver;
 
 import 'config.dart';
+import 'toast_content.dart';
 import 'root_overlay.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
@@ -198,6 +199,90 @@ class SonnerController extends ChangeNotifier {
     _startCountdown(record);
     notifyListeners();
     return true;
+  }
+
+  /// Shows [loading] at once, then replaces it with `success(value)` or
+  /// `error(error)` when [future] finishes, and hands the future's own result
+  /// or error back to the caller **unchanged**.
+  ///
+  /// The three states share one toast: [id] follows the same rule as
+  /// `show(id:)`, so a toast already on screen is taken over, which is how a
+  /// multi-step flow hands its loading toast over. A loading toast the user
+  /// dismissed in the meantime does not stop the result — it arrives as a new
+  /// toast, by the same rule that `show` at a dismissed id makes a new one.
+  /// What the user swept away was the progress, not the outcome.
+  ///
+  /// **Nothing the toast does can change what the caller gets.** A state that
+  /// cannot be shown — no navigator to draw in, a disposed controller, a
+  /// `success` or `error` callback that throws — is reported through
+  /// [FlutterError.reportError] and the future's outcome still arrives. The
+  /// caller's work is not the toast's to lose.
+  ///
+  /// `duration` on [loading] is ignored, since a loading toast has no timer,
+  /// and asserts in debug.
+  Future<T> promise<T>(
+    Future<T> future, {
+    required ToastContent loading,
+    required ToastContent Function(T value) success,
+    required ToastContent Function(Object error) error,
+    ToastId? id,
+  }) async {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    assert(
+      loading.duration == null,
+      'A loading toast has no timer, so a duration on the loading content '
+      'would be ignored. Put it on the success or error content instead.',
+    );
+    // Taken before the first state is shown, so the result still has an id to
+    // land on when showing the loading toast goes wrong.
+    final toastId = id ?? ToastId(AutoToastIdValue(_serial++));
+    _promiseState(toastId, () => loading, isLoading: true);
+    try {
+      final value = await future;
+      _promiseState(toastId, () => success(value));
+      return value;
+    } catch (thrown, stack) {
+      _promiseState(toastId, () => error(thrown));
+      Error.throwWithStackTrace(thrown, stack);
+    }
+  }
+
+  /// Shows one `promise` state at [id], and lets nothing that goes wrong with
+  /// it reach the caller of [promise].
+  ///
+  /// [content] is called here rather than passed, so a `success` or `error`
+  /// callback that throws is reported like any other failure to show instead
+  /// of replacing the future's outcome.
+  void _promiseState(
+    ToastId id,
+    ToastContent Function() content, {
+    bool isLoading = false,
+  }) {
+    try {
+      final state = content();
+      show(
+        state.title,
+        description: state.description,
+        leading: state.leading,
+        isLoading: isLoading,
+        // What makes the spec's ‘ignored’ true in release. In debug the
+        // assert in [promise] stops the caller first, so no test reaches this
+        // branch; without it a release build would remember a duration the
+        // loading toast is not allowed to have and count down from it when it
+        // stopped loading.
+        duration: isLoading ? null : state.duration,
+        id: id,
+      );
+    } catch (thrown, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: thrown,
+          stack: stack,
+          library: 'just_sonner',
+          context: ErrorDescription('showing a promise toast'),
+        ),
+      );
+    }
   }
 
   /// Dismisses the toast with [id]. An id not on screen is ignored.

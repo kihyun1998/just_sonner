@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
@@ -129,6 +131,43 @@ void main() {
       await cleanUp(tester);
     },
   );
+
+  testWidgets('each promise state raises the toasts, as any show does', (
+    tester,
+  ) async {
+    controller.attach(navigatorKey);
+    await tester.pumpWidget(app());
+    final work = Completer<void>();
+
+    var covered = 0;
+    final catcher = tapCatcher(() => covered++);
+
+    final result = controller.promise(
+      work.future,
+      loading: const ToastContent('Connecting'),
+      success: (_) => const ToastContent('Connected'),
+      error: (e) => ToastContent('Failed: $e'),
+    );
+    // Not pumpAndSettle: the loading indicator never settles.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    navigatorKey.currentState!.overlay!.insert(catcher);
+    await tester.pump();
+    await tester.tapAt(centreOf(tester, 'Connecting'));
+    expect(covered, 1, reason: 'inserted later, it is on top');
+
+    work.complete();
+    await result;
+    await tester.pumpAndSettle();
+    await tester.tapAt(centreOf(tester, 'Connected'));
+    expect(covered, 1, reason: 'the result state raised the toasts over it');
+
+    catcher
+      ..remove()
+      ..dispose();
+    await cleanUp(tester);
+  });
 
   testWidgets('an update does not raise the toasts, and a replace does', (
     tester,
@@ -276,6 +315,37 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Kept'), findsOneWidget);
       expect(find.text('Lost'), findsNothing);
+      await cleanUp(tester);
+    },
+  );
+
+  testWidgets(
+    'a promise whose states cannot be drawn still hands the future back',
+    (tester) async {
+      // Attached, with no navigator built: every show throws in debug. The
+      // future's outcome is the caller's work, not the toast's to lose, so
+      // promise reports the failure and delivers it anyway.
+      controller.attach(navigatorKey);
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      final value = await controller.promise(
+        Future<int>.value(7),
+        loading: const ToastContent('Connecting'),
+        success: (v) => ToastContent('Got $v'),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+
+      expect(value, 7);
+      expect(reported, hasLength(2), reason: 'the loading and the result');
+      expect(reported.first.library, 'just_sonner');
+      expect(reported.first.exception, isStateError);
+
+      await tester.pumpWidget(app());
+      await tester.pumpAndSettle();
+      expect(find.text('Got 7'), findsNothing, reason: 'both were dropped');
       await cleanUp(tester);
     },
   );

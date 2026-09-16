@@ -1,9 +1,12 @@
+import 'dart:async';
+
 import 'package:fake_async/fake_async.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
     show holdTimers, releaseTimers, toastsOf;
+import 'package:just_sonner/src/toast_state.dart' show ToastState;
 
 void main() {
   group('countdown', () {
@@ -488,6 +491,223 @@ void main() {
         expect(toastsOf(controller), hasLength(1));
         controller.dispose();
       });
+    });
+  });
+
+  group('promise', () {
+    ToastState stateOf(SonnerController controller) =>
+        toastsOf(controller).single.state;
+
+    List<String> titles(SonnerController controller) => [
+      for (final record in toastsOf(controller)) record.state.title,
+    ];
+
+    SonnerController pinned() {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero),
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    test('success replaces the loading toast and returns the future’s own '
+        'value', () async {
+      final controller = pinned();
+      final work = Completer<int>();
+
+      final result = controller.promise(
+        work.future,
+        loading: const ToastContent('Uploading…'),
+        success: (value) => ToastContent('Uploaded $value files'),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+
+      expect(stateOf(controller).title, 'Uploading…');
+      expect(stateOf(controller).isLoading, isTrue);
+      expect(toastsOf(controller).single.remaining, isNull, reason: 'no timer');
+
+      work.complete(3);
+      expect(await result, 3);
+
+      expect(toastsOf(controller), hasLength(1), reason: 'the same toast');
+      expect(stateOf(controller).title, 'Uploaded 3 files');
+      expect(stateOf(controller).isLoading, isFalse);
+    });
+
+    test('failure replaces it too, and rethrows the future’s own error with '
+        'its stack', () async {
+      final controller = pinned();
+      final work = Completer<int>();
+      final thrown = StateError('no connection');
+
+      final result = controller.promise(
+        work.future,
+        loading: const ToastContent('Uploading…'),
+        success: (value) => ToastContent('Uploaded $value'),
+        error: (e) => ToastContent('Failed', description: '$e'),
+      );
+
+      work.completeError(thrown, StackTrace.fromString('the original trace'));
+      final caught = await result.then<Object?>(
+        (_) => null,
+        onError: (Object e, StackTrace s) => [e, '$s'],
+      );
+      expect((caught! as List)[0], same(thrown), reason: 'the future’s own');
+      expect((caught as List)[1], 'the original trace', reason: 'its stack');
+
+      expect(toastsOf(controller), hasLength(1));
+      expect(stateOf(controller).title, 'Failed');
+      expect(stateOf(controller).description, 'Bad state: no connection');
+    });
+
+    test('promise(id:) takes over a toast already on screen, keeping its '
+        'place', () async {
+      final controller = pinned();
+      final id = controller.show('Checking credentials…', isLoading: true);
+      controller.update(id, title: 'Opening the session…');
+      controller.show('Newer');
+      final record = toastsOf(controller)[1];
+
+      final work = Completer<void>();
+      final result = controller.promise(
+        work.future,
+        id: id,
+        loading: const ToastContent('Connecting…'),
+        success: (_) => const ToastContent('Connected'),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+
+      expect(toastsOf(controller), hasLength(2), reason: 'no second toast');
+      expect(toastsOf(controller)[1], same(record), reason: 'its place kept');
+      expect(record.state.title, 'Connecting…');
+
+      work.complete();
+      await result;
+      expect(toastsOf(controller)[1], same(record));
+      expect(record.state.title, 'Connected');
+    });
+
+    test('a dismissed loading toast still gets its result, as a new '
+        'toast', () async {
+      final controller = pinned();
+      const id = ToastId('upload');
+      final work = Completer<void>();
+      final result = controller.promise(
+        work.future,
+        id: id,
+        loading: const ToastContent('Uploading…'),
+        success: (_) => const ToastContent('Uploaded'),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+      final loadingRecord = toastsOf(controller).single;
+
+      controller.dismiss(id);
+      expect(toastsOf(controller), isEmpty, reason: 'the user swept it away');
+
+      work.complete();
+      await result;
+
+      expect(toastsOf(controller), hasLength(1));
+      expect(stateOf(controller).title, 'Uploaded');
+      expect(
+        toastsOf(controller).single,
+        isNot(same(loadingRecord)),
+        reason: 'a new toast, not the dismissed one brought back',
+      );
+    });
+
+    test('two promises at once do not touch each other', () async {
+      final controller = pinned();
+      final first = Completer<String>();
+      final second = Completer<String>();
+
+      final a = controller.promise(
+        first.future,
+        loading: const ToastContent('First…'),
+        success: (v) => ToastContent('First $v'),
+        error: (e) => const ToastContent('First failed'),
+      );
+      final b = controller.promise(
+        second.future,
+        loading: const ToastContent('Second…'),
+        success: (v) => ToastContent('Second $v'),
+        error: (e) => const ToastContent('Second failed'),
+      );
+      expect(toastsOf(controller), hasLength(2));
+
+      second.complete('b');
+      expect(await b, 'b');
+      expect(
+        titles(controller),
+        ['Second b', 'First…'],
+        reason: 'newest first; the other is untouched and still loading',
+      );
+
+      first.complete('a');
+      expect(await a, 'a');
+      expect(titles(controller), ['Second b', 'First a']);
+    });
+
+    test('the result counts down from its own duration', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final work = Completer<void>();
+        controller.promise(
+          work.future,
+          loading: const ToastContent('Uploading…'),
+          success: (_) =>
+              const ToastContent('Uploaded', duration: Duration(seconds: 10)),
+          error: (e) => ToastContent('Failed: $e'),
+        );
+        async.elapse(const Duration(seconds: 30));
+        expect(toastsOf(controller), hasLength(1), reason: 'still loading');
+
+        work.complete();
+        async.flushMicrotasks();
+        expect(
+          toastsOf(controller).single.remaining,
+          const Duration(seconds: 10),
+        );
+
+        async.elapse(const Duration(seconds: 11));
+        expect(toastsOf(controller), isEmpty);
+        controller.dispose();
+      });
+    });
+
+    test('a duration on the loading content asserts, since it is ignored', () {
+      final controller = SonnerController();
+      addTearDown(controller.dispose);
+      expect(
+        () => controller.promise(
+          Future<void>.value(),
+          loading: const ToastContent('Up', duration: Duration(seconds: 4)),
+          success: (_) => const ToastContent('Done'),
+          error: (e) => ToastContent('Failed: $e'),
+        ),
+        throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('a success callback that throws is reported, and the value still '
+        'reaches the caller', () async {
+      final controller = pinned();
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+
+      final value = await controller.promise(
+        Future<int>.value(7),
+        loading: const ToastContent('Uploading…'),
+        success: (_) => throw StateError('a bug in the caller'),
+        error: (e) => ToastContent('Failed: $e'),
+      );
+
+      expect(value, 7, reason: 'the caller’s work is not the toast’s to lose');
+      expect(reported, hasLength(1));
+      expect(reported.single.library, 'just_sonner');
+      expect(reported.single.exception, isStateError);
     });
   });
 

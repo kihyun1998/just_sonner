@@ -102,6 +102,10 @@ class _PanelState extends State<_Panel> {
 
   Timer? _progress;
 
+  /// Names the toasts the promise buttons drive, since `promise` returns the
+  /// future rather than an id.
+  int _promises = 0;
+
   SonnerController get _toast => widget.controller;
 
   @override
@@ -143,6 +147,35 @@ class _PanelState extends State<_Panel> {
     );
     _shown.add(shown);
     return shown;
+  }
+
+  /// Drives one `promise` and keeps its toast reachable from "Dismiss the
+  /// newest".
+  ///
+  /// `promise` returns the future's own outcome, so the error it rethrows is
+  /// this panel's to handle — an unhandled one would reach the app, which is
+  /// the point of the rule rather than a wrinkle in it. It also returns no id,
+  /// so the panel names the toast itself.
+  void _promise<T>(
+    Future<T> future, {
+    required ToastContent loading,
+    required ToastContent Function(T value) success,
+    required ToastContent Function(Object error) error,
+    ToastId? id,
+  }) {
+    final at = id ?? ToastId('promise ${_promises++}');
+    _shown.add(at);
+    unawaited(
+      _toast
+          .promise(
+            future,
+            id: at,
+            loading: loading,
+            success: success,
+            error: error,
+          )
+          .then<void>((_) {}, onError: (Object _) {}),
+    );
   }
 
   /// Dismisses the newest toast still on screen.
@@ -404,6 +437,96 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'promise',
+      issue: 46,
+      note:
+          'One toast for the whole arc: loading, then the result. The future’s '
+          'own value or error goes back to the caller untouched — nothing the '
+          'toast does can change what your await sees, so a button that drives '
+          'one has to handle the error itself.',
+      children: [
+        _Button('Loading, then done', () {
+          _promise(
+            Future.delayed(const Duration(seconds: 2), () => 3),
+            loading: const ToastContent(
+              'Uploading…',
+              description: 'No timer while it works.',
+            ),
+            success: (value) => ToastContent(
+              'Uploaded $value files',
+              description: 'Now it counts down.',
+              leading: const Icon(Icons.check_circle_outline, size: 20),
+            ),
+            error: (e) => ToastContent('Upload failed', description: '$e'),
+          );
+        }),
+        _Button('Loading, then failed', () {
+          _promise(
+            Future<int>.delayed(
+              const Duration(seconds: 2),
+              () => throw Exception('connection refused'),
+            ),
+            loading: const ToastContent('Connecting…'),
+            success: (value) => const ToastContent('Connected'),
+            error: (e) => ToastContent(
+              'Could not connect',
+              description: '$e',
+              leading: const Icon(Icons.error_outline, size: 20),
+            ),
+          );
+        }),
+        _Button('Two at once', () {
+          _promise(
+            Future.delayed(const Duration(seconds: 2), () => 'fast'),
+            loading: const ToastContent('Fast one…'),
+            success: (value) => ToastContent('Done: $value'),
+            error: (e) => ToastContent('Failed: $e'),
+          );
+          _promise(
+            Future.delayed(const Duration(seconds: 5), () => 'slow'),
+            loading: const ToastContent('Slow one…'),
+            success: (value) => ToastContent('Done: $value'),
+            error: (e) => ToastContent('Failed: $e'),
+          );
+        }),
+        _Button('Hand a running toast to promise', () {
+          final id = _show('Checking credentials…', isLoading: true);
+          Timer(const Duration(seconds: 2), () {
+            if (!mounted) return;
+            _toast.update(id, title: 'Opening the session…');
+          });
+          Timer(const Duration(seconds: 4), () {
+            if (!mounted) return;
+            _promise(
+              Future.delayed(const Duration(seconds: 2), () {}),
+              id: id,
+              loading: const ToastContent('Connecting…'),
+              success: (_) => const ToastContent(
+                'Connected',
+                leading: Icon(Icons.check_circle_outline, size: 20),
+              ),
+              error: (e) => ToastContent('Failed', description: '$e'),
+            );
+          });
+        }),
+        _Button('Dismiss it while it works', () {
+          _promise(
+            Future.delayed(const Duration(seconds: 3), () => 1),
+            loading: const ToastContent(
+              'Dismiss me before this finishes',
+              description: 'Press “Dismiss the newest”.',
+            ),
+            success: (value) => const ToastContent(
+              'It arrived anyway',
+              description:
+                  'A new toast: you swept away the progress, not this.',
+            ),
+            error: (e) => ToastContent('Failed: $e'),
+          );
+        }),
+      ],
+    ),
+    _Section(
       title: 'Update and replace',
       issue: 21,
       note:
@@ -495,7 +618,6 @@ class _PanelState extends State<_Panel> {
       title: 'Not built yet',
       note: 'Each of these gets its own section here as it lands.',
       children: [
-        _Missing(46, 'promise, and ToastContent'),
         _Missing(25, 'The action slot, the close button, and dismissible'),
         _Missing(26, 'Swipe a toast away'),
         _Missing(27, 'Replace the look with a builder, and the flash adapter'),
