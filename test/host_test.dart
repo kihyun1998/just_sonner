@@ -3044,6 +3044,29 @@ void main() {
     expect(taps, 1);
   });
 
+  testWidgets(
+    'swapping back to a controller while its toasts exit keeps them',
+    (tester) async {
+      final other = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero),
+      );
+      addTearDown(other.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      final kept = controller.show('Kept');
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(app(controller: other));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pumpWidget(app(controller: controller));
+      expect(find.text('Kept'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('Kept'), findsOneWidget);
+
+      controller.dismiss(kept);
+      await tester.pumpAndSettle();
+      expect(find.text('Kept'), findsNothing);
+    },
+  );
+
   testWidgets('a host handed a different controller follows it', (
     tester,
   ) async {

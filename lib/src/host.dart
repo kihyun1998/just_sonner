@@ -193,7 +193,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final existing = {for (final slot in _slots) slot.record: slot};
     final next = [
       for (final record in toastsOf(_controller))
-        existing.remove(record) ?? _enter(record),
+        _reuseOrEnter(record, existing),
     ];
 
     // Walk the old order backwards, so each exiting slot goes in front of the
@@ -215,6 +215,23 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
   }
 
+  _Slot _reuseOrEnter(ToastRecord record, Map<ToastRecord, _Slot> existing) {
+    final slot = existing.remove(record);
+    if (slot == null) return _enter(record);
+    if (slot.exiting) _resume(slot);
+    return slot;
+  }
+
+  void _resume(_Slot slot) {
+    slot.exiting = false;
+    final onExit = slot.onExit;
+    if (onExit != null) {
+      slot.controller.removeStatusListener(onExit);
+      slot.onExit = null;
+    }
+    slot.controller.forward();
+  }
+
   _Slot _enter(ToastRecord record) {
     final controller = AnimationController(
       vsync: this,
@@ -232,12 +249,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// to, then removes the slot.
   void _exit(_Slot slot) {
     slot.exiting = true;
+    late final AnimationStatusListener onExit;
+    onExit = (status) {
+      if (status != AnimationStatus.dismissed) return;
+      slot.controller.removeStatusListener(onExit);
+      slot.onExit = null;
+      setState(() => _slots.remove(slot));
+      slot.dispose();
+    };
+    slot.onExit = onExit;
     slot.controller
-      ..addStatusListener((status) {
-        if (status != AnimationStatus.dismissed) return;
-        setState(() => _slots.remove(slot));
-        slot.dispose();
-      })
+      ..addStatusListener(onExit)
       ..animateBack(0, duration: _exitDuration);
   }
 
@@ -482,6 +504,8 @@ final class _Slot implements ToastView {
   /// Whether the controller has let go of this toast and its exit has started.
   bool exiting = false;
 
+  AnimationStatusListener? onExit;
+
   /// How many toasts sit in front of this one, each counted by its presence.
   /// Frozen once it is [exiting], so the toasts moving around it do not carry
   /// it along.
@@ -626,6 +650,8 @@ final class _Slot implements ToastView {
       _heldAt = null;
       releaseTimers(owner, this);
     }
+    final onExit = this.onExit;
+    if (onExit != null) controller.removeStatusListener(onExit);
     if (!_removed.isCompleted) _removed.complete();
     presence.dispose();
     controller.dispose();
