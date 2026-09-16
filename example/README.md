@@ -26,6 +26,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Mixed heights** (#19, #45) — press one, then the other. A toast behind the front is drawn at the
   front's height, and draws no content while it is covered: the deck is a pile of cards with only
   the front one written on. Hovering fans them out and every toast reads again.
+- **promise** (#46) — one toast for the whole arc: loading, then the result. The future’s own
+  value or error goes back to the caller untouched, so a button that drives one handles the error
+  itself. Dismiss the loading toast mid-flight and the result still arrives, as a new toast.
 - **Update and replace** (#21) — both keep the toast's place and restart its countdown. Update
   patches the fields passed; replace swaps the content whole, so a description it is not given
   disappears. "Update in a loop" shows a toast staying up while updates keep arriving.

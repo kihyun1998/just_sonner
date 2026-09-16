@@ -248,6 +248,13 @@ Also:
 - `promise` shows `loading` immediately (replacing the toast at `id` if one is on screen), then
   replaces it with `success(value)` or `error(error)`; the future's own result or error is returned
   unchanged to the caller. `duration` on the `loading` content is ignored (asserted in debug).
+- **Nothing the toast does changes what the caller gets.** A state that cannot be shown — no
+  navigator to draw in (§5), a disposed controller, or a `success` / `error` callback that throws —
+  goes to `FlutterError.reportError` and the future's outcome still arrives. Without that rule a
+  mounting mistake would surface in debug as a `StateError` in place of the caller's own result, or
+  throw past it: §5's assert exists to tell a developer about the toast, not to take their work
+  away. The id is taken before the first state is shown, so a result still has an id to land on
+  when the loading state could not be drawn.
 - A multi-step flow holds the id:
   `final id = toast.show('Checking credentials…', isLoading: true)`, then
   `toast.update(id, title: 'Opening the session…')`, then `toast.promise(open(), id: id, …)`.
@@ -544,8 +551,13 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - a replace resets an unset `duration` to `config.duration`
 - `show(id:)` after dismissal creates a new toast with no leaked fields
 - `update` and replace keep the toast's record, so the host keeps its slot
-- `promise` success and failure both replace the same id, each with its own content, and return the future's own outcome
-- `promise(id:)` takes over a toast already on screen
+- `promise` success and failure both replace the same id, each with its own content, and return the
+  future's own outcome — the error with its own stack
+- `promise(id:)` takes over a toast already on screen, keeping its place in the deck
+- two promises at once do not touch each other
+- the result counts down from its own content's duration, and a duration on the loading content
+  asserts
+- a `success` callback that throws is reported and the value still reaches the caller
 - timers pause on hover, drag and lifecycle; resume with the remaining time, never running a toast
   short; resume only once every holder has let go
 - a single toast pauses under the pointer, and `expandByDefault` alone does not pause
@@ -607,6 +619,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   when `update(id, isLoading: false)` lands, with no second call
 - `dismissible: true` on a loading toast leaves it swipeable
 - a `promise` whose loading toast was dismissed still delivers its result, as a new toast
+- each `promise` state raises the toasts, as any `show` does
+- a `promise` whose states cannot be drawn at all reports each one and still hands the future back
 - `closeButton` on a toast wins over the config; `dismissible: false` disables swipe and the close
   button but not `dismiss(id)`
 
@@ -653,6 +667,7 @@ outside v0.1 is in §2's non-goals.
 | ~~Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without~~ | maintainer | **Superseded**: reversed by the maintainer (row below). Its picture had new toasts waiting behind a full window, which the newest-first deck does not do |
 | Toasts beyond `visibleToasts` count down like the rest; there is no `backlogDuration` | maintainer | reversed while working #23, on an adversarial pass with a simulation of the controller's tick (100 ms, a skip on joining, newest first). The row above was decided on a picture where new toasts wait behind a full window; on this deck every toast reaches the window at `show`, and the toasts behind are older ones already seen. Taken literally it cleared a burst of 10 in 5.3 s rather than 2, and gave a fourth toast on a full deck 400 ms. Shown alongside: waiting only for toasts never yet in the window, a first-in-first-out window (a new toast hidden for 3 s behind three 4 s ones), and waiting with no short duration (16.4 s for the burst). Chosen with sonner's result in view — 7 of a burst of 10 never drawn — on the premise, also the maintainer's, that hovering will fan every toast out into a scrollable list, which is not specified yet. Until #41 drew every toast under the pointer, a hidden toast whose time ran out left with no way to see it. Hovering already pauses every timer (§7) |
 | A covered toast draws no content, and the default look applies it to itself | maintainer | found by pressing the example app (#45): for the 400 ms a short toast takes to enter, the taller one behind it painted title and description at full opacity under a front still at 0.297, and its description was sliced by the cut to the front's height — two sets of text on top of each other. sonner does not have this because it fades the children of a collapsed non-front styled toast to zero. §6's old wording left the decision to a builder, but `ToastView` gave a builder nothing to decide with, so nothing ever faded. The fraction is the coverage the deck's layout already computes, so it eases with the enter, the exit and collapse ↔ expand for free, and the card is left alone so the deck still reads as a pile |
+| A `promise` state that cannot be shown is reported, never thrown at the caller | maintainer | raised against #24 before it was split: §5 makes a `show` with no built navigator throw a `StateError` in debug, and every `promise` state goes through `show`, so in debug a mounting mistake would replace the caller's own result or throw past it. The assert is there to tell a developer the toasts are not mounted — a different job from the caller's future, which is their work and not the toast's to lose. `FlutterError.reportError` keeps it loud in debug without taking the control flow, and a `success` or `error` callback that throws is treated the same way rather than getting its own rule |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The tick is started again when a toast is shown in a different `Zone` from the one the running tick was created in | maintainer | a `Timer` is bound to its zone, and the exported `toast` outlives test zones: measured while working #18, a toast left counting by one test kept `_ticker` pointing at a timer in that test's finished fake-time zone, and every later test's toasts silently never expired. Shown against documenting "clean up inside the test body" instead, which leaves the failure silent. Only a zone change restarts it — restarting on every `show` would let a burst of toasts shown faster than one tick hold every countdown back. **Not decided**: whether the tick should move to the host, as `SnackBar`'s timer lives in `ScaffoldMessengerState`; §7 keeps it on the controller |
 | A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |
