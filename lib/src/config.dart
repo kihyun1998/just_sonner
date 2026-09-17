@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
+import 'toast_view.dart' show ToastBuilder;
+
 /// Where on the screen the toasts sit.
 enum SonnerPosition {
   topLeft,
@@ -51,6 +53,7 @@ class SonnerConfig {
     this.leadingSize = 20,
     this.closeButton = false,
     this.swipeDirections,
+    this.builder,
   });
 
   final SonnerPosition position;
@@ -106,6 +109,10 @@ class SonnerConfig {
   Set<SwipeDirection> get swipeDirectionsNow =>
       swipeDirections ?? position.swipeDirections;
 
+  /// What draws every toast that has no builder of its own, in place of the
+  /// default look, or null for the default look.
+  final ToastBuilder? builder;
+
   /// The side of the leading slot's box. The box is fixed at this size, so a
   /// look that imposes a minimum width cannot stretch the indicator into an
   /// ellipse, and a toast with a slot lines its title up with every other.
@@ -113,8 +120,9 @@ class SonnerConfig {
 
   /// A copy with the fields given changed.
   ///
-  /// [swipeDirections] is given as a function, since null is a value it can
-  /// take: `copyWith(swipeDirections: () => null)` follows the position again.
+  /// [swipeDirections] and [builder] are given as functions, since null is a
+  /// value each can take: `copyWith(swipeDirections: () => null)` follows the
+  /// position again, and `copyWith(builder: () => null)` the default look.
   SonnerConfig copyWith({
     SonnerPosition? position,
     double? width,
@@ -127,6 +135,7 @@ class SonnerConfig {
     double? leadingSize,
     bool? closeButton,
     ValueGetter<Set<SwipeDirection>?>? swipeDirections,
+    ValueGetter<ToastBuilder?>? builder,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -141,6 +150,7 @@ class SonnerConfig {
     swipeDirections: swipeDirections == null
         ? this.swipeDirections
         : swipeDirections(),
+    builder: builder == null ? this.builder : builder(),
   );
 
   @override
@@ -156,7 +166,8 @@ class SonnerConfig {
       other.loadingIndicator == loadingIndicator &&
       other.leadingSize == leadingSize &&
       other.closeButton == closeButton &&
-      setEquals(other.swipeDirections, swipeDirections);
+      setEquals(other.swipeDirections, swipeDirections) &&
+      other.builder == builder;
 
   @override
   int get hashCode => Object.hash(
@@ -171,5 +182,6 @@ class SonnerConfig {
     leadingSize,
     closeButton,
     swipeDirections == null ? null : Object.hashAllUnordered(swipeDirections!),
+    builder,
   );
 }

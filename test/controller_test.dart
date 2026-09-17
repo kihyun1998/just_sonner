@@ -842,6 +842,34 @@ void main() {
       );
       expect(toastsOf(controller).single.state.action, same(noop));
     });
+
+    test('update changes the builder and keeps it when not passed, a replace '
+        'clears it, and a promise state carries its own', () async {
+      Widget first(BuildContext context, ToastView toast) => const Text('1');
+      Widget second(BuildContext context, ToastView toast) => const Text('2');
+      final controller = pinned();
+      const id = ToastId('connection');
+      controller.show('Checking', builder: first, id: id);
+      final record = toastsOf(controller).single;
+      expect(record.state.builder, same(first));
+
+      controller.update(id, title: 'Opening');
+      expect(record.state.builder, same(first), reason: 'not passed, not lost');
+      controller.update(id, builder: second);
+      expect(record.state.builder, same(second));
+
+      controller.show('Connected', id: id);
+      expect(record.state.builder, isNull, reason: 'a replace clears it');
+
+      await controller.promise(
+        Future<void>.value(),
+        loading: ToastContent('Connecting', builder: first),
+        success: (_) => ToastContent('Connected', builder: second),
+        error: (e) => ToastContent('Failed: $e'),
+        id: id,
+      );
+      expect(record.state.builder, same(second));
+    });
   });
 
   group('update and replace', () {
@@ -1223,6 +1251,18 @@ void main() {
         {SwipeDirection.up, SwipeDirection.left},
         reason: 'following the position again',
       );
+    });
+
+    test('copyWith keeps builder unless given one, can put it back to the '
+        'default look, and a config with another builder is not equal', () {
+      Widget look(BuildContext context, ToastView toast) => const Text('look');
+      final set = SonnerConfig(builder: look);
+
+      expect(set.copyWith(gap: 20).builder, same(look), reason: 'kept');
+      expect(set.copyWith(), set, reason: 'the same builder is equal');
+      expect(const SonnerConfig().copyWith(builder: () => look).builder, look);
+      expect(set.copyWith(builder: () => null).builder, isNull);
+      expect(set == const SonnerConfig(), isFalse);
     });
 
     test('an equal config does not notify', () {

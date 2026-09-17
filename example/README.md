@@ -11,8 +11,8 @@ flutter run -d windows   # or -d linux
 ## How it is meant to be used
 
 The package is built one issue at a time, and each one is verified here before the next starts.
-Every section of the panel names the issue it came from, and the last section, **Not built yet**,
-lists the issues still to come. When one lands, it gets its own section here in the same change.
+Every section of the panel names the issue it came from. Every feature issue of v0.1 has its
+section now; a change to a behaviour changes its section in the same change.
 
 The harness is also where the values `docs/spec.md` §9 left provisional get settled by feel.
 
@@ -35,6 +35,13 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Action slot and close button** (#25) — the slot is yours and is handed the toast, so its widget
   decides whether pressing also dismisses; the X is the package's. `dismissible` governs both, and
   unset means "not while it loads" — watch the X appear the moment loading stops.
+- **Builder** (#27) — a builder replaces the whole look and is handed the toast, which still enters,
+  leaves, stacks and swipes on its own. Put three up and watch the ones behind: a builder reads
+  `covered` to draw no content under the front, as the default look does. The FlashBar buttons
+  come through `lib/flash_adapter.dart`, which keeps flash's own motion at rest. With
+  `dismissDirections: const []` the toast's swipe stays; with flash's default its swipe wins,
+  `dismissible: false` springs back rather than going, and a trackpad pan drags it rather than
+  scrolling the deck.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

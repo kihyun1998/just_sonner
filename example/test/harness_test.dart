@@ -1,3 +1,4 @@
+import 'package:flash/flash.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner_example/main.dart';
@@ -104,6 +105,28 @@ void main() {
     await tester.pump();
 
     expect(find.text('Drag me off the screen'), findsOneWidget);
+  });
+
+  testWidgets('the builder section puts a FlashBar up through the adapter', (
+    tester,
+  ) async {
+    await pumpHarness(tester);
+
+    final button = find.widgetWithText(
+      OutlinedButton,
+      'FlashBar, keeping the toast’s swipe',
+    );
+    await tester.ensureVisible(button);
+    await tester.pumpAndSettle();
+    await tester.tap(button);
+    await tester.pump();
+
+    expect(find.text('Saved through the adapter'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate((widget) => widget is FlashBar),
+      findsOneWidget,
+      reason: 'not the default look',
+    );
   });
 
   testWidgets('a config control is assigned, and the deck stays', (

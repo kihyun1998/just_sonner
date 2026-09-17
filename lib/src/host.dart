@@ -401,13 +401,21 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       vsync: this,
       duration: _enterDuration,
     );
-    return _Slot(
+    final slot = _Slot(
       record,
       controller..forward(),
       AnimationController(vsync: this),
       _Sprung(this),
       _controller,
     );
+    // A builder may take its toast out itself, flinging the animation to 0
+    // as flash's swipe does before it says anything.
+    controller.addStatusListener((status) {
+      if (status == AnimationStatus.dismissed && !slot.exiting) {
+        slot.owner.dismiss(record.id);
+      }
+    });
+    return slot;
   }
 
   /// Runs the exit over the full [_exitDuration] from wherever the enter got
@@ -427,6 +435,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       slot.dispose();
     };
     slot.onExit = onExit;
+    // A toast already at rest at 0 reports no change of status to wait for.
+    if (slot.controller.status == AnimationStatus.dismissed) {
+      onExit(AnimationStatus.dismissed);
+      return;
+    }
     slot.controller
       ..addStatusListener(onExit)
       ..animateBack(0, duration: _exitDuration);
@@ -662,6 +675,9 @@ final class _Slot implements ToastView {
   @override
   AnimationController get animation => controller;
 
+  @override
+  late final Animation<double> covered = ReverseAnimation(contentFade);
+
   /// The controller whose toast this is, for [dismiss] and [holdTimer].
   final SonnerController owner;
 
@@ -870,13 +886,19 @@ final class _Slot implements ToastView {
         liveRegion: true,
         child: ContentFade(
           duration: _fadeDuration,
-          child: DefaultToastLook(
-            key: ObjectKey(state),
-            toast: this,
-            config: config,
-            fade: contentFade,
-            pressable: pressable,
-          ),
+          child: switch (state.builder ?? config.builder) {
+            final builder? => Builder(
+              key: ValueKey((state, builder)),
+              builder: (context) => builder(context, this),
+            ),
+            null => DefaultToastLook(
+              key: ObjectKey(state),
+              toast: this,
+              config: config,
+              fade: contentFade,
+              pressable: pressable,
+            ),
+          },
         ),
       );
     }

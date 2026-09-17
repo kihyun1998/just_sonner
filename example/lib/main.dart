@@ -1,16 +1,18 @@
 import 'dart:async';
 
+import 'package:flash/flash.dart';
 import 'package:flutter/material.dart';
 import 'package:just_sonner/just_sonner.dart';
+
+import 'flash_adapter.dart';
 
 void main() => runApp(const ExampleApp());
 
 /// A desktop harness for just_sonner: one button per behaviour that exists, so
 /// each can be felt rather than only tested.
 ///
-/// It grows one section at a time, alongside the package — the "Not built yet"
-/// section lists what is still missing, and each entry becomes a section here
-/// as it lands.
+/// It grew one section at a time, alongside the package, and each section names
+/// the issue it came from.
 class ExampleApp extends StatefulWidget {
   const ExampleApp({super.key});
 
@@ -128,6 +130,7 @@ class _PanelState extends State<_Panel> {
     ToastSlot? action,
     bool? closeButton,
     ToastId? id,
+    ToastBuilder? builder,
   }) {
     final shown = _toast.show(
       title,
@@ -139,6 +142,7 @@ class _PanelState extends State<_Panel> {
       action: action,
       closeButton: closeButton,
       id: id,
+      builder: builder,
     );
     _shown.add(shown);
     return shown;
@@ -287,6 +291,52 @@ class _PanelState extends State<_Panel> {
       },
     ),
   );
+
+  /// A look of the panel's own: a dark card whose text the deck covers.
+  static Widget _ownLook(BuildContext context, ToastView toast) {
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.inverseSurface,
+      borderRadius: BorderRadius.circular(12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: FadeTransition(
+          opacity: ReverseAnimation(toast.covered),
+          child: Row(
+            children: [
+              Icon(
+                Icons.rocket_launch,
+                color: theme.colorScheme.onInverseSurface,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  toast.state.title,
+                  style: TextStyle(color: theme.colorScheme.onInverseSurface),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// A `FlashBar` through the adapter, its text faded by `covered`, with
+  /// flash's own swipe or the toast's.
+  static ToastBuilder _flashBar({required bool swipe}) => flashToast((
+    context,
+    controller,
+    toast,
+  ) {
+    final shown = ReverseAnimation(toast.covered);
+    return FlashBar(
+      controller: controller,
+      dismissDirections: swipe ? FlashDismissDirection.values : const [],
+      title: FadeTransition(opacity: shown, child: const Text('FlashBar')),
+      content: FadeTransition(opacity: shown, child: Text(toast.state.title)),
+    );
+  });
 
   List<Widget> _sections(SonnerConfig config) => [
     _Section(
@@ -686,6 +736,65 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'Builder',
+      issue: 27,
+      note:
+          'A builder replaces the whole look and is handed the toast. The toast '
+          'still enters, leaves, stacks and swipes on its own; the builder '
+          'reads `covered` to draw no content while the deck covers it, as the '
+          'default look does. A FlashBar comes through the flash adapter, '
+          'which keeps flash’s own motion at rest — give it '
+          '`dismissDirections: const []` to keep the toast’s swipe, or leave '
+          'flash’s and it wins, dismissible or not.',
+      children: [
+        _Button('A look of your own', () {
+          _show('Deployed', duration: Duration.zero, builder: _ownLook);
+        }),
+        _Button('Change its look in place', () {
+          final id = _show(
+            'Changing look',
+            duration: Duration.zero,
+            builder: _ownLook,
+          );
+          Timer(const Duration(seconds: 1), () {
+            if (mounted) _toast.update(id, builder: _flashBar(swipe: false));
+          });
+        }),
+        _Button(
+          config.builder == null
+              ? 'Every toast in your look (config.builder)'
+              : 'Back to the default look',
+          () => widget.onConfig(
+            config.copyWith(
+              builder: () => config.builder == null ? _ownLook : null,
+            ),
+          ),
+        ),
+        _Button('FlashBar, keeping the toast’s swipe', () {
+          _show(
+            'Saved through the adapter',
+            duration: Duration.zero,
+            builder: _flashBar(swipe: false),
+          );
+        }),
+        _Button('FlashBar with flash’s own swipe', () {
+          _show(
+            'Flash swipes this one',
+            duration: Duration.zero,
+            builder: _flashBar(swipe: true),
+          );
+        }),
+        _Button('FlashBar, dismissible: false', () {
+          _show(
+            'Springs back from any swipe',
+            duration: Duration.zero,
+            dismissible: false,
+            builder: _flashBar(swipe: true),
+          );
+        }),
+      ],
+    ),
+    _Section(
       title: 'Over a dialog',
       issue: 20,
       note:
@@ -770,13 +879,6 @@ class _PanelState extends State<_Panel> {
           onChanged: (value) =>
               widget.onConfig(config.copyWith(expandByDefault: value)),
         ),
-      ],
-    ),
-    const _Section(
-      title: 'Not built yet',
-      note: 'Each of these gets its own section here as it lands.',
-      children: [
-        _Missing(27, 'Replace the look with a builder, and the flash adapter'),
       ],
     ),
   ];
@@ -891,34 +993,4 @@ class _Dropdown<T> extends StatelessWidget {
       },
     ),
   );
-}
-
-class _Missing extends StatelessWidget {
-  const _Missing(this.issue, this.what);
-
-  final int issue;
-  final String what;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 36,
-            child: Text(
-              '#$issue',
-              style: theme.textTheme.labelMedium?.copyWith(
-                color: theme.colorScheme.outline,
-              ),
-            ),
-          ),
-          Expanded(child: Text(what, style: theme.textTheme.bodyMedium)),
-        ],
-      ),
-    );
-  }
 }

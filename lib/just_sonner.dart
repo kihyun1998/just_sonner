@@ -8,4 +8,4 @@ export 'src/host.dart' show SonnerHost;
 export 'src/toast_content.dart' show ToastContent;
 export 'src/toast_id.dart' show ToastId;
 export 'src/toast_state.dart' show ToastState;
-export 'src/toast_view.dart' show ToastSlot, ToastView;
+export 'src/toast_view.dart' show ToastBuilder, ToastSlot, ToastView;

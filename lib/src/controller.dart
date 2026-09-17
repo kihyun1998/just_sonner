@@ -138,6 +138,7 @@ class SonnerController extends ChangeNotifier {
     ToastSlot? action,
     bool? closeButton,
     ToastId? id,
+    ToastBuilder? builder,
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
@@ -167,6 +168,7 @@ class SonnerController extends ChangeNotifier {
       action: action,
       closeButton: closeButton,
       dismissible: dismissible,
+      builder: builder,
     );
     final lifetime = duration ?? config.duration;
     if (existing != null) {
@@ -210,6 +212,7 @@ class SonnerController extends ChangeNotifier {
     bool? dismissible,
     ToastSlot? action,
     bool? closeButton,
+    ToastBuilder? builder,
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
@@ -228,6 +231,7 @@ class SonnerController extends ChangeNotifier {
       action: action ?? state.action,
       closeButton: closeButton ?? state.closeButton,
       dismissible: dismissible ?? state.dismissible,
+      builder: builder ?? state.builder,
     );
     if (duration != null) record.duration = duration;
     _startCountdown(record);
@@ -301,6 +305,7 @@ class SonnerController extends ChangeNotifier {
         dismissible: state.dismissible,
         action: state.action,
         closeButton: state.closeButton,
+        builder: state.builder,
         isLoading: isLoading,
         // What makes the spec's ‘ignored’ true in release. In debug the
         // assert in [promise] stops the caller first, so no test reaches this
