@@ -689,8 +689,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - The speed is measured between the drag's own **pointer timestamps**, from the pointer going down
   to its last move. A drag that reports no time at all — no engine does, a test can — is decided on
   distance alone rather than on a division by zero.
-- `dismissible: false` disables swipe and the close button — the two ways a **user** dismisses a
-  toast. It does not affect `dismiss(id)` or `ToastView.dismiss()`, which the app, or a widget in
+- `dismissible: false` disables swipe and the close button, and keeps the toast out of what the
+  dismiss-all control dismisses (§6) — the three ways a **user** dismisses a toast. It does not affect `dismiss(id)` or `ToastView.dismiss()`, which the app, or a widget in
   the `action` slot, can always call.
 - **`dismissible` is `bool?`, and unset means `!isLoading`.** A loading toast cannot be swept away
   by default, and becomes dismissible on its own the moment it stops loading. An app that wants a
