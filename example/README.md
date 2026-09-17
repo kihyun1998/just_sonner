@@ -40,8 +40,8 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   `covered` to draw no content under the front, as the default look does. The FlashBar buttons
   come through `lib/flash_adapter.dart`, which keeps flash's own motion at rest. With
   `dismissDirections: const []` the toast's swipe stays; with flash's default its swipe wins,
-  `dismissible: false` springs back rather than going, and a trackpad pan drags it rather than
-  scrolling the deck.
+  `dismissible: false` springs back rather than going, and a trackpad pan on it never scrolls the
+  deck: one way it drags the toast away, the other does nothing.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

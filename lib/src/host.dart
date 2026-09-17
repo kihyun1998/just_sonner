@@ -696,7 +696,7 @@ final class _Slot implements ToastView {
 
   @override
   Future<void> dismiss() {
-    owner.dismiss(record.id);
+    dismissRecord(owner, record);
     return _removed.future;
   }
 

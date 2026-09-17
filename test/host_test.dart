@@ -2796,6 +2796,43 @@ void main() {
       },
     );
 
+    testWidgets('ToastView.dismiss on a dismissed toast leaves a new one at '
+        'its id standing, and completes once the old one has left', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      const id = ToastId('connection');
+      late ToastView old;
+      controller.show(
+        'Old',
+        id: id,
+        action: (context, t) {
+          old = t;
+          return const SizedBox();
+        },
+      );
+      await tester.pumpAndSettle();
+
+      controller.dismiss(id);
+      controller.show('New', id: id);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      var done = false;
+      unawaited(old.dismiss().then((_) => done = true));
+      await tester.pump();
+      expect(
+        toastsOf(controller).map((r) => r.state.title),
+        ['New'],
+        reason: 'the id is the new toast\'s now',
+      );
+      expect(done, isFalse, reason: 'the old one is still leaving');
+
+      await tester.pumpAndSettle();
+      expect(done, isTrue);
+      expect(find.text('Old'), findsNothing);
+      expect(find.text('New'), findsOneWidget);
+    });
+
     testWidgets('the slot is handed an animation that runs 0 to 1 on enter', (
       tester,
     ) async {

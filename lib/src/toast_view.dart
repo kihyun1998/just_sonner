@@ -29,6 +29,9 @@ abstract interface class ToastView {
   ///
   /// The future completes once the toast has left the tree, so an exit is over
   /// by the time it does. A toast already gone completes at once.
+  ///
+  /// It dismisses this toast and no other: on a toast already dismissed it
+  /// leaves a new toast shown at the same id standing.
   Future<void> dismiss();
 
   /// Pauses the timers until this toast is dismissed, updated or replaced, for

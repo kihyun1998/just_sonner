@@ -456,6 +456,13 @@ class SonnerController extends ChangeNotifier {
 List<ToastRecord> toastsOf(SonnerController controller) =>
     List.unmodifiable(controller._toasts);
 
+/// Dismisses [record] while it is on screen, and never a toast shown at its id
+/// since. For the host; not exported.
+void dismissRecord(SonnerController controller, ToastRecord record) {
+  if (!controller._toasts.any((it) => identical(it, record))) return;
+  controller.dismiss(record.id);
+}
+
 /// Pauses every timer of [controller] until [holder] lets go through
 /// [releaseTimers]. Holding twice with one holder holds once. For the host;
 /// not exported.
