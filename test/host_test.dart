@@ -7,7 +7,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
-import 'package:just_sonner/src/controller.dart' show toastsOf;
+import 'package:just_sonner/src/controller.dart' show timersPaused, toastsOf;
+import 'package:just_sonner/src/deck_stow.dart';
 import 'package:just_sonner/src/deck_dismiss_all.dart';
 import 'package:just_sonner/src/deck_scrollbar.dart';
 import 'package:just_sonner/src/default_look.dart' show DefaultToastLook;
@@ -2647,7 +2648,14 @@ void main() {
 
       testWidgets('with no cap, a pointer resting in the layer’s far margin '
           'stays over the deck as it scrolls to the end', (tester) async {
-        controller.config = controller.config.copyWith(deckCap: () => null);
+        controller.config = controller.config.copyWith(
+          deckCap: () => null,
+          // The margin itself, with no control of the deck's width resting in
+          // it: a wheel turned over a control does not reach the deck's
+          // scroll.
+          stowControl: () => null,
+          dismissAll: () => null,
+        );
         await tester.pumpWidget(app(controller: controller));
         await showMany(tester, controller, 12);
         final front = boxOf(tester, 'Toast 11').center;
@@ -2818,8 +2826,9 @@ void main() {
             deckCap: cap,
             scrollbar: scrollbar,
             expandByDefault: expandByDefault,
-            // The cap's own reach, without the control past it.
+            // The cap's own reach, without the controls past it.
             dismissAll: null,
+            stowControl: null,
           ),
         );
         addTearDown(controller.dispose);
@@ -3402,6 +3411,9 @@ void main() {
             deckCap: cap,
             scrollbar: null,
             dismissAll: dismissAll,
+            // This control on its own; the two together are pinned by the
+            // stow group.
+            stowControl: null,
           ),
         );
         addTearDown(controller.dispose);
@@ -5885,6 +5897,683 @@ void main() {
         expect(left.value, had, reason: 'frame $i of the exit');
       }
       await tester.pumpAndSettle();
+    });
+  });
+
+  group('the stowed deck', () {
+    const away = Offset(40, 40);
+
+    Rect boxOf(WidgetTester tester, String title) => tester.getRect(
+      find
+          .ancestor(of: find.text(title), matching: find.byType(Material))
+          .first,
+    );
+
+    Future<TestGesture> mouseAt(WidgetTester tester, Offset at) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: at - const Offset(1, 0));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(at);
+      await tester.pump();
+      return mouse;
+    }
+
+    SonnerController deckWith({
+      DeckStowControl? control,
+      DeckStowMotion motion = const DeckStowMotion(),
+      DeckStowHandle? handle,
+      DeckDismissAll? dismissAll,
+      SonnerPosition position = SonnerPosition.bottomRight,
+      Duration duration = Duration.zero,
+    }) {
+      final controller = SonnerController(
+        config: SonnerConfig(
+          duration: duration,
+          position: position,
+          scrollbar: null,
+          dismissAll: dismissAll,
+          stowControl: control,
+          stowMotion: motion,
+          stowHandle: handle,
+        ),
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    void showToasts(SonnerController controller, int count) {
+      for (var n = 0; n < count; n++) {
+        controller.show('Toast $n');
+      }
+    }
+
+    Future<void> settle(WidgetTester tester) async {
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    testWidgets('stowing takes the deck out of sight and lets go of the '
+        'pointer, and a pointer moving where it was holds nothing', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      await settle(tester);
+      final at = boxOf(tester, 'Toast 2').center;
+      final mouse = await mouseAt(tester, at);
+      await settle(tester);
+      expect(timersPaused(controller), isTrue, reason: 'the pointer holds it');
+
+      controller.stow();
+      expect(
+        timersPaused(controller),
+        isFalse,
+        reason: 'let go as it stows, not a frame later',
+      );
+      await tester.pump();
+      await settle(tester);
+      expect(find.text('Toast 2').hitTestable(), findsNothing);
+
+      await mouse.moveTo(at + const Offset(2, 2));
+      await settle(tester);
+      expect(timersPaused(controller), isFalse);
+      expect(find.text('Toast 2').hitTestable(), findsNothing);
+    });
+
+    /// Every label in the semantics tree as it is rendered, which is what a
+    /// screen reader reads — not the annotations the widgets carry.
+    Set<String> labels(WidgetTester tester) {
+      final found = <String>{};
+      void walk(SemanticsNode node) {
+        if (node.label.isNotEmpty) found.add(node.label);
+        node.visitChildren((child) {
+          walk(child);
+          return true;
+        });
+      }
+
+      walk(tester.binding.rootElement!.renderObject!.debugSemantics!);
+      return found;
+    }
+
+    testWidgets('a stowed deck is out of the semantics tree', (tester) async {
+      final semantics = tester.ensureSemantics();
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      expect(labels(tester), contains('Toast 1'));
+
+      controller.stow();
+      await settle(tester);
+      expect(labels(tester), isNot(contains('Toast 1')));
+
+      controller.unstow();
+      await settle(tester);
+      expect(labels(tester), contains('Toast 1'));
+      semantics.dispose();
+    });
+
+    testWidgets('a new toast brings the deck back with the toasts it kept', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      controller.stow();
+      await settle(tester);
+
+      controller.show('New');
+      await settle(tester);
+      expect(controller.stowed, isFalse);
+      expect(find.text('New').hitTestable(), findsOneWidget);
+      expect(toastsOf(controller), hasLength(3));
+      final mouse = await mouseAt(tester, boxOf(tester, 'New').center);
+      await settle(tester);
+      expect(find.text('Toast 0').hitTestable(), findsOneWidget);
+      await mouse.moveTo(away);
+      await settle(tester);
+    });
+
+    testWidgets('the last toast timing out while stowed leaves the deck out '
+        'of sight, and the next toast draws', (tester) async {
+      final controller = deckWith(duration: const Duration(seconds: 3));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Only');
+      await settle(tester);
+      controller.stow();
+      await settle(tester);
+
+      // Stopping inside the 200 ms exit, while the toast is still drawn.
+      await tester.pump(const Duration(milliseconds: 1900));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(toastsOf(controller), isEmpty, reason: 'it timed out');
+      expect(controller.stowed, isFalse, reason: 'nothing left to stow');
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Only'), findsOneWidget, reason: 'still leaving');
+      expect(
+        boxOf(tester, 'Only').top,
+        greaterThan(600),
+        reason: 'its exit runs past the edge, out of sight',
+      );
+
+      await tester.pump(const Duration(milliseconds: 300));
+      controller.show('Next');
+      await settle(tester);
+      expect(find.text('Next').hitTestable(), findsOneWidget);
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a swipe under way when the deck is stowed is called off, and '
+        'the toast is where it was when the deck comes back', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      final box = boxOf(tester, 'Toast 1');
+
+      final mouse = await tester.startGesture(box.center);
+      await mouse.moveBy(const Offset(200, 0));
+      await tester.pump();
+      expect(boxOf(tester, 'Toast 1').left, greaterThan(box.left + 100));
+
+      controller.stow();
+      await settle(tester);
+      await mouse.up();
+      await settle(tester);
+      expect(
+        toastsOf(controller),
+        hasLength(2),
+        reason: 'a drag the deck left behind does not dismiss',
+      );
+
+      controller.unstow();
+      await settle(tester);
+      expect(boxOf(tester, 'Toast 1').left, moreOrLessEquals(box.left));
+      expect(
+        find.text('Toast 0').hitTestable(),
+        findsNothing,
+        reason: 'the press it was stowed under holds it open no longer',
+      );
+    });
+
+    testWidgets('a press held through a stow does not hold the deck open '
+        'when it comes back', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      final mouse = await tester.startGesture(boxOf(tester, 'Toast 1').center);
+      await tester.pump();
+
+      controller.stow();
+      await settle(tester);
+      controller.unstow();
+      await settle(tester);
+      expect(
+        find.text('Toast 0').hitTestable(),
+        findsNothing,
+        reason: 'collapsed, though the button is still down',
+      );
+
+      await mouse.up();
+      await settle(tester);
+    });
+
+    for (final (look, moves, scales) in [
+      (DeckStowMotionLook.slide, true, false),
+      (DeckStowMotionLook.fade, false, false),
+      (DeckStowMotionLook.shrink, false, true),
+    ]) {
+      testWidgets('$look takes the deck out of sight and brings it back', (
+        tester,
+      ) async {
+        final controller = deckWith(motion: DeckStowMotion(look: look));
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 2);
+        await settle(tester);
+        final resting = boxOf(tester, 'Toast 1');
+
+        controller.stow();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 150));
+        final moving = boxOf(tester, 'Toast 1');
+        expect(
+          moving.bottom > resting.bottom + 20,
+          moves,
+          reason: 'carried toward the edge',
+        );
+        expect(moving.width < resting.width - 4, scales, reason: 'shrank');
+        final fade = tester
+            .widgetList<Opacity>(
+              find.descendant(
+                of: find.byType(DeckStowMotionBox),
+                matching: find.byType(Opacity),
+              ),
+            )
+            .first;
+        expect(fade.opacity, lessThan(1), reason: 'fading either way');
+
+        await settle(tester);
+        expect(find.text('Toast 1').hitTestable(), findsNothing);
+
+        controller.unstow();
+        await settle(tester);
+        expect(find.text('Toast 1').hitTestable(), findsOneWidget);
+        expect(boxOf(tester, 'Toast 1'), resting);
+      });
+    }
+
+    testWidgets('a motion builder is handed the deck and an animation that '
+        'runs to 1 and back, and the deck still takes no pointer', (
+      tester,
+    ) async {
+      final values = <double>[];
+      final controller = deckWith(
+        motion: DeckStowMotion(
+          builder: (context, view, deck) {
+            values.add(view.stowed.value);
+            expect(view.position, SonnerPosition.bottomRight);
+            return Opacity(opacity: 1 - view.stowed.value * 0.5, child: deck);
+          },
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 1);
+      await settle(tester);
+      expect(values.last, 0);
+
+      controller.stow();
+      await settle(tester);
+      expect(values.last, 1);
+      expect(
+        find.text('Toast 0').hitTestable(),
+        findsNothing,
+        reason: 'the host, not the builder, keeps the pointer off',
+      );
+
+      controller.unstow();
+      await settle(tester);
+      expect(values.last, 0);
+      expect(find.text('Toast 0').hitTestable(), findsOneWidget);
+    });
+
+    testWidgets('the control shows while the pointer holds an expanded deck '
+        'with a toast on it, even one the user may not dismiss', (
+      tester,
+    ) async {
+      final controller = deckWith(control: const DeckStowControl());
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saving', isLoading: true);
+      await settle(tester);
+      expect(find.text('Hide'), findsNothing, reason: 'collapsed');
+
+      final mouse = await mouseAt(tester, boxOf(tester, 'Saving').center);
+      await settle(tester);
+      expect(
+        find.text('Hide'),
+        findsOneWidget,
+        reason: 'one loading toast is reason enough',
+      );
+      final semantics = tester.ensureSemantics();
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.text('Hide')),
+        isSemantics(isButton: true, label: 'Hide'),
+      );
+      semantics.dispose();
+
+      await tester.tap(find.text('Hide'));
+      await settle(tester);
+      expect(controller.stowed, isTrue);
+      expect(find.text('Hide'), findsNothing, reason: 'stowed');
+
+      controller.unstow();
+      await settle(tester);
+      await mouse.moveTo(away);
+      await settle(tester);
+      expect(find.text('Hide'), findsNothing, reason: 'collapsed again');
+
+      await mouse.moveTo(boxOf(tester, 'Saving').center);
+      await settle(tester);
+      expect(find.text('Hide'), findsOneWidget);
+      controller.config = controller.config.copyWith(stowControl: () => null);
+      await settle(tester);
+      expect(find.text('Hide'), findsNothing, reason: 'none configured');
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.topLeft,
+    ]) {
+      testWidgets('the control sits a gap past the deck’s far end, on the '
+          'position’s side, $position', (tester) async {
+        final controller = deckWith(
+          control: const DeckStowControl(),
+          position: position,
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+        await settle(tester);
+
+        final control = tester.getRect(find.text('Hide'));
+        final deck = boxOf(tester, 'Toast 0');
+        if (position.isTop) {
+          expect(control.top, greaterThan(boxOf(tester, 'Toast 2').bottom));
+          expect(control.left, closeTo(deck.left, 14));
+        } else {
+          expect(control.bottom, lessThan(boxOf(tester, 'Toast 2').top));
+          expect(control.right, closeTo(deck.right, 14));
+        }
+      });
+    }
+
+    testWidgets('a header on its own is a bar the deck’s width, reading the '
+        'count and the label', (tester) async {
+      final controller = deckWith(
+        control: const DeckStowControl(look: DeckStowLook.header),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+      await settle(tester);
+
+      expect(find.text('3 notifications'), findsOneWidget);
+      expect(
+        tester.getRect(find.byType(DeckFarEndBar)).width,
+        moreOrLessEquals(boxOf(tester, 'Toast 2').width),
+      );
+
+      controller.config = controller.config.copyWith(
+        stowControl: () => DeckStowControl(
+          look: DeckStowLook.header,
+          label: '숨기기',
+          countLabel: (count) => '알림 $count개',
+        ),
+      );
+      await settle(tester);
+      expect(find.text('알림 3개'), findsOneWidget);
+      await tester.tap(find.text('숨기기'));
+      await settle(tester);
+      expect(controller.stowed, isTrue);
+    });
+
+    testWidgets('an icon draws a chevron at the other end of the deck’s '
+        'width, labelled for semantics', (tester) async {
+      final controller = deckWith(
+        control: const DeckStowControl(look: DeckStowLook.icon),
+        dismissAll: const DeckDismissAll(),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+      await settle(tester);
+
+      final chevron = find.byIcon(Icons.keyboard_arrow_down);
+      expect(chevron, findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      await tester.pump();
+      expect(
+        tester.getSemantics(chevron),
+        isSemantics(isButton: true, label: 'Hide'),
+      );
+      semantics.dispose();
+      final deck = boxOf(tester, 'Toast 0');
+      expect(tester.getRect(chevron).left, closeTo(deck.left, 14));
+      expect(
+        tester.getRect(find.text('Clear all')).right,
+        closeTo(deck.right, 14),
+      );
+
+      await tester.tap(chevron);
+      await settle(tester);
+      expect(controller.stowed, isTrue);
+    });
+
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.bottomLeft,
+    ]) {
+      testWidgets('two pills sit side by side, with the dismiss-all control '
+          'on the deck’s own side, $position', (tester) async {
+        final controller = deckWith(
+          control: const DeckStowControl(),
+          dismissAll: const DeckDismissAll(),
+          position: position,
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+        await settle(tester);
+
+        final hide = tester.getRect(find.text('Hide'));
+        final clear = tester.getRect(find.text('Clear all'));
+        final deck = boxOf(tester, 'Toast 0');
+        if (position == SonnerPosition.bottomLeft) {
+          expect(clear.left, closeTo(deck.left, 14));
+          expect(hide.left, greaterThan(clear.right));
+        } else {
+          expect(clear.right, closeTo(deck.right, 14));
+          expect(hide.right, lessThan(clear.left));
+        }
+        expect(find.byType(DeckFarEndBar), findsNothing, reason: 'no bar');
+      });
+    }
+
+    for (final (name, control, dismissAll, count) in [
+      (
+        'the stow control asks for it',
+        const DeckStowControl(look: DeckStowLook.header),
+        const DeckDismissAll(),
+        '3 notifications',
+      ),
+      (
+        'the dismiss-all control asks for it',
+        const DeckStowControl(),
+        const DeckDismissAll(look: DeckDismissAllLook.header),
+        '2 notifications',
+      ),
+    ]) {
+      testWidgets('the two controls share one bar when $name', (tester) async {
+        final controller = deckWith(control: control, dismissAll: dismissAll);
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 2);
+        controller.show('Saving', isLoading: true);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Saving').center);
+        await settle(tester);
+
+        expect(find.byType(DeckFarEndBar), findsOneWidget);
+        expect(
+          find.text(count),
+          findsOneWidget,
+          reason: 'the header-look control counts what it would act on',
+        );
+        expect(find.text('Hide'), findsOneWidget);
+        expect(find.text('Clear all'), findsOneWidget);
+        expect(
+          tester.getRect(find.byType(DeckFarEndBar)).width,
+          moreOrLessEquals(boxOf(tester, 'Saving').width),
+        );
+
+        await tester.tap(find.text('Clear all'));
+        await settle(tester);
+        expect(
+          toastsOf(controller).map((toast) => toast.state.title),
+          ['Saving'],
+          reason: 'the dismiss-all control still leaves what stays',
+        );
+        expect(controller.stowed, isFalse);
+      });
+    }
+
+    testWidgets('a builder draws the control, is handed the count and stows '
+        'through the view, and sits in the bar where there is one', (
+      tester,
+    ) async {
+      var seen = 0;
+      final builder = DeckStowControl(
+        builder: (context, view) {
+          seen = view.count;
+          return FadeTransition(
+            opacity: view.expansion,
+            child: TextButton(
+              onPressed: view.stow,
+              child: Text('away with ${view.count}'),
+            ),
+          );
+        },
+      );
+      final controller = deckWith(control: builder);
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 1').center);
+      await settle(tester);
+      expect(find.text('away with 2'), findsOneWidget);
+      expect(find.text('Hide'), findsNothing);
+      expect(seen, 2);
+
+      controller.config = controller.config.copyWith(
+        dismissAll: () => const DeckDismissAll(look: DeckDismissAllLook.header),
+      );
+      await settle(tester);
+      expect(find.byType(DeckFarEndBar), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(DeckFarEndBar),
+          matching: find.text('away with 2'),
+        ),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.text('away with 2'));
+      await settle(tester);
+      expect(controller.stowed, isTrue);
+    });
+
+    testWidgets('a host handed another controller draws that deck as that '
+        'controller has it, stowed or not', (tester) async {
+      final stowed = deckWith();
+      final drawn = deckWith();
+      await tester.pumpWidget(app(controller: stowed));
+      stowed.show('Stowed away');
+      drawn.show('Wide awake');
+      await settle(tester);
+      stowed.stow();
+      await settle(tester);
+      expect(find.text('Stowed away').hitTestable(), findsNothing);
+
+      await tester.pumpWidget(app(controller: drawn));
+      await settle(tester);
+      expect(
+        find.text('Wide awake').hitTestable(),
+        findsOneWidget,
+        reason: 'this controller has not stowed its deck',
+      );
+
+      await tester.pumpWidget(app(controller: stowed));
+      await settle(tester);
+      expect(
+        find.text('Stowed away').hitTestable(),
+        findsNothing,
+        reason: 'and this one has',
+      );
+    });
+
+    testWidgets('no handle is left at the edge unless one is configured', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      controller.stow();
+      await settle(tester);
+      expect(find.text('2 hidden'), findsNothing);
+    });
+
+    testWidgets('a handle reads what the deck is keeping, brings it back, and '
+        'pauses nothing while the pointer is on it', (tester) async {
+      final controller = deckWith(handle: const DeckStowHandle());
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+      expect(find.text('2 hidden'), findsNothing, reason: 'the deck is drawn');
+
+      controller.stow();
+      await settle(tester);
+      expect(find.text('2 hidden'), findsOneWidget);
+      final semantics = tester.ensureSemantics();
+      await tester.pump();
+      expect(
+        tester.getSemantics(find.text('2 hidden')),
+        isSemantics(isButton: true, label: '2 hidden'),
+      );
+      semantics.dispose();
+
+      final mouse = await mouseAt(
+        tester,
+        tester.getRect(find.text('2 hidden')).center,
+      );
+      await settle(tester);
+      expect(timersPaused(controller), isFalse, reason: 'not the deck');
+
+      await tester.tap(find.text('2 hidden'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(controller.stowed, isFalse);
+      expect(find.text('2 hidden'), findsOneWidget, reason: 'still fading');
+      expect(
+        find.text('2 hidden').hitTestable(),
+        findsNothing,
+        reason: 'it takes the pointer only while the deck is stowed',
+      );
+
+      await settle(tester);
+      expect(find.text('Toast 1').hitTestable(), findsOneWidget);
+      expect(find.text('2 hidden'), findsNothing);
+      await mouse.moveTo(away);
+      await settle(tester);
+    });
+
+    testWidgets('a handle reads its own count label, and a builder draws it '
+        'instead', (tester) async {
+      final controller = deckWith(
+        handle: DeckStowHandle(countLabel: (count) => '$count개 숨김'),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      await settle(tester);
+      controller.stow();
+      await settle(tester);
+      expect(find.text('3개 숨김'), findsOneWidget);
+
+      controller.config = controller.config.copyWith(
+        stowHandle: () => DeckStowHandle(
+          builder: (context, view) => TextButton(
+            onPressed: view.unstow,
+            child: Text('back to ${view.count}'),
+          ),
+        ),
+      );
+      await settle(tester);
+      expect(find.text('3개 숨김'), findsNothing);
+      expect(find.text('back to 3'), findsOneWidget);
+
+      await tester.tap(find.text('back to 3'));
+      await settle(tester);
+      expect(controller.stowed, isFalse);
     });
   });
 

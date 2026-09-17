@@ -93,6 +93,40 @@ class SonnerController extends ChangeNotifier {
 
   bool get _paused => _appHidden || _holders.isNotEmpty;
 
+  /// Whether the deck is stowed: out of sight and out of the pointer's reach,
+  /// its toasts kept and counting down. A new toast brings it back.
+  bool get stowed => _stowed;
+  bool _stowed = false;
+
+  /// Puts the deck out of sight, keeping its toasts. They count down as they
+  /// would on screen, and one whose time runs out while stowed is gone when
+  /// the deck comes back.
+  ///
+  /// The next **new** toast brings the deck back with whatever is left of
+  /// them, as does [unstow]. An update, a replace and a `promise` state
+  /// landing on a toast on screen do not. With no toast on screen there is
+  /// nothing to stow, and this does nothing.
+  void stow() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    if (_stowed || _toasts.isEmpty) return;
+    _stowed = true;
+    notifyListeners();
+  }
+
+  /// Brings a stowed deck back with the toasts it kept. Does nothing when the
+  /// deck is not stowed.
+  void unstow() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    if (!_stowed) return;
+    _stowed = false;
+    notifyListeners();
+  }
+
+  /// Ends the stow once no toast is left, so an empty deck is never stowed.
+  void _unstowIfEmpty() {
+    if (_toasts.isEmpty) _stowed = false;
+  }
+
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
   /// navigator [navigatorKey] names, above its dialogs and pages.
   ///
@@ -179,6 +213,8 @@ class SonnerController extends ChangeNotifier {
     } else {
       final record = ToastRecord(id, state, lifetime);
       _toasts.insert(0, record);
+      // A new toast brings a stowed deck back; a replace, above, does not.
+      _stowed = false;
       _startCountdown(record);
     }
     notifyListeners();
@@ -332,6 +368,7 @@ class SonnerController extends ChangeNotifier {
     final index = _toasts.indexWhere((record) => record.id == id);
     if (index < 0) return;
     _toasts.removeAt(index);
+    _unstowIfEmpty();
     _stopTickerIfIdle();
     notifyListeners();
   }
@@ -340,6 +377,7 @@ class SonnerController extends ChangeNotifier {
   void dismissAll() {
     if (_toasts.isEmpty) return;
     _toasts.clear();
+    _unstowIfEmpty();
     _stopTickerIfIdle();
     notifyListeners();
   }
@@ -406,6 +444,7 @@ class SonnerController extends ChangeNotifier {
       return remaining != null && remaining <= Duration.zero;
     });
     if (_toasts.length == before) return;
+    _unstowIfEmpty();
     _stopTickerIfIdle();
     notifyListeners();
   }

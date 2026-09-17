@@ -26,6 +26,8 @@ import 'deck_cut.dart';
 import 'deck_dismiss_all.dart';
 import 'deck_layout.dart';
 import 'deck_scrollbar.dart';
+import 'deck_stow.dart';
+import 'stow_view.dart';
 import 'swipe.dart';
 import 'time_left.dart';
 import 'toast_id.dart';
@@ -168,6 +170,23 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// the config assigned last puts them, from 0 to 1.
   late final _Eased _glide = _Eased(this, 1);
 
+  /// How far the deck is out of sight, from 0 drawn to 1 stowed.
+  late final _Eased _stow = _Eased(this, 0);
+
+  /// How far out of sight the deck is drawn, for the motion and the handle.
+  final _stowed = _Driven(0);
+
+  /// Whether the deck is drawn stowed. It outlasts the controller's stow once
+  /// no toast is left, so the last one timing out does not bring an empty
+  /// deck back into sight.
+  bool _stowShown = false;
+
+  /// How far the deck reached from its edge when it was stowed, which the
+  /// slide carries it past.
+  double _stowReach = 0;
+
+  static const _stowDuration = Duration(milliseconds: 300);
+
   @override
   void initState() {
     super.initState();
@@ -190,8 +209,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       releaseTimers(previous, this);
       holdTimers(_controller, this);
     }
-    // Another controller's toasts are another deck, and start at the edge.
+    // Another controller's toasts are another deck, and start at the edge,
+    // stowed or drawn as that controller has them rather than easing there.
     _config = _controller.config;
+    _stowShown = _controller.stowed;
+    _stow.jump(_stowShown ? 1 : 0);
     _glide.jump(1);
     _resetScroll();
     _retarget();
@@ -210,6 +232,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _expand.dispose();
     _reveal.dispose();
     _glide.dispose();
+    _stow.dispose();
     _unscroll.dispose();
     _scroll
       ..removeListener(_showScrollbar)
@@ -244,9 +267,42 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       }
     }
     _followConfig();
+    _followStow();
     // An assigned config can move where the deck is headed.
     _retarget();
     setState(_sync);
+  }
+
+  /// Starts the deck on its way out of sight, or back, when the controller
+  /// has stowed it or brought it back.
+  ///
+  /// Stowing lets go of the pointer: nothing drawn is hovered, so the hold the
+  /// pointer had on the timers goes, and a swipe under way is called off —
+  /// its toast is no longer under the hand dragging it.
+  void _followStow() {
+    final live = toastsOf(_controller).isNotEmpty;
+    final stow = _controller.stowed || (_stowShown && !live);
+    if (stow == _stowShown) return;
+    _stowShown = stow;
+    if (!stow) {
+      _stow.retarget(0, _stowDuration);
+      return;
+    }
+    final box = context.findRenderObject() as RenderBox?;
+    final height = (box?.hasSize ?? false) ? box!.size.height : 0.0;
+    _stowReach = _controller.config.position.isTop
+        ? _deck.bottom
+        : height - _deck.top;
+    for (final slot in _slots) {
+      if (slot.drag == null) continue;
+      slot.endDrag();
+      slot.swipe.springBack(_springDuration);
+    }
+    final was = _interacting;
+    _pressed.clear();
+    _setHovered(_moved.clear);
+    if (was && !_interacting) _unscrollDeck();
+    _stow.retarget(1, _stowDuration);
   }
 
   /// Starts the toasts on their way to a config assigned since the last
@@ -563,6 +619,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         _reveal,
         _unscroll,
         _glide,
+        _stow,
         for (final slot in _slots) ...[slot.animation, slot.resize, slot.swipe],
       ]),
       builder: (context, _) => _buildDeck(context, config),
@@ -633,13 +690,71 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     ];
     final dismissAll = config.dismissAll;
     _dismissAllExpansion.value = expansion;
+    _stowed.value = _stow.value;
+    // Every toast on screen is one the stow would put away, whether or not
+    // the user may dismiss it.
+    final live = _slots.where((slot) => !slot.exiting).length;
+    final control = farEndControls(
+      config: config,
+      expansion: _dismissAllExpansion,
+      // A stowed deck is not interacting: stowing let the pointer go.
+      showStow: live >= 1 && interacting,
+      showDismissAll:
+          dismissAll != null && dismissible.length >= 2 && interacting,
+      stowCount: live,
+      dismissCount: dismissible.length,
+      onStow: _controller.stow,
+      onDismissAll: () {
+        for (final slot in dismissible) {
+          _controller.dismiss(slot.id);
+        }
+      },
+    );
+    final handle = config.stowHandle;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        _buildLayer(context, config, isTop, expansion, interacting, control),
+        if (handle != null && _stow.value > 0 && live > 0)
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !_stowShown,
+              child: Padding(
+                padding: EdgeInsets.all(config.offset),
+                child: Align(
+                  alignment: DeckStowMotionBox.cornerOf(config.position),
+                  child: DeckStowHandleButton(
+                    handle: handle,
+                    count: live,
+                    onUnstow: _controller.unstow,
+                    shown: _stowed,
+                    position: config.position,
+                  ),
+                ),
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// The deck itself, with the controls past its far end, drawn as far out of
+  /// sight as it is stowed and taking no pointer once it is.
+  Widget _buildLayer(
+    BuildContext context,
+    SonnerConfig config,
+    bool isTop,
+    double expansion,
+    bool interacting,
+    Widget? control,
+  ) {
     return Listener(
       onPointerDown: (event) => _setPressed(event.device, down: true),
       onPointerUp: (event) => _setPressed(event.device, down: false),
       onPointerCancel: (event) => _setPressed(event.device, down: false),
       onPointerSignal: (event) => _movePointer(event.device),
       child: _DeckRegion(
-        deck: () => _deck,
+        deck: () => _stowShown ? Rect.zero : _deck,
         onEnter: (event) => _setPointer(event.device, over: true),
         onExit: (event) => _setPointer(event.device, over: false),
         onHover: (event) => _movePointer(event.device),
@@ -654,98 +769,99 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             ),
             _ => false,
           },
-          child: DeckLayers(
-            at: _dismissAllAt,
-            onControlSize: (size) => _dismissAllSize = size,
-            control:
-                dismissAll != null && dismissible.length >= 2 && interacting
-                ? DeckDismissAllButton(
-                    control: dismissAll,
-                    count: dismissible.length,
-                    expansion: _dismissAllExpansion,
-                    width: config.width,
-                    onDismiss: () {
-                      for (final slot in dismissible) {
-                        _controller.dismiss(slot.id);
-                      }
-                    },
-                  )
-                : null,
-            deck: DeckCutBox(
-              cut: _cut,
-              fromTop: isTop,
-              margin: config.offset,
-              fades: (config.deckCap?.fade ?? 0) > 0,
-              child: Scrollable(
-                controller: _scroll,
-                axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
-                hitTestBehavior: HitTestBehavior.deferToChild,
-                excludeFromSemantics: true,
-                scrollBehavior: ScrollConfiguration.of(
-                  context,
-                ).copyWith(scrollbars: false, overscroll: false),
-                viewportBuilder: (context, position) => CustomMultiChildLayout(
-                  delegate: ToastDeckDelegate<_Slot>(
-                    config: config,
-                    order: _slots,
-                    expansion: expansion,
-                    presence: (slot) => slot.presence.value,
-                    depth: (slot) => slot.depth,
-                    lift: (slot) => slot.lift,
-                    natural: (slot) => slot.natural,
-                    covering: (slot) => slot.covering,
-                    pinned: (slot) => slot.pinned,
-                    inDeck: (slot) => slot.inDeck,
-                    onPlaced: (slot, height, covering, distance, place) => slot
-                      ..height = height
-                      ..covers = covering
-                      ..distance = distance
-                      ..place = place,
-                    onDeck: (deck) => _deck = deck,
-                    glide: _glide.value,
-                    glideFrom: (slot) => slot.glideFrom,
-                    screenPinned: (slot) => slot.screenPin,
-                    onDrawn: (slot, drawn) => slot.drawnAt = drawn,
-                    scroll: position,
-                    follows: interacting,
-                    unscrolled: _unscrolled,
-                    // Read at layout, which a scroll runs without a build.
-                    anchor: () => _interacting && _expand.value == 1
-                        ? (
-                            id: _anchor,
-                            distance: _anchorAt,
-                            pixels: _anchorPixels,
-                          )
-                        : null,
-                    onAnchor: (slot, distance, pixels) {
-                      _anchor = slot;
-                      _anchorAt = distance;
-                      _anchorPixels = pixels;
-                    },
-                    backdrop: _backdrop,
-                    scrollbar: _scrollbarId,
-                    onCut: (cut) => _cut.value = cut,
-                    onScrollbar: (thumb) => _thumb = thumb,
-                    dismissAllSize: () => _dismissAllSize,
-                    onDismissAll: (at) => _dismissAllAt.value = at,
-                  ),
-                  children: [
-                    LayoutId(id: _backdrop, child: const _Backdrop()),
-                    // Oldest first: children paint in order, so the newest is on top.
-                    for (final slot in _slots.reversed)
-                      LayoutId(id: slot, child: _buildToast(slot, config)),
-                    if (config.scrollbar case final scrollbar?)
-                      LayoutId(
-                        id: _scrollbarId,
-                        child: DeckScrollbarThumb(
-                          scrollbar: scrollbar,
-                          opacity: scrollbar.alwaysShown
-                              ? kAlwaysCompleteAnimation
-                              : _scrollbarShown,
-                          onDrag: _dragScrollbar,
-                        ),
+          child: IgnorePointer(
+            ignoring: _stowShown,
+            child: DeckStowMotionBox(
+              motion: config.stowMotion,
+              view: DeckStowMotionView(
+                stowed: _stowed,
+                position: config.position,
+                reach: _stowReach,
+              ),
+              deck: DeckLayers(
+                at: _dismissAllAt,
+                onControlSize: (size) => _dismissAllSize = size,
+                control: control,
+                deck: DeckCutBox(
+                  cut: _cut,
+                  fromTop: isTop,
+                  margin: config.offset,
+                  fades: (config.deckCap?.fade ?? 0) > 0,
+                  child: Scrollable(
+                    controller: _scroll,
+                    axisDirection: isTop
+                        ? AxisDirection.down
+                        : AxisDirection.up,
+                    hitTestBehavior: HitTestBehavior.deferToChild,
+                    excludeFromSemantics: true,
+                    scrollBehavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false, overscroll: false),
+                    viewportBuilder: (context, position) => CustomMultiChildLayout(
+                      delegate: ToastDeckDelegate<_Slot>(
+                        config: config,
+                        order: _slots,
+                        expansion: expansion,
+                        presence: (slot) => slot.presence.value,
+                        depth: (slot) => slot.depth,
+                        lift: (slot) => slot.lift,
+                        natural: (slot) => slot.natural,
+                        covering: (slot) => slot.covering,
+                        pinned: (slot) => slot.pinned,
+                        inDeck: (slot) => slot.inDeck,
+                        onPlaced: (slot, height, covering, distance, place) =>
+                            slot
+                              ..height = height
+                              ..covers = covering
+                              ..distance = distance
+                              ..place = place,
+                        onDeck: (deck) => _deck = deck,
+                        glide: _glide.value,
+                        glideFrom: (slot) => slot.glideFrom,
+                        screenPinned: (slot) => slot.screenPin,
+                        onDrawn: (slot, drawn) => slot.drawnAt = drawn,
+                        scroll: position,
+                        follows: interacting,
+                        unscrolled: _unscrolled,
+                        // Read at layout, which a scroll runs without a build.
+                        anchor: () => _interacting && _expand.value == 1
+                            ? (
+                                id: _anchor,
+                                distance: _anchorAt,
+                                pixels: _anchorPixels,
+                              )
+                            : null,
+                        onAnchor: (slot, distance, pixels) {
+                          _anchor = slot;
+                          _anchorAt = distance;
+                          _anchorPixels = pixels;
+                        },
+                        backdrop: _backdrop,
+                        scrollbar: _scrollbarId,
+                        onCut: (cut) => _cut.value = cut,
+                        onScrollbar: (thumb) => _thumb = thumb,
+                        dismissAllSize: () => _dismissAllSize,
+                        onDismissAll: (at) => _dismissAllAt.value = at,
                       ),
-                  ],
+                      children: [
+                        LayoutId(id: _backdrop, child: const _Backdrop()),
+                        // Oldest first: children paint in order, so the newest is on top.
+                        for (final slot in _slots.reversed)
+                          LayoutId(id: slot, child: _buildToast(slot, config)),
+                        if (config.scrollbar case final scrollbar?)
+                          LayoutId(
+                            id: _scrollbarId,
+                            child: DeckScrollbarThumb(
+                              scrollbar: scrollbar,
+                              opacity: scrollbar.alwaysShown
+                                  ? kAlwaysCompleteAnimation
+                                  : _scrollbarShown,
+                              onDrag: _dragScrollbar,
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ),

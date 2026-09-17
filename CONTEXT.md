@@ -22,7 +22,7 @@ controls are not there to be used, while its card stays. The expansion undoes it
 _Avoid_: hidden (that is a toast outside the window), behind, obscured
 
 **Deck**:
-The group of visible toasts, in one of two states: collapsed (front toast in full, the rest peeking out) or expanded (fanned out into a list).
+The group of visible toasts, in one of two states: collapsed (front toast in full, the rest peeking out) or expanded (fanned out into a list). It can also be **stowed**, which is neither: out of sight, with its toasts kept.
 _Avoid_: stack (for the visible group), collapsed stack
 
 **Dismissed**:
@@ -56,6 +56,15 @@ _Avoid_: icon, icon slot
 A toast that has no timer and shows the loading indicator in its leading slot. A flag the toast
 carries, not a kind of toast — a toast can start loading, stop, and start again at the same id.
 _Avoid_: loading type, pending, busy
+
+**Stowed**:
+The deck put out of sight and out of the pointer's reach, keeping its toasts and their countdowns,
+until the next **new** toast brings it back. A toast whose time runs out while it is stowed is
+gone when the deck comes back. `config.stowControl` draws the control that stows it, `stowMotion`
+how it goes, and `stowHandle` what it leaves at the edge; `stow()` and `unstow()` on the
+controller are the app's.
+_Avoid_: hidden (that is a toast outside the window), minimized, collapsed (that is the deck's
+other state)
 
 **Swipe**:
 Dragging a toast off the screen to dismiss it. The ways out come from the position's own words

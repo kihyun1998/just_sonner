@@ -355,6 +355,141 @@ class _PanelState extends State<_Panel> {
 
   static String _koreanCount(int count) => '알림 $count개';
 
+  static String _koreanHidden(int count) => '$count개 숨김';
+
+  /// An app's own stow control, handed the count and a way to stow.
+  static Widget _ownStow(BuildContext context, DeckStowView view) =>
+      FadeTransition(
+        opacity: view.expansion,
+        child: Material(
+          color: Colors.transparent,
+          child: TextButton.icon(
+            onPressed: view.stow,
+            icon: const Icon(Icons.visibility_off_outlined, size: 18),
+            label: Text('Put ${view.count} away'),
+          ),
+        ),
+      );
+
+  /// An app's own motion: the deck spins a quarter turn as it goes.
+  static Widget _ownStowMotion(
+    BuildContext context,
+    DeckStowMotionView view,
+    Widget deck,
+  ) => Opacity(
+    opacity: 1 - view.stowed.value,
+    child: Transform.rotate(
+      angle: view.stowed.value * 0.25,
+      alignment: view.position.isTop
+          ? Alignment.topCenter
+          : Alignment.bottomCenter,
+      child: deck,
+    ),
+  );
+
+  /// An app's own handle, handed the count and a way to bring the deck back.
+  static Widget _ownStowHandle(BuildContext context, DeckStowHandleView view) =>
+      FadeTransition(
+        opacity: view.shown,
+        child: FloatingActionButton.extended(
+          onPressed: view.unstow,
+          icon: const Icon(Icons.inbox_outlined),
+          label: Text('${view.count} waiting'),
+        ),
+      );
+
+  /// A control for each field of `config.stowControl`, `stowMotion` and
+  /// `stowHandle`, and one to take each of the two nullable ones away.
+  List<Widget> _stowControls(SonnerConfig config) {
+    final control = config.stowControl;
+    final motion = config.stowMotion;
+    final handle = config.stowHandle;
+    void setControl(DeckStowControl? value) =>
+        widget.onConfig(config.copyWith(stowControl: () => value));
+    void setMotion(DeckStowMotion value) =>
+        widget.onConfig(config.copyWith(stowMotion: value));
+    void setHandle(DeckStowHandle? value) =>
+        widget.onConfig(config.copyWith(stowHandle: () => value));
+    return [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('stowControl'),
+        value: control != null,
+        onChanged: (on) => setControl(on ? const DeckStowControl() : null),
+      ),
+      if (control != null) ...[
+        _Dropdown<DeckStowLook>(
+          label: 'look (stowControl)',
+          value: control.look,
+          values: DeckStowLook.values,
+          nameOf: (value) => value.name,
+          onChanged: (value) => setControl(control.copyWith(look: value)),
+        ),
+        _Dropdown<String>(
+          label: 'label (stowControl)',
+          value: control.label,
+          values: {'Hide', '숨기기', control.label}.toList(),
+          nameOf: (value) => value,
+          onChanged: (value) => setControl(control.copyWith(label: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("countLabel: '알림 N개' (header)"),
+          value: control.countLabel != null,
+          onChanged: (on) => setControl(
+            control.copyWith(countLabel: () => on ? _koreanCount : null),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("builder: the app's own control"),
+          value: control.builder != null,
+          onChanged: (on) =>
+              setControl(control.copyWith(builder: () => on ? _ownStow : null)),
+        ),
+      ],
+      _Dropdown<DeckStowMotionLook>(
+        label: 'look (stowMotion)',
+        value: motion.look,
+        values: DeckStowMotionLook.values,
+        nameOf: (value) => value.name,
+        onChanged: (value) => setMotion(motion.copyWith(look: value)),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text("builder: the app's own motion (a quarter turn)"),
+        value: motion.builder != null,
+        onChanged: (on) => setMotion(
+          motion.copyWith(builder: () => on ? _ownStowMotion : null),
+        ),
+      ),
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('stowHandle'),
+        value: handle != null,
+        onChanged: (on) => setHandle(on ? const DeckStowHandle() : null),
+      ),
+      if (handle != null) ...[
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("countLabel: 'N개 숨김'"),
+          value: handle.countLabel != null,
+          onChanged: (on) => setHandle(
+            handle.copyWith(countLabel: () => on ? _koreanHidden : null),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("builder: the app's own handle"),
+          value: handle.builder != null,
+          onChanged: (on) => setHandle(
+            handle.copyWith(builder: () => on ? _ownStowHandle : null),
+          ),
+        ),
+      ],
+    ];
+  }
+
   /// A control for each field of `config.dismissAll`, and one to take it away.
   List<Widget> _dismissAllControls(SonnerConfig config) {
     final control = config.dismissAll;
@@ -763,6 +898,60 @@ class _PanelState extends State<_Panel> {
           }
         }),
         ..._dismissAllControls(config),
+      ],
+    ),
+    _Section(
+      title: 'Stow the deck',
+      issue: 60,
+      note:
+          'Put toasts up, rest the pointer on the deck and press Hide: the '
+          'deck goes, its toasts stay and keep counting down. Only a new '
+          'toast brings it back — an update does not — or the app, or the '
+          'handle when one is configured. Once no toast is left, the stow '
+          'ends.',
+      children: [
+        _Button('Three staying and one loading', () {
+          for (var i = 1; i <= 3; i++) {
+            _show('Kept $i of 3', duration: Duration.zero);
+          }
+          _show('Saving…', isLoading: true);
+        }),
+        _Button('Four counting: 4 s, 6 s, 8 s, 10 s', () {
+          for (final seconds in const [10, 8, 6, 4]) {
+            _show('$seconds seconds', duration: Duration(seconds: seconds));
+          }
+        }),
+        _Button('Loading, done in 5 s (an update: the deck stays away)', () {
+          final id = _show('Uploading…', isLoading: true);
+          Timer(const Duration(seconds: 5), () {
+            if (mounted) {
+              _toast.update(
+                id,
+                title: 'Uploaded',
+                isLoading: false,
+                duration: const Duration(seconds: 6),
+              );
+            }
+          });
+        }),
+        _Button('In 3 s: a new toast (it brings the deck back)', () {
+          Timer(const Duration(seconds: 3), () {
+            if (mounted) _show('A new one', description: 'The deck is back.');
+          });
+        }),
+        _Button('The app: stow()', _toast.stow),
+        _Button('The app: unstow()', _toast.unstow),
+        ListenableBuilder(
+          listenable: _toast,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'stowed: ${_toast.stowed}',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+        ),
+        ..._stowControls(config),
       ],
     ),
     _Section(
