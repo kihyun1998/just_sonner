@@ -106,7 +106,7 @@ void main() {
     expect(find.text('Drag me off the screen'), findsOneWidget);
   });
 
-  testWidgets('a config control rebuilds the controller and clears the deck', (
+  testWidgets('a config control is assigned, and the deck stays', (
     tester,
   ) async {
     await pumpHarness(tester);
@@ -120,7 +120,9 @@ void main() {
     await tester.ensureVisible(find.text('expandByDefault'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('expandByDefault'));
+    await tester.pump();
+    expect(find.text('Event has been created'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
-    expect(find.text('Event has been created'), findsNothing);
   });
 }

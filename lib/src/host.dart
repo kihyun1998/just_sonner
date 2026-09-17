@@ -55,6 +55,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   static const _enterDuration = Duration(milliseconds: 400);
   static const _exitDuration = Duration(milliseconds: 200);
   static const _expandDuration = Duration(milliseconds: 400);
+  static const _glideDuration = Duration(milliseconds: 400);
 
   /// How long a toast let go of short of the threshold takes to come back.
   static const _springDuration = Duration(milliseconds: 400);
@@ -125,9 +126,18 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   SonnerController get _controller => widget.controller;
 
+  /// The config the deck was last told of, so an assigned one can be told
+  /// apart from any other change to the toasts.
+  late SonnerConfig _config;
+
+  /// How far the toasts are on their way from where they were drawn to where
+  /// the config assigned last puts them, from 0 to 1.
+  late final _Eased _glide = _Eased(this, 1);
+
   @override
   void initState() {
     super.initState();
+    _config = _controller.config;
     _controller.addListener(_onToastsChanged);
     watchLifecycle(_controller);
     _sync();
@@ -146,11 +156,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       holdTimers(_controller, this);
     }
     // Another controller's toasts are another deck, and start at the edge.
-    _anchor = null;
-    _anchorPixels = 0;
-    _unscrollFrom = 0;
-    _unscroll.jump(1);
-    if (_scroll.hasClients) _scroll.jumpTo(0);
+    _config = _controller.config;
+    _glide.jump(1);
+    _resetScroll();
     _retarget();
     _sync();
   }
@@ -165,6 +173,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     _expand.dispose();
     _reveal.dispose();
+    _glide.dispose();
     _unscroll.dispose();
     _scroll.dispose();
     super.dispose();
@@ -183,7 +192,42 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         slot.swipe.springBack(_springDuration);
       }
     }
+    _followConfig();
+    // An assigned config can move where the deck is headed.
+    _retarget();
     setState(_sync);
+  }
+
+  /// Starts the toasts on their way to a config assigned since the last
+  /// change, from wherever each is drawn now. A toast already exiting stays
+  /// where it is on screen.
+  void _followConfig() {
+    final config = _controller.config;
+    if (config == _config) return;
+    final flipped = config.position.isTop != _config.position.isTop;
+    _config = config;
+    for (final slot in _slots) {
+      slot.windowFadeFrom = slot.windowFade;
+      if (slot.exiting) {
+        slot.screenPin ??= slot.drawnAt;
+      } else {
+        slot.glideFrom = slot.drawnAt;
+      }
+    }
+    // The scroll runs the other way from the other edge.
+    if (flipped) _resetScroll();
+    _glide
+      ..jump(0)
+      ..retarget(1, _glideDuration);
+  }
+
+  /// Puts the deck at the edge, with nothing kept in view.
+  void _resetScroll() {
+    _anchor = null;
+    _anchorPixels = 0;
+    _unscrollFrom = 0;
+    _unscroll.jump(1);
+    if (_scroll.hasClients) _scroll.jumpTo(0);
   }
 
   void _setPointer(int device, {required bool over}) {
@@ -331,7 +375,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   void _resume(_Slot slot) {
-    slot.exiting = false;
+    slot
+      ..exiting = false
+      ..screenPin = null;
     final onExit = slot.onExit;
     if (onExit != null) {
       slot.controller.removeStatusListener(onExit);
@@ -358,6 +404,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// to, then removes the slot.
   void _exit(_Slot slot) {
     slot.exiting = true;
+    if (_glide.value < 1) slot.screenPin ??= slot.drawnAt;
     // A toast dismissed under a drag takes its recognizer with it, and a
     // recognizer disposed of reports nothing.
     slot.endDrag();
@@ -383,6 +430,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         _expand,
         _reveal,
         _unscroll,
+        _glide,
         for (final slot in _slots) ...[slot.animation, slot.resize, slot.swipe],
       ]),
       builder: (context, _) => _buildDeck(context, config),
@@ -430,11 +478,20 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
 
     final reveal = _reveal.value;
+    final glide = _glide.value;
     for (final slot in _slots) {
+      // A toast crossing the edge of the window fades as it moves across it;
+      // one a newly assigned window puts on the other side fades on the
+      // glide's clock.
+      final fade = (visible - slot.depth).clamp(0.0, 1.0);
+      final from = slot.windowFadeFrom;
+      slot.windowFade = from == null || glide >= 1
+          ? fade
+          : from + (fade - from) * glide;
       slot.hidden =
           reveal == 0 &&
           (slot.exiting || slot.index >= visible) &&
-          slot.depth >= visible;
+          slot.windowFade == 0;
     }
     final isTop = config.position.isTop;
     return Listener(
@@ -482,6 +539,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                   ..distance = distance
                   ..place = place,
                 onDeck: (deck) => _deck = deck,
+                glide: _glide.value,
+                glideFrom: (slot) => slot.glideFrom,
+                screenPinned: (slot) => slot.screenPin,
+                onDrawn: (slot, drawn) => slot.drawnAt = drawn,
                 scroll: position,
                 follows: interacting,
                 unscrolled: _unscrolled,
@@ -500,7 +561,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                 LayoutId(id: _backdrop, child: const _Backdrop()),
                 // Oldest first: children paint in order, so the newest is on top.
                 for (final slot in _slots.reversed)
-                  LayoutId(id: slot, child: _buildToast(slot, config, visible)),
+                  LayoutId(id: slot, child: _buildToast(slot, config)),
               ],
             ),
           ),
@@ -520,11 +581,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     return from < to ? value.clamp(from, to) : value.clamp(to, from);
   }
 
-  Widget _buildToast(_Slot slot, SonnerConfig config, int visible) {
-    // A toast crossing the edge of the window fades as it moves across it,
-    // unless the pointer over the deck is drawing every toast.
+  Widget _buildToast(_Slot slot, SonnerConfig config) {
+    // Faded at the window's edge, unless the pointer over the deck is drawing
+    // every toast.
     final reveal = _reveal.value;
-    final fade = reveal + (1 - reveal) * (visible - slot.depth).clamp(0.0, 1.0);
+    final fade = reveal + (1 - reveal) * slot.windowFade;
     final swipe = slot.swipeOffset(config);
     return Offstage(
       offstage: slot.hidden,
@@ -701,6 +762,11 @@ final class _Slot implements ToastView {
   /// region only then. Frozen once it is [exiting].
   bool inDeck = true;
 
+  /// How much of it the window draws, 0 outside to 1 inside, and what that was
+  /// when the config last assigned was.
+  double windowFade = 1;
+  double? windowFadeFrom;
+
   /// Whether it is outside the window and faded out, so neither painted nor
   /// laid out anew.
   bool hidden = false;
@@ -722,6 +788,18 @@ final class _Slot implements ToastView {
 
   /// The height it last measured on its own, whatever it was drawn at.
   double? natural;
+
+  /// Where on the layer it was last drawn.
+  Rect? drawnAt;
+
+  /// Where it was drawn when the config last assigned was, which the glide
+  /// takes it from.
+  Rect? glideFrom;
+
+  /// Where on the layer it stays until it is removed, once a config was
+  /// assigned while it was exiting, or while it was on its way to one when it
+  /// was dismissed.
+  Rect? screenPin;
 
   /// Where [covering] eases from.
   double _resizeFrom = 0;
@@ -800,6 +878,8 @@ final class _Slot implements ToastView {
 
   /// Its enter and exit slide, from the edge [fromTop] names.
   Animation<Offset> slide({required bool fromTop}) {
+    // An exiting toast leaves toward the edge it entered from.
+    if (exiting && _slide != null) return _slide!;
     if (_slideFromTop != fromTop) {
       _slideFromTop = fromTop;
       _slide = animation.drive(

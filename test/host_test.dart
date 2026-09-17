@@ -606,6 +606,31 @@ void main() {
       expect(taps, 1, reason: 'the fourth toast is hidden');
     });
 
+    testWidgets('a lowered visibleToasts stops drawing the toasts beyond it, '
+        'and a raised one draws them again', (tester) async {
+      var taps = 0;
+      await tester.pumpWidget(tappableApp(() => taps++));
+      for (var n = 0; n < 3; n++) {
+        controller.show('Toast $n');
+      }
+      await tester.pumpAndSettle();
+      final height = toastRect(tester, 'Toast 2').height;
+
+      controller.config = controller.config.copyWith(visibleToasts: 1);
+      await tester.pumpAndSettle();
+      expect(find.text('Toast 1'), findsNothing, reason: 'not drawn');
+      expect(toastsOf(controller), hasLength(3), reason: 'still in the list');
+      await tester.tapAt(Offset(600, peekOf(1, height)));
+      expect(taps, 1, reason: 'the second toast is out of the window');
+
+      controller.config = controller.config.copyWith(visibleToasts: 3);
+      await tester.pumpAndSettle();
+      expect(find.text('Toast 1'), findsOneWidget);
+      expect(find.text('Toast 0'), findsOneWidget);
+      await tester.tapAt(Offset(600, peekOf(2, height)));
+      expect(taps, 1, reason: 'the third toast is back in the window');
+    });
+
     testWidgets('a toast pushed out of the window fades as the new one enters, '
         'taking no taps', (tester) async {
       var taps = 0;
@@ -1741,6 +1766,40 @@ void main() {
       },
     );
 
+    testWidgets('expandByDefault assigned with toasts on screen fans the deck '
+        'out over 400 ms, with no pointer', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      final height = boxOf(tester, 'Front').height;
+      const collapsed = 576 - 14.0;
+      final expanded = 576 - height - 14;
+      expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(collapsed));
+
+      controller.config = controller.config.copyWith(expandByDefault: true);
+      await tester.pump();
+      expect(
+        boxOf(tester, 'Behind').bottom,
+        moreOrLessEquals(collapsed),
+        reason: 'no jump in the frame it is assigned',
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        boxOf(tester, 'Behind').bottom,
+        allOf(lessThan(collapsed - 1), greaterThan(expanded + 1)),
+        reason: 'on its way',
+      );
+      await tester.pump(const Duration(milliseconds: 201));
+      expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(expanded));
+      expect(presenceOf(tester, 'Front'), 1, reason: 'nothing entered again');
+
+      controller.config = controller.config.copyWith(expandByDefault: false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 401));
+      expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(collapsed));
+    });
+
     testWidgets(
       'a toast whose height changes re-lays the expanded stack, easing the '
       'ones after it over 400 ms',
@@ -2477,6 +2536,24 @@ void main() {
         expect(boxOf(tester, 'Other 13').bottom, 576);
       });
 
+      testWidgets('a position assigned to the other edge draws a scrolled deck '
+          'from that edge', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -300));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, greaterThan(576));
+
+        controller.config = controller.config.copyWith(
+          position: SonnerPosition.topRight,
+        );
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').top, 24);
+      });
+
       testWidgets('without a pointer, an expandByDefault deck taller than the '
           'layer leaves the margins to the app', (tester) async {
         tester.view.physicalSize = const Size(800, 220);
@@ -2768,6 +2845,23 @@ void main() {
       await tester.tap(closeButton());
       await tester.pumpAndSettle();
       expect(find.text('Asked'), findsNothing);
+    });
+
+    testWidgets('a toast on screen follows a closeButton assigned to the '
+        'config', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Plain');
+      await tester.pumpAndSettle();
+      expect(closeButton(), findsNothing);
+
+      controller.config = controller.config.copyWith(closeButton: true);
+      await tester.pump();
+      expect(closeButton(), findsOneWidget);
+      expect(presenceOf(tester, 'Plain'), 1, reason: 'nothing entered again');
+
+      await tester.tap(closeButton());
+      await tester.pumpAndSettle();
+      expect(find.text('Plain'), findsNothing);
     });
 
     testWidgets('dismissible false takes the close button away, and dismiss '
@@ -3096,20 +3190,23 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The directions are read at each pointer-down, so the day the config
-      // can be set on a live controller (#28) they follow it there too.
-      final top = controllerWith(
-        const SonnerConfig(
-          duration: Duration.zero,
-          position: SonnerPosition.topRight,
-        ),
+      // Read at each pointer-down, so they follow a position assigned with
+      // the toast on screen.
+      controller.config = controller.config.copyWith(
+        position: SonnerPosition.topRight,
       );
-      await tester.pumpWidget(app(controller: top));
-      top.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(0, 60));
+      expect(
+        toastsOf(controller),
+        hasLength(1),
+        reason: 'down is the way `topRight` does not allow',
+      );
       await tester.pumpAndSettle();
 
       await swipe(tester, 'Saved', const Offset(0, -60));
-      expect(toastsOf(top), isEmpty);
+      expect(toastsOf(controller), isEmpty);
       await tester.pumpAndSettle();
     });
 
@@ -3137,6 +3234,51 @@ void main() {
       await swipe(tester, 'Saved', const Offset(0, -60));
       expect(toastsOf(upward), isEmpty);
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('config.swipeDirections can name several ways out, and every '
+        'one of them dismisses', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.config = controller.config.copyWith(
+        swipeDirections: () => {SwipeDirection.left, SwipeDirection.right},
+      );
+
+      for (final (way, by) in [
+        ('left', const Offset(-60, 0)),
+        ('right', const Offset(60, 0)),
+      ]) {
+        controller.show('Saved');
+        await tester.pumpAndSettle();
+        await swipe(tester, 'Saved', by);
+        expect(toastsOf(controller), isEmpty, reason: way);
+        await tester.pumpAndSettle();
+      }
+
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      await swipe(tester, 'Saved', const Offset(0, 60));
+      expect(
+        toastsOf(controller),
+        hasLength(1),
+        reason: 'down is what `bottomRight` names, and the set left it out',
+      );
+      await tester.pumpAndSettle();
+
+      controller.config = controller.config.copyWith(
+        swipeDirections: () => SwipeDirection.values.toSet(),
+      );
+      for (final (way, by) in [
+        ('up', const Offset(0, -60)),
+        ('down', const Offset(0, 60)),
+      ]) {
+        if (toastsOf(controller).isEmpty) {
+          controller.show('Saved');
+          await tester.pumpAndSettle();
+        }
+        await swipe(tester, 'Saved', by);
+        expect(toastsOf(controller), isEmpty, reason: 'all four: $way');
+        await tester.pumpAndSettle();
+      }
     });
 
     testWidgets('a toast the deck covers takes a swipe like any other', (
@@ -3353,6 +3495,240 @@ void main() {
       await mouse.up();
       await tester.pumpAndSettle();
       expect(scaleOf(tester, 'Behind'), closeTo(0.95, 0.001));
+    });
+  });
+
+  group('config assigned', () {
+    /// A toast's box before it is scaled.
+    Rect boxOf(WidgetTester tester, String title) => tester.getRect(
+      find.ancestor(
+        of: find.text(title),
+        matching: find.byType(SlideTransition),
+      ),
+    );
+
+    testWidgets('a new offset moves the toasts over 400 ms, from where they '
+        'were', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Front').bottom, 576);
+      expect(boxOf(tester, 'Behind').bottom, 562);
+
+      controller.config = controller.config.copyWith(offset: 80);
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        boxOf(tester, 'Front').bottom,
+        allOf(lessThan(575), greaterThan(521)),
+        reason: 'on its way',
+      );
+      expect(
+        boxOf(tester, 'Front').bottom - boxOf(tester, 'Behind').bottom,
+        moreOrLessEquals(14),
+        reason: 'the deck moves as one',
+      );
+
+      await tester.pump(const Duration(milliseconds: 201));
+      expect(boxOf(tester, 'Front').bottom, 520);
+      expect(boxOf(tester, 'Behind').bottom, 506);
+    });
+
+    testWidgets('a config assigned first thing after the host mounts still '
+        'moves the toasts from where they were', (tester) async {
+      controller.show('Front');
+      await tester.pumpWidget(app(controller: controller));
+      await tester.pumpAndSettle();
+
+      controller.config = controller.config.copyWith(offset: 80);
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Front').bottom, 520);
+    });
+
+    testWidgets('a toast brought back by swapping its controller back follows '
+        'the next config, wherever an assignment left it', (tester) async {
+      final other = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero),
+      );
+      addTearDown(other.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Kept');
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(app(controller: other));
+      await tester.pump(const Duration(milliseconds: 50));
+      other.config = other.config.copyWith(offset: 80);
+      await tester.pump();
+      await tester.pumpWidget(app(controller: controller));
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Kept').bottom, 576);
+
+      controller.config = controller.config.copyWith(offset: 80);
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Kept').bottom, 520);
+    });
+
+    testWidgets(
+      'a new position takes the toasts across the screen over 400 ms',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Front');
+        await tester.pumpAndSettle();
+        final start = boxOf(tester, 'Front');
+        expect((start.left, start.bottom), (420.0, 576.0));
+
+        controller.config = controller.config.copyWith(
+          position: SonnerPosition.topLeft,
+        );
+        await tester.pump();
+        expect(boxOf(tester, 'Front'), start, reason: 'no jump');
+
+        await tester.pump(const Duration(milliseconds: 200));
+        final halfway = boxOf(tester, 'Front');
+        expect(halfway.left, allOf(greaterThan(25), lessThan(419)));
+        expect(halfway.top, allOf(greaterThan(25), lessThan(start.top - 1)));
+
+        await tester.pump(const Duration(milliseconds: 201));
+        final end = boxOf(tester, 'Front');
+        expect((end.left, end.top), (24.0, 24.0));
+        expect(presenceOf(tester, 'Front'), 1, reason: 'nothing entered again');
+      },
+    );
+
+    testWidgets('a narrower toast keeps the edge its position names', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      controller.config = controller.config.copyWith(width: 200);
+      await tester.pump();
+      expect(
+        (boxOf(tester, 'Front').right, boxOf(tester, 'Front').width),
+        (776.0, 200.0),
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(boxOf(tester, 'Front').right, 776);
+    });
+
+    testWidgets('a toast leaving a lowered window fades over 400 ms, and one '
+        'coming back into a raised window fades in', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      for (final title in ['Oldest', 'Middle', 'Newest']) {
+        controller.show(title);
+      }
+      await tester.pumpAndSettle();
+      expect(paintedOpacityOf(tester, 'Middle'), 1);
+
+      controller.config = controller.config.copyWith(visibleToasts: 1);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        paintedOpacityOf(tester, 'Middle'),
+        allOf(greaterThan(0), lessThan(1)),
+        reason: 'on its way out',
+      );
+      await tester.pump(const Duration(milliseconds: 301));
+      expect(find.text('Middle'), findsNothing);
+
+      controller.config = controller.config.copyWith(visibleToasts: 3);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(
+        paintedOpacityOf(tester, 'Middle'),
+        allOf(greaterThan(0), lessThan(1)),
+        reason: 'on its way back',
+      );
+      await tester.pump(const Duration(milliseconds: 101));
+      expect(paintedOpacityOf(tester, 'Middle'), 1);
+    });
+
+    testWidgets('a toast exiting as a config is assigned stays where it is on '
+        'screen', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      controller.dismiss(toastsOf(controller).first.id);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      final at = boxOf(tester, 'Front');
+
+      controller.config = controller.config.copyWith(
+        position: SonnerPosition.topLeft,
+      );
+      for (var elapsed = 0; elapsed < 140; elapsed += 20) {
+        await tester.pump(const Duration(milliseconds: 20));
+        expect(boxOf(tester, 'Front'), at, reason: 'at $elapsed ms');
+        expect(
+          tester
+              .widget<SlideTransition>(
+                find.ancestor(
+                  of: find.text('Front'),
+                  matching: find.byType(SlideTransition),
+                ),
+              )
+              .position
+              .value
+              .dy,
+          greaterThan(0),
+          reason: 'still leaving toward the bottom edge, at $elapsed ms',
+        );
+      }
+      expect(boxOf(tester, 'Behind').top, lessThan(at.top - 1));
+      await tester.pump(const Duration(milliseconds: 20));
+      await tester.pump();
+      expect(find.text('Front'), findsNothing, reason: 'removed on time');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a toast dismissed on its way to a new config stays where it '
+        'was drawn', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      controller.config = controller.config.copyWith(offset: 200);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final at = boxOf(tester, 'Front');
+
+      controller.dismiss(toastsOf(controller).first.id);
+      await tester.pump();
+      expect(boxOf(tester, 'Front'), at);
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(boxOf(tester, 'Front'), at);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a config assigned on the way to another goes on from where '
+        'the toasts are drawn', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      controller.config = controller.config.copyWith(offset: 200);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final at = boxOf(tester, 'Front').bottom;
+      expect(at, allOf(lessThan(575), greaterThan(401)));
+
+      controller.config = controller.config.copyWith(offset: 24);
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, moreOrLessEquals(at));
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        boxOf(tester, 'Front').bottom,
+        // Toward 576, by less than a frame of 400 ms run at its fastest.
+        allOf(greaterThan(at), lessThan(at + (576 - at) * 16 / 400 * 1.6)),
+        reason: 'on its way back, from where it was',
+      );
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(boxOf(tester, 'Front').bottom, 576);
     });
   });
 
