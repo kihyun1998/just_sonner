@@ -30,10 +30,12 @@ What just_sonner adds, in the order a real consumer needed them:
 2. **Root-overlay mounting, flash-style.** Call it from a service layer with nothing but a
    navigator key, the way [`flash`](https://pub.dev/packages/flash) and hand-rolled toast services
    already work.
-3. **A builder that receives the animation.** Each toast hands its builder an
-   `AnimationController` and a `dismiss`, so an existing widget built on flash's `FlashBar`
-   (which takes a `FlashController`: `controller`, `dismiss`, `deactivate`) plugs in through a
-   three-member adapter. Migrating off `showFlash` does not mean redrawing the toast.
+3. **A builder that receives the toast.** Each toast hands its builder its animation, how much
+   the deck covers it, and a `dismiss`, so an existing widget built on flash's `FlashBar` (which
+   takes a `FlashController`: `controller`, `dismiss`, `deactivate`) plugs in through a
+   three-member adapter — kept in the example app, so the package never depends on flash. The
+   toast moves itself, so the adapter keeps flash's own motion at rest. Migrating off `showFlash`
+   does not mean redrawing the toast.
 4. **Desktop only, in v0.1.** Hover expands the deck and pauses every timer; pointer drag
    swipes. Touch has neither, and §2 says so rather than leaving it to be discovered.
 
@@ -148,8 +150,11 @@ typedef ToastSlot = Widget Function(BuildContext context, ToastView toast);
 abstract interface class ToastView {
   ToastId get id;
   ToastState get state;                  // title, description, isLoading, leading,
-                                         // action, closeButton, dismissible
-  AnimationController get animation;     // enter 0→1, exit 1→0
+                                         // action, closeButton, dismissible, builder
+  AnimationController get animation;     // enter 0→1, exit 1→0; a builder driving it to 0
+                                         // dismisses the toast
+  Animation<double> get covered;         // 0 at the front or expanded, 1 behind one fully
+                                         // present (§6)
   Future<void> dismiss();
   void holdTimer();                      // a widget-driven gesture started (see §7)
 }
@@ -175,7 +180,8 @@ same methods as `toast`. There is no static facade.
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false). It is immutable and has a `copyWith`, so one field changes with
 `toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is given as a function,
-`copyWith(swipeDirections: () => null)`, so it can go back to following the position.
+`copyWith(swipeDirections: () => null)`, so it can go back to following the position, and
+`builder` the same way, `copyWith(builder: () => null)`, back to the default look.
 
 **The config lives on the controller and nowhere else.** `attach` does not take one and neither
 does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
@@ -367,7 +373,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   is fully drawn wherever the deck is expanded. Without it, a toast behind paints its text under a
   front that is still entering and therefore see-through, and a taller one behind a shorter front
   shows a description sliced by the cut to the front's height.
-  The package applies this to its own look and hands the fraction to a builder, which decides for
+  The package applies this to its own look and hands the fraction to a builder as
+  `ToastView.covered` — an `Animation`, so a look answers it by repainting — which decides for
   itself (sonner fades the children of a collapsed non-front toast, and only for its own styled
   look). The fade is painted, not structural: a covered toast keeps its place in the semantics
   tree, since what the deck hides is the reading, not the announcement.
@@ -542,6 +549,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - A toast that **stops being dismissible under a drag** — an `update` sets it loading — springs
   back and the drag lets go of the timers there, whatever it had moved: the swipe is the user's,
   and the toast is no longer theirs to dismiss.
+- **A builder's own drag wins.** A look with a drag recognizer of its own takes the drag in the
+  arena before the toast's swipe, and with it `dismissible`, `swipeDirections` and the trackpad rule
+  above; flash's `FlashBar` swipes every direction unless told otherwise. The flash adapter keeps
+  `dismissible` by springing a swipe back rather than dismissing, and a `FlashBar` given
+  `dismissDirections: const []` leaves the swipe to the toast.
 - The speed is measured between the drag's own **pointer timestamps**, from the pointer going down
   to its last move. A drag that reports no time at all — no engine does, a test can — is decided on
   distance alone rather than on a division by zero.
@@ -683,6 +695,19 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - once attached, a `show` with no built navigator throws in debug and keeps no toast; a replace
   throws too but is still applied
 - A builder receives an animation that runs 0→1 on enter and 1→0 on exit
+- A toast with a builder draws it in place of the default look; `config.builder` draws every toast
+  without one, a new one assigned fades in over the old, and a config change that keeps it does
+  not fade; `update` changes the builder and keeps it when not passed, a replace clears it, and a
+  `promise` state carries its own
+- `covered` is 0 at the front, rises toward 1 behind a toast entering in front, and is 0 with the
+  deck expanded
+- A builder driving its animation to 0 removes the toast, once, whether or not it also dismisses
+- A scrollable in a builder takes the wheel over the deck, and its scroll notifications reach the
+  app, where the deck's own do not
+- In the example app, a `FlashBar` through the adapter: enters on the toast's animation with
+  flash's at rest, in both mount modes; flash's fling dismisses the toast; a toast the user may not
+  dismiss springs back and its timer holds; `dismissDirections: const []` leaves the swipe to the
+  toast
 - An update or replace changes the toast in place without entering again, and its new content
   fades in over the old in 200 ms with the old opaque underneath; one arriving mid-fade makes the
   half-faded content the base; the outgoing content is not announced, and the incoming is from its
@@ -736,7 +761,7 @@ outside v0.1 is in §2's non-goals.
 | v0.1 covers everything the first consumer needs (§2) | maintainer | the consumer's migration ends at v0.1 |
 | Layout constants follow sonner | derived | the reference implementation; changeable by measurement |
 | Mode-1 z-order rule (§5) | derived | follows from a single long-lived overlay entry |
-| Item exposes `AnimationController` | derived | makes flash-based widgets fit without redrawing; verified in a spike |
+| Item exposes `AnimationController` | derived | makes flash-based widgets fit without redrawing; verified in a spike. **The flash adapter does not hand it on** (#27, the adapter row below): a `FlashBar` given it moves twice. Other builders still receive it |
 | Entry point is an exported default instance `final toast = SonnerController()`, no static facade and no `call` | maintainer | one API surface instead of a forwarding copy; `toast.show(…)` reads without knowing sonner; name clashes fail at compile time |
 | ~~Type helpers take every `show` parameter except `type`~~ | maintainer | **Superseded**: the type helpers and `ToastType` are gone (row below) |
 | `attach` is an instance method; `SonnerHost` takes an optional controller, `toast` by default | maintainer | follows from the instance entry point; widget tests get their own controller |
@@ -812,6 +837,11 @@ outside v0.1 is in §2's non-goals.
 | A toast exiting when a config is assigned keeps its **place on screen** until it is removed, and still leaves toward the edge it entered from | maintainer | shown while working #28 against keeping its distance from the edge, which under `bottomRight` → `topRight` moved it from 524 to 24 in one frame, onto the new deck (probe), and against removing it at once. It is the row on scrolling an exiting toast (#41) again: a toast on its way out keeps what it had |
 | `copyWith` takes `swipeDirections` as a `ValueGetter<Set<SwipeDirection>?>?`: `copyWith(swipeDirections: () => null)` follows the position again, and a field not given is kept | maintainer | shown while working #28, once assigning `copyWith`'s result became the way to change a config on screen: with `?? this.swipeDirections` nothing could put it back to unset, and the example app was building a whole `SonnerConfig` instead — copying 4 of 11 fields, so a real app doing the same would reset `width`, `offset`, `gap` and `closeButton` on screen. Chosen over leaving it (Flutter's own `copyWith`s cannot null a field either, e.g. `TextStyle.color`) and over deciding it before publishing (#31). The cost accepted: one parameter whose shape differs from the rest |
 | The glide is one deck-wide `ease` from the box each toast was last drawn in, holding the edges the new position names; a new `width` takes at once. A toast dismissed while the glide runs is pinned on screen where it was drawn. The window's fade is eased per toast from what it last drew, not by easing `visibleToasts`. A `position` on the other edge resets the scroll. An equal config does not notify, and a new `duration` reaches only the next toast shown or replaced | derived | one clock for the deck follows the rows that keep motion off a layout animation per toast (exit, expanded neighbours); a box taken from where a toast is drawn is what lets an assignment on the way go on without a jump (tested: a second `offset` mid-glide moves the toast toward the new place from where it was). Holding the named edges keeps a narrowed `bottomRight` toast on 776 rather than shrinking away from the edge and sliding back. Easing `visibleToasts` itself staggered the fade — the second toast of three stayed fully drawn 100 ms into a 3 → 1 change, as the window only crossed it near the end — where §6 asks for the fade a pushed-out toast gets. The scroll reset is #41's measurement (160 px of a bottom deck's offset carried onto a top deck) applied to the flip it named. §4 restarts countdowns on update and replace only, so a config does not |
+| The flash adapter hands a `FlashBar` an animation of its own, resting at 1: the toast enters, leaves and takes its place in the deck on its own animation. Flash's swipe taking it to 0 dismisses the toast, or springs it back when the toast is not `dismissibleNow`; `deactivate` holds the timer | maintainer | shown while working #27 with a real `FlashBar` in the host (flash 3.1.1, a widget-test probe and a throwaway section in the example app), against handing it the toast's animation and against the host giving up its fade and slide for a builder. Shared, the motion ran twice: a 112 px slide where the default is 56, 0.10 opaque at 100 ms of the enter where the default is 0.41, and a drag of 40 px moved the toast 72. Yielding needed a public flag and still let flash's drag drive the deck's animation. With its own animation the enter matched the default look's exactly, and a toast the user may not dismiss stayed on screen. Flash writing the toast's animation moved the deck by almost nothing — 0.02 of a covered toast's content at 0.84, nothing expanded — since a drag presses the deck open anyway. **Not covered**: dragging a `FlashBar` whose toast is already leaving, which flash no longer refuses on its own animation |
+| A `FlashBar`'s own swipe is allowed, and `dismissDirections: const []` is the adapter's recommended use, which leaves the swipe to the toast | maintainer | measured while working #27: in every option flash's drag won the arena from the toast's pan — mouse and trackpad, horizontal and vertical, with `dismissible: false` too (the toast's swipe moved 0) — and with `const []` the toast's swipe took it and dismissed. Chosen over asserting `const []` in debug, which the adapter would have to find in the tree to check, and over saying nothing. The cost accepted: a `FlashBar` left on flash's default takes trackpad pans (moved 120 px), so over an expanded deck it drags rather than scrolls — not measured against a deck that scrolls |
+| The adapter's builder is also handed the toast, and fading a `FlashBar`'s content by `covered` is the app's | maintainer | a `FlashBar` draws its card and content as one widget, so nothing outside it can draw the card without the content, as §6 asks. Chosen over the adapter fading the whole `FlashBar`, which loses the pile of cards behind the front, and over ignoring `covered`, which brings #45 back |
+| The flash adapter and its tests live in the example app only; the package's pubspec has no flash | maintainer | chosen while working #27 over also copying the adapter into the package's `test/` with flash as a dev dependency. The package's own tests pin the builder without flash |
+| A builder sits on `ToastState` beside `action`; `copyWith` takes `config.builder` as a `ValueGetter`; a toast's look is keyed by its state and the builder drawing it, so a new builder fades in and any other config change does not; a toast whose animation reaches 0 while not leaving is dismissed, and one already at 0 when it is dismissed is removed at once | derived | on `ToastState`, update keeps it and replace clears it by the rule every other field already follows. The `ValueGetter` is `swipeDirections`' reason again: null means the default look. Keyed by state alone, a new `config.builder` redrew with no fade; keyed by the builder alone, an update that kept it did not fade (each a mutation a test caught). An `AnimationController` already `dismissed` reports no change when it is animated back to 0 (`_checkStatusChanged`, Flutter 3.44.8), so an exit waiting for that report never removed a toast a builder had flung |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

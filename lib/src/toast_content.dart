@@ -6,8 +6,6 @@ import 'toast_view.dart';
 ///
 /// Everything `show` takes except `id` and `isLoading`, which `promise` sets
 /// itself: the states share an id, and only the first of them is loading.
-///
-/// `builder` joins it when `show` grows it.
 @immutable
 class ToastContent {
   const ToastContent(
@@ -18,6 +16,7 @@ class ToastContent {
     this.dismissible,
     this.action,
     this.closeButton,
+    this.builder,
   });
 
   final String title;
@@ -31,4 +30,5 @@ class ToastContent {
   final bool? dismissible;
   final ToastSlot? action;
   final bool? closeButton;
+  final ToastBuilder? builder;
 }

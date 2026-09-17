@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show toastsOf;
+import 'package:just_sonner/src/default_look.dart' show DefaultToastLook;
 
 void main() {
   late SonnerController controller;
@@ -3009,6 +3010,251 @@ void main() {
         reason: 'nothing on a covered toast offers itself to be pressed',
       );
       semantics.dispose();
+    });
+  });
+
+  group('builder', () {
+    /// A look that draws the toast's title under [label], and remembers the
+    /// toast it was handed in [views], by title.
+    ToastBuilder look(String label, [Map<String, ToastView>? views]) =>
+        (context, toast) {
+          views?[toast.state.title] = toast;
+          return Container(
+            height: 60,
+            color: const Color(0xFF202020),
+            child: Text('$label ${toast.state.title}'),
+          );
+        };
+
+    testWidgets('a toast with a builder draws what it returns in place of the '
+        'default look, and one without keeps the default look', (tester) async {
+      final views = <String, ToastView>{};
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Custom', builder: look('Own', views));
+      controller.show('Plain');
+      await tester.pumpAndSettle();
+
+      expect(find.text('Own Custom'), findsOneWidget);
+      expect(find.text('Custom'), findsNothing, reason: 'no default look');
+      expect(find.byType(DefaultToastLook), findsOneWidget);
+      expect(find.text('Plain'), findsOneWidget);
+      expect(views['Custom']!.id, id);
+    });
+
+    testWidgets('config.builder draws every toast without a builder of its '
+        'own, and another assigned fades in over it', (tester) async {
+      controller.config = controller.config.copyWith(builder: () => look('A'));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Follows');
+      controller.show('Keeps', builder: look('Own'));
+      await tester.pumpAndSettle();
+      expect(find.text('A Follows'), findsOneWidget);
+      expect(find.text('Own Keeps'), findsOneWidget);
+
+      controller.config = controller.config.copyWith(builder: () => look('B'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('A Follows'), findsOneWidget, reason: 'fading out');
+      expect(find.text('B Follows'), findsOneWidget, reason: 'fading in');
+      expect(find.text('Own Keeps'), findsOneWidget, reason: 'not faded');
+
+      await tester.pumpAndSettle();
+      expect(find.text('A Follows'), findsNothing);
+      expect(find.text('B Follows'), findsOneWidget);
+
+      controller.config = controller.config.copyWith(builder: () => null);
+      await tester.pumpAndSettle();
+      expect(find.text('Follows'), findsOneWidget, reason: 'the default look');
+      expect(find.text('Own Keeps'), findsOneWidget);
+    });
+
+    testWidgets('a config change that keeps the builder does not fade the '
+        'look', (tester) async {
+      controller.config = controller.config.copyWith(builder: () => look('A'));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Follows');
+      await tester.pumpAndSettle();
+
+      controller.config = controller.config.copyWith(offset: 80);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('A Follows'), findsOneWidget, reason: 'one layer');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('an update of the builder alone fades the new look in, and '
+        'the old one takes no taps', (tester) async {
+      var oldTaps = 0;
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show(
+        'Saved',
+        builder: (context, toast) => GestureDetector(
+          onTap: () => oldTaps++,
+          child: Container(
+            height: 60,
+            color: const Color(0xFF202020),
+            child: const Text('Old'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      controller.update(id, builder: look('New'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('Old'), findsOneWidget, reason: 'still underneath');
+      expect(find.text('New Saved'), findsOneWidget);
+      await tester.tap(find.text('Old'), warnIfMissed: false);
+      expect(oldTaps, 0);
+      await tester.pumpAndSettle();
+      expect(find.text('Old'), findsNothing);
+    });
+
+    testWidgets('an update that keeps the builder fades the new content in '
+        'over the old, as the default look does', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Before', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'After');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Own Before'), findsOneWidget, reason: 'underneath');
+      expect(find.text('Own After'), findsOneWidget);
+      await tester.pumpAndSettle();
+      expect(find.text('Own Before'), findsNothing);
+    });
+
+    testWidgets('a builder receives an animation that runs 0 to 1 as the toast '
+        'enters and 1 to 0 as it leaves', (tester) async {
+      final views = <String, ToastView>{};
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Saved', builder: look('Own', views));
+      await tester.pump();
+      final animation = views['Saved']!.animation;
+      expect(animation.value, 0);
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(animation.value, closeTo(0.5, 0.01));
+      await tester.pumpAndSettle();
+      expect(animation.value, 1);
+
+      controller.dismiss(id);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(animation.value, closeTo(0.5, 0.01));
+      expect(animation.status, AnimationStatus.reverse);
+      await tester.pumpAndSettle();
+      expect(find.text('Own Saved'), findsNothing);
+    });
+
+    testWidgets('covered is 0 at the front, rises toward 1 behind a toast '
+        'entering in front, and is 0 again with the deck expanded', (
+      tester,
+    ) async {
+      final views = <String, ToastView>{};
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind', builder: look('Own', views));
+      await tester.pumpAndSettle();
+      final covered = views['Behind']!.covered;
+      expect(covered.value, 0, reason: 'the front');
+
+      controller.show('Front', builder: look('Own', views));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(covered.value, allOf(greaterThan(0.1), lessThan(0.9)));
+      await tester.pumpAndSettle();
+      expect(covered.value, 1, reason: 'behind one fully present');
+      expect(views['Front']!.covered.value, 0);
+      expect(
+        identical(views['Behind']!.covered, covered),
+        isTrue,
+        reason: 'one object a look can listen to, not a value per frame',
+      );
+
+      controller.config = controller.config.copyWith(expandByDefault: true);
+      await tester.pumpAndSettle();
+      expect(covered.value, 0, reason: 'the expansion undoes it');
+    });
+
+    testWidgets('a builder that drives its animation to 0 removes the toast, '
+        'and a dismiss after that completes', (tester) async {
+      final views = <String, ToastView>{};
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Flung', builder: look('Own', views));
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      final view = views['Flung']!;
+
+      view.animation.fling(velocity: -2);
+      await tester.pumpAndSettle();
+      expect(toastsOf(controller).map((r) => r.state.title), ['Front']);
+      expect(find.text('Own Flung'), findsNothing);
+      expect(tester.takeException(), isNull);
+
+      var completed = false;
+      unawaited(view.dismiss().then((_) => completed = true));
+      await tester.pump();
+      expect(completed, isTrue);
+      expect(find.text('Front'), findsOneWidget, reason: 'nothing else went');
+    });
+
+    testWidgets('a scrollable in a builder takes the wheel, and the app hears '
+        'it scroll', (tester) async {
+      var notifications = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => NotificationListener<ScrollNotification>(
+            onNotification: (notification) {
+              notifications++;
+              return false;
+            },
+            child: SonnerHost(controller: controller, child: child!),
+          ),
+          home: const SizedBox.expand(),
+        ),
+      );
+      controller.show(
+        'List',
+        builder: (context, toast) => SizedBox(
+          height: 80,
+          child: ListView(
+            children: [
+              for (var i = 0; i < 20; i++)
+                SizedBox(height: 30, child: Text('Row $i')),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final at = tester.getCenter(find.text('Row 1'));
+      final pointer = TestPointer(1, PointerDeviceKind.mouse);
+      await tester.sendEventToBinding(pointer.hover(at));
+      await tester.pumpAndSettle();
+      await tester.sendEventToBinding(pointer.scroll(const Offset(0, 60)));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Row 0'), findsNothing, reason: 'the list scrolled');
+      expect(notifications, greaterThan(0));
+      await tester.sendEventToBinding(pointer.removePointer());
+    });
+
+    testWidgets('a builder that flings to 0 and then dismisses, as flash '
+        'does, is removed once', (tester) async {
+      final views = <String, ToastView>{};
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Flung', builder: look('Own', views));
+      await tester.pumpAndSettle();
+      final view = views['Flung']!;
+
+      view.animation.fling(velocity: -2);
+      var completed = false;
+      unawaited(view.dismiss().then((_) => completed = true));
+      await tester.pumpAndSettle();
+      expect(toastsOf(controller), isEmpty);
+      expect(find.text('Own Flung'), findsNothing);
+      expect(completed, isTrue);
+      expect(tester.takeException(), isNull);
     });
   });
 

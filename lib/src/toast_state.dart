@@ -13,6 +13,7 @@ class ToastState {
     this.action,
     this.closeButton,
     this.dismissible,
+    this.builder,
   });
 
   final String title;
@@ -41,6 +42,10 @@ class ToastState {
   /// than settled when the toast was shown — which is what lets a toast hand
   /// itself back the moment it stops loading, with no second call.
   final bool? dismissible;
+
+  /// What draws the toast in place of the default look, or null to follow
+  /// `SonnerConfig.builder`.
+  final ToastBuilder? builder;
 
   /// Whether the user may dismiss it now: [dismissible], or `!isLoading` while
   /// that is unset.
