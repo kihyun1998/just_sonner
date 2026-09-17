@@ -12,7 +12,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase, Ticker;
 import 'package:flutter/services.dart'
-    show PointerEnterEventListener, PointerExitEventListener;
+    show
+        PointerEnterEventListener,
+        PointerExitEventListener,
+        PointerHoverEventListener;
 import 'package:flutter/widgets.dart';
 
 import 'config.dart';
@@ -79,11 +82,16 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// Newest first, as the controller orders its toasts.
   List<_Slot> _slots = [];
 
-  /// The pointer devices over the deck. While there are any, this host holds
-  /// the controller's timers.
+  /// The pointer devices over the deck's hover region, moved or not.
   final Set<int> _pointers = {};
 
-  bool get _hovered => _pointers.isNotEmpty;
+  /// The pointer devices that have moved, pressed or scrolled over the deck
+  /// since they entered its hover region. While there are any, this host
+  /// holds the controller's timers and fans the deck out. A pointer the deck
+  /// appeared under, and that has not moved since, is not among them.
+  final Set<int> _moved = {};
+
+  bool get _hovered => _moved.isNotEmpty;
 
   /// The pointer devices pressed on the deck. A press keeps the deck as it
   /// found it until it lets go, wherever it travels in between — dragging a
@@ -244,12 +252,26 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   void _setPointer(int device, {required bool over}) {
-    final was = _hovered;
     if (over) {
       _pointers.add(device);
-    } else {
-      _pointers.remove(device);
+      return;
     }
+    _pointers.remove(device);
+    _setHovered(() => _moved.remove(device));
+  }
+
+  /// Counts [device] as over the deck once it acts there: moves, presses or
+  /// scrolls. Entering the region is not enough, since the region also moves
+  /// under a pointer that stays where it is — a toast shown under it, or the
+  /// deck closing a gap.
+  void _movePointer(int device) {
+    if (!_pointers.contains(device)) return;
+    _setHovered(() => _moved.add(device));
+  }
+
+  void _setHovered(VoidCallback change) {
+    final was = _hovered;
+    change();
     final hovered = _hovered;
     if (hovered == was) return;
     if (hovered) {
@@ -269,6 +291,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // that went down on the deck reports going up through it even once the
     // host has left the tree, and nothing here is alive to answer with.
     if (!mounted) return;
+    if (down) _movePointer(device);
     final was = _interacting;
     if (down) {
       _pressed.add(device);
@@ -552,10 +575,12 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       onPointerDown: (event) => _setPressed(event.device, down: true),
       onPointerUp: (event) => _setPressed(event.device, down: false),
       onPointerCancel: (event) => _setPressed(event.device, down: false),
+      onPointerSignal: (event) => _movePointer(event.device),
       child: _DeckRegion(
         deck: () => _deck,
         onEnter: (event) => _setPointer(event.device, over: true),
         onExit: (event) => _setPointer(event.device, over: false),
+        onHover: (event) => _movePointer(event.device),
         child: NotificationListener<Notification>(
           // The deck's scroll is its own: an app watching for its content
           // scrolling under an app bar must not hear it.
@@ -1135,16 +1160,23 @@ class _DeckRegion extends SingleChildRenderObjectWidget {
     required this.deck,
     required this.onEnter,
     required this.onExit,
+    required this.onHover,
     super.child,
   });
 
   final Rect Function() deck;
   final PointerEnterEventListener onEnter;
   final PointerExitEventListener onExit;
+  final PointerHoverEventListener onHover;
 
   @override
   _RenderDeckRegion createRenderObject(BuildContext context) =>
-      _RenderDeckRegion(deck, onEnter: onEnter, onExit: onExit);
+      _RenderDeckRegion(
+        deck,
+        onEnter: onEnter,
+        onExit: onExit,
+        onHover: onHover,
+      );
 
   @override
   void updateRenderObject(
@@ -1153,11 +1185,12 @@ class _DeckRegion extends SingleChildRenderObjectWidget {
   ) => renderObject
     ..deck = deck
     ..onEnter = onEnter
-    ..onExit = onExit;
+    ..onExit = onExit
+    ..onHover = onHover;
 }
 
 class _RenderDeckRegion extends RenderMouseRegion {
-  _RenderDeckRegion(this.deck, {super.onEnter, super.onExit});
+  _RenderDeckRegion(this.deck, {super.onEnter, super.onExit, super.onHover});
 
   Rect Function() deck;
 

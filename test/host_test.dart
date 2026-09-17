@@ -1481,11 +1481,14 @@ void main() {
       ),
     );
 
-    /// A mouse resting at [at], taken away when the test ends.
+    /// A mouse moved to [at] and resting there, taken away when the test
+    /// ends. It arrives by a move, since a pointer the deck merely appears
+    /// under is not over it.
     Future<TestGesture> mouseAt(WidgetTester tester, Offset at) async {
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: at);
+      await mouse.addPointer(location: at - const Offset(1, 0));
       addTearDown(mouse.removePointer);
+      await mouse.moveTo(at);
       await tester.pump();
       return mouse;
     }
@@ -2055,8 +2058,9 @@ void main() {
         kind: PointerDeviceKind.mouse,
         device: 2,
       );
-      await second.addPointer(location: centre + const Offset(10, 0));
+      await second.addPointer(location: centre + const Offset(9, 0));
       addTearDown(second.removePointer);
+      await second.moveTo(centre + const Offset(10, 0));
       await tester.pump();
 
       await first.moveTo(away);
@@ -2100,6 +2104,126 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1200));
       expect(toastsOf(controller), isEmpty);
       await tester.pumpAndSettle();
+    });
+
+    group('a pointer the deck appears under', () {
+      /// Where the front toast is drawn, found with a toast that is gone
+      /// again by the time this returns.
+      Future<Offset> frontCentre(
+        WidgetTester tester,
+        SonnerController controller,
+      ) async {
+        controller.show('Measure', duration: Duration.zero);
+        await tester.pumpAndSettle();
+        final centre = boxOf(tester, 'Measure').center;
+        controller.dismissAll();
+        await tester.pumpAndSettle();
+        return centre;
+      }
+
+      /// A mouse added at [at] that has not moved, taken away when the test
+      /// ends.
+      Future<TestPointer> stillMouseAt(WidgetTester tester, Offset at) async {
+        final mouse = TestPointer(1, PointerDeviceKind.mouse);
+        await tester.sendEventToBinding(mouse.addPointer(location: at));
+        addTearDown(() => tester.sendEventToBinding(mouse.removePointer()));
+        await tester.pump();
+        return mouse;
+      }
+
+      Future<SonnerController> twoUnder(WidgetTester tester) async {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: Duration(seconds: 1)),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        final at = await frontCentre(tester, controller);
+        await stillMouseAt(tester, at);
+        controller.show('Behind');
+        controller.show('Front');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        return controller;
+      }
+
+      testWidgets('counts down, and the deck stays collapsed, until it moves', (
+        tester,
+      ) async {
+        final controller = await twoUnder(tester);
+        expect(scaleOf(tester, 'Behind'), lessThan(1), reason: 'collapsed');
+
+        await tester.pump(const Duration(milliseconds: 800));
+        expect(toastsOf(controller), isEmpty, reason: 'not paused');
+        await tester.pumpAndSettle();
+      });
+
+      for (final (act, how) in [
+        (
+          'moves',
+          (TestPointer mouse, Offset at) => [
+            mouse.hover(at + const Offset(1, 0)),
+          ],
+        ),
+        (
+          'presses',
+          (TestPointer mouse, Offset at) => [mouse.down(at), mouse.up()],
+        ),
+        (
+          'scrolls',
+          (TestPointer mouse, Offset at) => [mouse.scroll(const Offset(0, 20))],
+        ),
+      ]) {
+        testWidgets('fans out and pauses once it $act', (tester) async {
+          final controller = SonnerController(
+            config: const SonnerConfig(duration: Duration(seconds: 1)),
+          );
+          addTearDown(controller.dispose);
+          await tester.pumpWidget(app(controller: controller));
+          final at = await frontCentre(tester, controller);
+          final mouse = await stillMouseAt(tester, at);
+          controller.show('Behind');
+          controller.show('Front');
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+
+          for (final event in how(mouse, at)) {
+            await tester.sendEventToBinding(event);
+          }
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          expect(scaleOf(tester, 'Behind'), 1, reason: 'expanded');
+          await tester.pump(const Duration(seconds: 3));
+          expect(toastsOf(controller), hasLength(2), reason: 'paused');
+
+          controller.dismissAll();
+          await tester.pumpAndSettle();
+        });
+      }
+
+      testWidgets(
+        'includes a pointer that was over the deck before it went away',
+        (tester) async {
+          final controller = SonnerController(
+            config: const SonnerConfig(duration: Duration(seconds: 1)),
+          );
+          addTearDown(controller.dispose);
+          await tester.pumpWidget(app(controller: controller));
+          controller.show('First');
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 400));
+          await mouseAt(tester, boxOf(tester, 'First').center);
+          await tester.pump(const Duration(seconds: 2));
+          expect(toastsOf(controller), hasLength(1), reason: 'paused');
+
+          controller.dismissAll();
+          await tester.pumpAndSettle();
+          controller.show('Next');
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 1200));
+          expect(toastsOf(controller), isEmpty, reason: 'not paused');
+          await tester.pumpAndSettle();
+        },
+      );
     });
 
     testWidgets('a host removed under the pointer lets the timers go', (
@@ -2686,11 +2810,14 @@ void main() {
       ),
     );
 
-    /// A mouse resting at [at], taken away when the test ends.
+    /// A mouse moved to [at] and resting there, taken away when the test
+    /// ends. It arrives by a move, since a pointer the deck merely appears
+    /// under is not over it.
     Future<TestGesture> mouseAt(WidgetTester tester, Offset at) async {
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: at);
+      await mouse.addPointer(location: at - const Offset(1, 0));
       addTearDown(mouse.removePointer);
+      await mouse.moveTo(at);
       await tester.pump();
       return mouse;
     }
@@ -3685,8 +3812,9 @@ void main() {
     ) async {
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
       final at = toastRect(tester, title).center;
-      await mouse.addPointer(location: at);
+      await mouse.addPointer(location: at - const Offset(1, 0));
       addTearDown(mouse.removePointer);
+      await mouse.moveTo(at);
       await tester.pump();
       await mouse.down(at);
       await tester.pump();
@@ -4430,7 +4558,9 @@ void main() {
 
       // The pointer on the deck.
       final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
-      await mouse.addPointer(location: tester.getCenter(find.text('Counting')));
+      final counting = tester.getCenter(find.text('Counting'));
+      await mouse.addPointer(location: counting - const Offset(1, 0));
+      await mouse.moveTo(counting);
       await tester.pump();
       final stood = views['Counting']!.timeLeft!.value;
       expect(await frames(60), everyElement(stood));
