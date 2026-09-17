@@ -58,6 +58,10 @@ What just_sonner adds, in the order a real consumer needed them:
 - A control at the expanded deck's far end that dismisses every toast the user may dismiss —
   `config.dismissAll`, a pill or a header reading its `label`, or the app's own through a builder
   (§6)
+- Stowing the deck: it goes out of sight, keeping its toasts and their countdowns, until the next
+  new toast brings it back — `stow()` / `unstow()` on the controller, a control on the deck
+  (`config.stowControl`), a motion (`config.stowMotion`) and a handle left at the edge
+  (`config.stowHandle`), each with built-in looks and a builder (§6, §7)
 - **Windows, macOS, Linux**; no dependency beyond Flutter
 
 ### Non-goals (v0.1)
@@ -140,6 +144,12 @@ class SonnerController extends ChangeNotifier {
 
   void dismiss(ToastId id);
   void dismissAll();
+
+  /// Puts the deck out of sight, keeping its toasts (§6). Nothing to stow does nothing.
+  void stow();
+  /// Brings a stowed deck back with what is left of them.
+  void unstow();
+  bool get stowed;
 }
 
 /// The content of one `promise` state. Everything `show` takes except `id` and `isLoading`,
@@ -238,6 +248,63 @@ class DeckDismissAllView {
   Animation<double> get expansion;   // 0 collapsed → 1 expanded
 }
 
+/// The control at the expanded deck's far end that stows the deck (§6).
+/// `SonnerConfig.stowControl` is one of these, or null to draw none.
+class DeckStowControl {
+  const DeckStowControl({
+    DeckStowLook look = DeckStowLook.pill,
+    String label = 'Hide',
+    String Function(int count)? countLabel,   // a header's; null: '$count notifications'
+    DeckStowBuilder? builder,                 // replaces the look
+  });
+}
+
+enum DeckStowLook { pill, header, icon }
+
+/// How the deck goes out of sight and comes back. `SonnerConfig.stowMotion` is one of these,
+/// and is never null: an app calling `stow()` needs a motion with no control configured.
+class DeckStowMotion {
+  const DeckStowMotion({
+    DeckStowMotionLook look = DeckStowMotionLook.slide,
+    DeckStowMotionBuilder? builder,           // replaces the look
+  });
+}
+
+enum DeckStowMotionLook { slide, fade, shrink }
+
+/// What a stowed deck leaves at its edge. `SonnerConfig.stowHandle` is one of these, or null
+/// for nothing, which is the default.
+class DeckStowHandle {
+  const DeckStowHandle({
+    String Function(int count)? countLabel,   // null: '$count hidden'
+    DeckStowHandleBuilder? builder,           // replaces the look
+  });
+}
+
+typedef DeckStowBuilder = Widget Function(BuildContext context, DeckStowView view);
+typedef DeckStowMotionBuilder =
+    Widget Function(BuildContext context, DeckStowMotionView view, Widget deck);
+typedef DeckStowHandleBuilder = Widget Function(BuildContext context, DeckStowHandleView view);
+
+class DeckStowView {
+  int get count;                     // every toast on screen, dismissible or not
+  void stow();
+  Animation<double> get expansion;   // 0 collapsed → 1 expanded
+}
+
+class DeckStowMotionView {
+  Animation<double> get stowed;      // 0 drawn → 1 stowed, and back
+  SonnerPosition get position;
+  double get reach;                  // how far the deck reached from its edge when it was stowed
+}
+
+class DeckStowHandleView {
+  int get count;                     // the toasts the stowed deck is keeping
+  void unstow();
+  Animation<double> get shown;       // 0 with the deck drawn → 1 with it stowed
+  SonnerPosition get position;
+}
+
 enum TimeLeftLook { border, bottomBar, topBar, cornerRing, leadingRing }
 enum TimeLeftStart { topStart, topCenter, topEnd, centerEnd, bottomEnd, bottomCenter, bottomStart, centerStart }
 ```
@@ -251,15 +318,17 @@ same methods as `toast`. There is no static facade.
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false), `timeLeft` (`ToastTimeLeft()`), `deckCap` (`DeckCap.pixels(400)`),
-`scrollbar` (`DeckScrollbar()`), `dismissAll` (`DeckDismissAll()`). It is immutable and has a `copyWith`, so
+`scrollbar` (`DeckScrollbar()`), `dismissAll` (`DeckDismissAll()`), `stowControl`
+(`DeckStowControl()`), `stowMotion` (`DeckStowMotion()`), `stowHandle` (null). It is immutable and has a `copyWith`, so
 one field changes with `toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is
 given as a function, `copyWith(swipeDirections: () => null)`, so it can go back to following the
 position, `builder` the same way, `copyWith(builder: () => null)`, back to the default look, and
 `timeLeft` too, `copyWith(timeLeft: () => null)`, to draw none, and `deckCap` and `scrollbar`
 likewise, to reach as far as the layer and to draw no scrollbar, and `dismissAll`, to draw no
-control. `ToastTimeLeft` and `DeckScrollbar` have a `copyWith` of their own, with `color` given as
-a function to go back to the theme's, and `DeckDismissAll` one with `countLabel` and `builder`
-given as functions.
+control, and `stowControl` and `stowHandle` the same way; `stowMotion` is not nullable and is
+passed as a value. `ToastTimeLeft` and `DeckScrollbar` have a `copyWith` of their own, with
+`color` given as a function to go back to the theme's, and `DeckDismissAll`, `DeckStowControl`,
+`DeckStowMotion` and `DeckStowHandle` one with `countLabel` and `builder` given as functions.
 
 **The config lives on the controller and nowhere else.** `attach` does not take one and neither
 does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
@@ -533,6 +602,30 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - **It is drawn outside the deck**, over it, so the cap's cut does not reach it, and laid out
     before the deck, so the deck places it by its size in the same frame. The hover region takes
     it in, so moving the pointer from the deck onto it does not collapse the deck.
+- **The stow control** is `config.stowControl`, drawn in the same place and on the same terms as
+  the dismiss-all control, except that **one toast is enough** and it need not be one the user
+  may dismiss: a loading toast in the way is the common reason to stow. Pressing it stows the
+  deck (§7).
+  - A `pill` reads `label`; an `icon` is a round chevron pointing at the edge the deck sits at,
+    labelled `label` for semantics, drawn at the other end of the deck's width; a `header` is a
+    bar as wide as the deck reading `countLabel(count)` and a button with `label`. A `builder`
+    draws the control instead, handed the count, `stow()` and the expansion.
+  - **The two controls share one bar** where either asks for a header: the count, the stow
+    control, then the dismiss-all control, each drawn as its own look says (a chevron for `icon`,
+    a builder's widget for a builder). A header dismiss-all control with no stow control showing
+    draws its own bar as before. Otherwise the two sit side by side, the dismiss-all control on
+    the side the position names.
+- **A stowed deck is drawn by `config.stowMotion`**, from where it is to out of sight over 300 ms,
+  eased, and back the same way. A `slide` carries it past the edge it sits at, by as far as it
+  reached from that edge and 24 px more; a `fade` leaves it where it is; a `shrink` pulls it into
+  the corner it sits in, to 0.6 of its size. All three fade out. A `builder` is handed the deck,
+  an animation from 0 drawn to 1 stowed, the position and that reach, and draws what it likes.
+  **Whatever is drawn, a stowed deck takes no pointer**: its hover region is empty and nothing in
+  it can be pressed.
+- **The handle** is `config.stowHandle`, null by default. With one, a stowed deck leaves a button
+  reading `countLabel(count)` at `offset` from the edges, in the corner the position names, which
+  brings the deck back. It fades in with the stow and takes the pointer only while the deck is
+  stowed; being over it neither pauses the timers nor fans the deck out.
   - Pressing it leaves fewer than two dismissible toasts, so it goes at once, and the deck may
     collapse with it under the pointer.
   - **A toast entering or leaving while the pointer is over the deck does not move the toasts in
@@ -650,6 +743,13 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   pass uncounted. So the controller still reads no clock, and what is drawn keeps to the time
   left the countdown will actually take. Frames run for it only while some toast counts down — which is also why a widget
   test with a counting toast on screen pumps by hand: `pumpAndSettle` would run its timer out.
+- **Stowing changes no countdown.** A stowed toast counts down exactly as it would on screen, and
+  one whose time runs out there is dismissed without coming back into view — the same rule as a
+  toast pushed beyond `visibleToasts`. What stowing does end is the **pointer's** hold: nothing
+  drawn is hovered, so the pause the pointer had goes at once, a press the deck was under is let
+  go of, and a swipe under way is called off and springs back. A toast that never times out
+  (`Duration.zero`, loading) waits out the stow, which is why this is not the §2 notification
+  centre: nothing outlives its own duration.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
   `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
 
@@ -792,6 +892,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   toast's own duration rather than what was left of it; entering it stops a countdown under way and
   stops the tick; it can stop and start again at the same id; `show(isLoading: true, duration:)`
   asserts; a replace clears `leading` and `isLoading` like any other field not given
+- `stow` and `unstow` notify, and do nothing twice or with nothing to stow; a new toast ends the
+  stow, an update, a replace and a `promise` state on a toast on screen do not; the last toast
+  leaving by dismiss, `dismissAll` or its own timer ends it; a stowed toast counts down as it
+  would on screen
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the hidden toasts in the list;
   an equal config does not notify, an invalid one asserts as at construction, and a new `duration`
   leaves the countdowns under way alone
@@ -823,6 +927,23 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
   its count label and label; a builder replaces the look, is placed by its size and dismisses
   through its view
+- Stowing takes the deck out of sight and lets go of the pointer as it goes — the timers run
+  again, a press no longer holds the deck open when it comes back, and a swipe under way does not
+  dismiss its toast; a pointer moving where the deck was holds nothing; a new toast brings the
+  deck back with the toasts it kept, and the last toast timing out while stowed leaves it out of
+  sight while its exit runs
+- The stow control shows with one toast, even one the user may not dismiss, sits a gap past the
+  far end on the position's side, and is a button labelled with its label; a header on its own is
+  a bar the deck's width reading its count; an icon is a chevron at the other end of that width;
+  two pills sit side by side with the dismiss-all control on the deck's own side; the two share
+  one bar where either asks for a header, counting what the header-look control acts on; a
+  builder replaces the look and stows through its view, in the bar where there is one
+- Each motion ends out of sight and comes back: a slide carries the deck toward the edge, a
+  shrink scales it, a fade does neither, and all three fade; a motion builder is handed an
+  animation that runs to 1 and back, and the deck still takes no pointer under it
+- No handle unless one is configured; with one, it reads what the deck is keeping, is a button,
+  brings the deck back, pauses nothing while the pointer is on it, takes the pointer only while
+  the deck is stowed, and a builder draws it instead
 - a mode-1 toast shown while the app is hidden waits before its host is built
 - Only `visibleToasts` are hit-testable while the pointer is away
 - The `action` slot is placed at the trailing edge and handed the toast; its widget can dismiss the
@@ -926,7 +1047,8 @@ Every test is reddened once before it is trusted: remove the rule it guards and 
 Mirrors the checks above as buttons: five toasts in a row, a toast with a `leading` widget and one
 without, loading → done, loading → failed, two promises at once, a toast over an open dialog
 (mode 1), position / expand / visible-count controls, light and dark, a builder that wraps a flash
-`FlashBar` through the adapter in §1, and every `ToastTimeLeft` field on a control.
+`FlashBar` through the adapter in §1, every `ToastTimeLeft` field on a control, and stowing the
+deck — a control, a motion and a handle to pick from, with a builder for each.
 
 ## 11. Open questions (for review)
 
@@ -1038,6 +1160,11 @@ outside v0.1 is in §2's non-goals.
 | The newest toast is never cut: a cap shorter than it reaches its far end; an `expandByDefault` deck with no pointer is cut and does not scroll; a click on the scrollbar's track does nothing | derived | confirmed by the maintainer as part of #62's reading. A newest toast taller than the cap could not otherwise be read at all while the deck is collapsed. Nothing scrolls a deck with no pointer on it (§6), so a scrollbar is not drawn there either. A track click was not asked for |
 | The cut follows where toasts are drawn, not whether the scroll overflows; the hover region takes in a draggable thumb outside the deck; a drag of the thumb holds the deck as a press does; the thumb's defaults are 4 px thick, at least 24 px long, 8 px outside or 6 px inside the edge, taking the pointer 4 px either side; one not always shown lingers 600 ms and fades over 300 ms | derived | the cut: measured in #62's spike, where a cut keyed on the overflow let the toasts beyond the window show past the cap for the whole 400 ms collapse, since they leave the deck when the pointer does (read from pixels at 50, 100 and 150 ms). The region: a thumb outside the deck's box collapsed the deck as the pointer travelled to it, the same trap #59's control has. The thumb's size and placement are what the maintainer was shown in the spike; the linger and fade are Material's desktop scrollbar (`_kScrollbarTimeToFade`, `_kScrollbarFadeDuration`, `material/scrollbar.dart`), whose 8 px thickness and 48 px minimum were not taken over what was shown |
 | A toast cut at the cap stays in the semantics tree; a drag of the scrollbar carried off the deck lets the timers run, as any press held off the deck does | maintainer | asked before #62 merged. The first matches a toast scrolled out of view and a covered toast, which keep their place in the tree since what the deck hides is the reading, not the announcement (§6 Collapsed). The second keeps §7's one rule — a press that stays put is a pointer over the deck, and only a toast being dragged holds the timers — over adding a clause for the scrollbar |
+| The deck can be **stowed**: it goes out of sight keeping its toasts, which count down as they would on screen, until the next **new** toast brings it back — `stow()` / `unstow()` / `stowed` on the controller, plus three config fields, `stowControl` (`DeckStowControl?`, a `pill` by default, on), `stowMotion` (`DeckStowMotion`, a `slide`, never null) and `stowHandle` (`DeckStowHandle?`, null), each with built-in looks and a builder; in v0.1 | maintainer | #60, split from #39's triage as the half of "hide them" that keeps the toasts (#59 is the half that does not). Chosen from a throwaway spike in the example app with three control looks, three motions and a handle switch, at the top and the bottom. The maintainer asked for every variant to be a config option with a builder each, as #38's time left already is. Defaults were asked and taken: the pill (matching #59's), the slide, and no handle. **stow** was picked because **hidden** already names a toast outside the window (§6, CONTEXT) and reusing it would give one word three meanings. The three config fields are separate rather than one object because an app that stows through the controller with no control configured still needs a motion. sonner (8e4662b) has nothing like it |
+| Only a new toast brings a stowed deck back, not an `update`, a replace or a `promise` state landing on a toast on screen; and the stow ends whenever the last toast leaves | maintainer | a loading toast updating its progress would otherwise pop the deck back every time, which is the case stowing exists for. A new toast is news the user has not seen; changed content on a toast they chose to put away is not. Ending the stow on an empty deck keeps `stowed` from describing a deck with nothing in it, and the next toast draws normally either way |
+| Stowing lets the pointer go: the hover pause is released as it stows, a press is let go of, and a swipe under way is called off and springs back | maintainer, from the agent's reading | a pointer that went down on a toast keeps its route after the deck stops taking the pointer, so a drag left running would keep dragging an invisible toast and could dismiss it on release — measured while reading the code, not in the spike. A press left holding would also fan the deck out again when it came back |
+| The stow and dismiss-all controls share one bar where either asks for a header, and sit side by side otherwise; a header dismiss-all control with no stow control showing keeps drawing its own | agent | derived while building, from the maintainer's "one bar" for the stow header. Two bars, or a bar with a pill hanging off it, is the only other reading, and both draw two count lines for one deck. The count is the header-look control's own, since that is what its button acts on |
+| The stow control shows with **one** toast, dismissible or not, where the dismiss-all control needs two the user may dismiss | maintainer | a loading toast that cannot be dismissed and will not time out is the common reason to put the deck away, and it is exactly the case the dismiss-all control cannot help with |
 | The deck carries a control that dismisses every toast the user may dismiss: `SonnerConfig.dismissAll: DeckDismissAll?` — a `pill` (default, on) or a `header`, reading a `label` (`'Clear all'`), or a `builder` the app draws with, handed a `DeckDismissAllView` (`count`, `dismiss()`) — shown only while the deck is expanded under the pointer with at least two such toasts; in v0.1 | maintainer | #59, filed from #39's triage when the maintainer asked for a way to clear the deck (and for hiding it without dismissing, #60). Chosen from throwaway spikes in the example app: a pill past the far end, a header bar, a × on the far corner and a pill beside the far end, first on the uncapped deck and again on #62's capped one, then with a builder's control beside them. The maintainer liked the pill and the header and asked whether an API for an app's own would be better; shown the proposal of both — the looks for the common case, a builder for the rest, as `builder` and `timeLeft` already split it — they chose both, the corner and side placements dropped. A setting to show it on a collapsed deck was offered and not taken. `dismissAll` names were picked over `clearAll` to match **Dismissed** and `SonnerController.dismissAll()`; a `label` setting over a fixed English one, so an app in another language need not write a builder. sonner (8e4662b) has no such control |
 | The control leaves toasts loading or not dismissible, and counts the ones beyond the window; a header's count text is `countLabel`; the builder is handed the expansion as an `Animation`; it is drawn outside `DeckCutBox` and laid out before the deck; the hover region takes it in | derived | confirmed by the maintainer as part of #59's reading. **Dismissible** governs what the user may dismiss, and this is the user's control. The count text follows `label` for the same reason. The `Animation` follows `ToastView.covered` and `timeLeft`, which a look answers by repainting. Measured in the spikes: laid out among the toasts, a control past the cap was hidden by #62's cut; and outside the deck's box, moving the pointer onto it collapsed the deck before it could be pressed. Laying it out first keeps a builder's size and its place in one frame. **Not covered**: a widget test cannot tell that order from laying it out after the deck, since the layer lays out twice in the frame the pointer arrives in |
 

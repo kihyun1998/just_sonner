@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import 'dismiss_all_view.dart';
+import 'stow_view.dart';
 import 'toast_view.dart' show ToastBuilder;
 
 /// Where on the screen the toasts sit.
@@ -346,6 +347,146 @@ class DeckDismissAll {
   int get hashCode => Object.hash(look, label, countLabel, builder);
 }
 
+/// The built-in looks of the [DeckStowControl].
+enum DeckStowLook {
+  /// A small rounded button reading its label.
+  pill,
+
+  /// A bar as wide as the deck: the count, a button reading its label, and
+  /// the dismiss-all control's button where that control shows too.
+  header,
+
+  /// A round button with a chevron pointing at the edge the deck sits at, at
+  /// the other end of the deck's width from the dismiss-all control.
+  icon,
+}
+
+/// The control at the expanded deck's far end that stows the deck. It shows
+/// while the pointer holds the deck and at least one toast is on screen,
+/// whether or not the user may dismiss it.
+@immutable
+class DeckStowControl {
+  const DeckStowControl({
+    this.look = DeckStowLook.pill,
+    this.label = 'Hide',
+    this.countLabel,
+    this.builder,
+  });
+
+  final DeckStowLook look;
+
+  /// What the button reads, and what an icon is labelled for semantics.
+  final String label;
+
+  /// What a [DeckStowLook.header] reads for the count. Null reads
+  /// `'$count notifications'`.
+  final String Function(int count)? countLabel;
+
+  /// Draws the control in place of [look].
+  final DeckStowBuilder? builder;
+
+  /// A copy with the fields given changed. [countLabel] and [builder] are
+  /// given as functions, since null is a value each can take.
+  DeckStowControl copyWith({
+    DeckStowLook? look,
+    String? label,
+    ValueGetter<String Function(int count)?>? countLabel,
+    ValueGetter<DeckStowBuilder?>? builder,
+  }) => DeckStowControl(
+    look: look ?? this.look,
+    label: label ?? this.label,
+    countLabel: countLabel == null ? this.countLabel : countLabel(),
+    builder: builder == null ? this.builder : builder(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckStowControl &&
+      other.look == look &&
+      other.label == label &&
+      other.countLabel == countLabel &&
+      other.builder == builder;
+
+  @override
+  int get hashCode => Object.hash(look, label, countLabel, builder);
+}
+
+/// The built-in motions a deck goes out of sight by.
+enum DeckStowMotionLook {
+  /// Past the edge it sits at, fading.
+  slide,
+
+  /// Fading where it is.
+  fade,
+
+  /// Shrinking into the corner it sits in, fading.
+  shrink,
+}
+
+/// How the deck goes out of sight, and comes back the same way reversed. It
+/// is not nullable: an app calling `stow()` needs a motion whether or not a
+/// [DeckStowControl] is configured.
+@immutable
+class DeckStowMotion {
+  const DeckStowMotion({this.look = DeckStowMotionLook.slide, this.builder});
+
+  final DeckStowMotionLook look;
+
+  /// Takes the deck out of sight in place of [look]. A stowed deck takes no
+  /// pointer whatever a builder draws.
+  final DeckStowMotionBuilder? builder;
+
+  /// A copy with the fields given changed. [builder] is given as a function,
+  /// since null is a value it can take.
+  DeckStowMotion copyWith({
+    DeckStowMotionLook? look,
+    ValueGetter<DeckStowMotionBuilder?>? builder,
+  }) => DeckStowMotion(
+    look: look ?? this.look,
+    builder: builder == null ? this.builder : builder(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckStowMotion && other.look == look && other.builder == builder;
+
+  @override
+  int get hashCode => Object.hash(look, builder);
+}
+
+/// What a stowed deck leaves at its edge: a button reading how many toasts it
+/// is keeping, which brings them back. It takes the pointer only while the
+/// deck is stowed.
+@immutable
+class DeckStowHandle {
+  const DeckStowHandle({this.countLabel, this.builder});
+
+  /// What the button reads. Null reads `'$count hidden'`.
+  final String Function(int count)? countLabel;
+
+  /// Draws the handle in place of the built-in look.
+  final DeckStowHandleBuilder? builder;
+
+  /// A copy with the fields given changed. Both are given as functions, since
+  /// null is a value each can take.
+  DeckStowHandle copyWith({
+    ValueGetter<String Function(int count)?>? countLabel,
+    ValueGetter<DeckStowHandleBuilder?>? builder,
+  }) => DeckStowHandle(
+    countLabel: countLabel == null ? this.countLabel : countLabel(),
+    builder: builder == null ? this.builder : builder(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckStowHandle &&
+      other.countLabel == countLabel &&
+      other.builder == builder;
+
+  @override
+  int get hashCode => Object.hash(countLabel, builder);
+}
+
 /// How a controller's toasts are laid out and how long they stay.
 @immutable
 class SonnerConfig {
@@ -366,6 +507,9 @@ class SonnerConfig {
     this.deckCap = const DeckCap.pixels(400),
     this.scrollbar = const DeckScrollbar(),
     this.dismissAll = const DeckDismissAll(),
+    this.stowControl = const DeckStowControl(),
+    this.stowMotion = const DeckStowMotion(),
+    this.stowHandle,
   });
 
   final SonnerPosition position;
@@ -447,6 +591,16 @@ class SonnerConfig {
   /// expanded deck's far end. Null draws none.
   final DeckDismissAll? dismissAll;
 
+  /// The control that stows the deck, or null for none. The app can stow
+  /// through the controller either way.
+  final DeckStowControl? stowControl;
+
+  /// How the deck goes out of sight and comes back.
+  final DeckStowMotion stowMotion;
+
+  /// What a stowed deck leaves at its edge, or null for nothing.
+  final DeckStowHandle? stowHandle;
+
   /// A copy with the fields given changed.
   ///
   /// [swipeDirections], [builder] and [timeLeft] are given as functions, since
@@ -470,6 +624,9 @@ class SonnerConfig {
     ValueGetter<DeckCap?>? deckCap,
     ValueGetter<DeckScrollbar?>? scrollbar,
     ValueGetter<DeckDismissAll?>? dismissAll,
+    ValueGetter<DeckStowControl?>? stowControl,
+    DeckStowMotion? stowMotion,
+    ValueGetter<DeckStowHandle?>? stowHandle,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -489,6 +646,9 @@ class SonnerConfig {
     deckCap: deckCap == null ? this.deckCap : deckCap(),
     scrollbar: scrollbar == null ? this.scrollbar : scrollbar(),
     dismissAll: dismissAll == null ? this.dismissAll : dismissAll(),
+    stowControl: stowControl == null ? this.stowControl : stowControl(),
+    stowMotion: stowMotion ?? this.stowMotion,
+    stowHandle: stowHandle == null ? this.stowHandle : stowHandle(),
   );
 
   @override
@@ -509,7 +669,10 @@ class SonnerConfig {
       other.timeLeft == timeLeft &&
       other.deckCap == deckCap &&
       other.scrollbar == scrollbar &&
-      other.dismissAll == dismissAll;
+      other.dismissAll == dismissAll &&
+      other.stowControl == stowControl &&
+      other.stowMotion == stowMotion &&
+      other.stowHandle == stowHandle;
 
   @override
   int get hashCode => Object.hash(
@@ -529,5 +692,8 @@ class SonnerConfig {
     deckCap,
     scrollbar,
     dismissAll,
+    stowControl,
+    stowMotion,
+    stowHandle,
   );
 }

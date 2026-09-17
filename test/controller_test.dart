@@ -1208,6 +1208,125 @@ void main() {
     expect(notifications, 1);
   });
 
+  group('stow', () {
+    test('stow puts the deck away and notifies; unstow brings it back; '
+        'neither does anything twice', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.addListener(() => notifications++);
+        expect(controller.stowed, isFalse);
+
+        controller.stow();
+        expect(controller.stowed, isFalse, reason: 'nothing to stow');
+        expect(notifications, 0);
+
+        controller.show('Saved', duration: Duration.zero);
+        notifications = 0;
+        controller.stow();
+        expect(controller.stowed, isTrue);
+        expect(notifications, 1);
+        controller.stow();
+        expect(notifications, 1, reason: 'already stowed');
+
+        controller.unstow();
+        expect(controller.stowed, isFalse);
+        expect(notifications, 2);
+        controller.unstow();
+        expect(notifications, 2, reason: 'not stowed');
+        controller.dispose();
+      });
+    });
+
+    test('a new toast brings the deck back; an update, a replace and a '
+        'promise state on a toast on screen do not', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        const kept = ToastId('kept');
+        controller.show('Kept', id: kept, duration: Duration.zero);
+
+        controller.stow();
+        expect(controller.update(kept, title: 'Kept again'), isTrue);
+        expect(controller.stowed, isTrue, reason: 'an update');
+
+        controller.show('Replaced', id: kept, duration: Duration.zero);
+        expect(controller.stowed, isTrue, reason: 'a replace');
+
+        final completer = Completer<String>();
+        final promised = controller.promise(
+          completer.future,
+          id: kept,
+          loading: const ToastContent('Saving'),
+          success: ToastContent.new,
+          error: (error) => const ToastContent('Failed'),
+        );
+        unawaited(promised.then<void>((_) {}, onError: (Object _) {}));
+        expect(controller.stowed, isTrue, reason: 'a promise loading state');
+        completer.complete('Saved');
+        async.flushMicrotasks();
+        expect(controller.stowed, isTrue, reason: 'a promise result');
+
+        controller.show('New', duration: Duration.zero);
+        expect(controller.stowed, isFalse);
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test('the stow ends when the last toast leaves, by dismiss, dismissAll '
+        'or its own timer', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final first = controller.show('One', duration: Duration.zero);
+        controller.show('Two', duration: Duration.zero);
+
+        controller.stow();
+        controller.dismiss(first);
+        expect(controller.stowed, isTrue, reason: 'one is left');
+        controller.dismiss(toastsOf(controller).single.id);
+        expect(controller.stowed, isFalse);
+
+        controller.show('Three', duration: Duration.zero);
+        controller.stow();
+        controller.dismissAll();
+        expect(controller.stowed, isFalse);
+
+        controller.show('Four', duration: const Duration(seconds: 1));
+        controller.stow();
+        async.elapse(const Duration(milliseconds: 900));
+        expect(controller.stowed, isTrue, reason: 'still counting');
+        async.elapse(const Duration(milliseconds: 300));
+        expect(toastsOf(controller), isEmpty);
+        expect(controller.stowed, isFalse);
+        controller.dispose();
+      });
+    });
+
+    test('a stowed toast counts down as it would on screen, and stowing '
+        'does not pause or resume the timers', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        controller.show('Counting', duration: const Duration(seconds: 4));
+        holdTimers(controller, #pointer);
+
+        controller.stow();
+        async.elapse(const Duration(seconds: 10));
+        expect(
+          toastsOf(controller),
+          hasLength(1),
+          reason: 'stowing does not release the pointer hold',
+        );
+
+        releaseTimers(controller, #pointer);
+        async.elapse(const Duration(milliseconds: 3900));
+        expect(toastsOf(controller), hasLength(1), reason: 'just short of 4 s');
+        async.elapse(const Duration(milliseconds: 200));
+        expect(toastsOf(controller), isEmpty, reason: 'gone while stowed');
+        controller.dispose();
+      });
+    });
+  });
+
   group('config', () {
     test('assigning a config notifies, and a lowered visibleToasts keeps the '
         'hidden toasts in the list', () {
@@ -1485,6 +1604,154 @@ void main() {
       ]) {
         expect(one == const DeckDismissAll(), isFalse, reason: '$one');
       }
+    });
+
+    test('a config puts a pill labelled Hide on the expanded deck, slides the '
+        'deck away and leaves no handle', () {
+      const config = SonnerConfig();
+      expect(config.stowControl, const DeckStowControl());
+      expect(config.stowControl!.look, DeckStowLook.pill);
+      expect(config.stowControl!.label, 'Hide');
+      expect(config.stowControl!.countLabel, isNull, reason: 'N notifications');
+      expect(config.stowControl!.builder, isNull);
+      expect(config.stowMotion, const DeckStowMotion());
+      expect(config.stowMotion.look, DeckStowMotionLook.slide);
+      expect(config.stowMotion.builder, isNull);
+      expect(config.stowHandle, isNull);
+    });
+
+    test('the stow types copy what they are not given, can take a function '
+        'away, and compare by value', () {
+      String count(int n) => '$n개';
+      Widget control(BuildContext context, DeckStowView view) =>
+          const SizedBox();
+      Widget motion(BuildContext c, DeckStowMotionView view, Widget deck) =>
+          deck;
+      Widget handle(BuildContext context, DeckStowHandleView view) =>
+          const SizedBox();
+
+      final changedControl = const DeckStowControl().copyWith(
+        look: DeckStowLook.icon,
+        label: '숨기기',
+        countLabel: () => count,
+        builder: () => control,
+      );
+      expect(
+        changedControl,
+        DeckStowControl(
+          look: DeckStowLook.icon,
+          label: '숨기기',
+          countLabel: count,
+          builder: control,
+        ),
+      );
+      expect(
+        changedControl.hashCode,
+        DeckStowControl(
+          look: DeckStowLook.icon,
+          label: '숨기기',
+          countLabel: count,
+          builder: control,
+        ).hashCode,
+      );
+      expect(changedControl.copyWith(label: 'x').builder, same(control));
+      expect(changedControl.copyWith(builder: () => null).builder, isNull);
+      expect(
+        changedControl.copyWith(countLabel: () => null).countLabel,
+        isNull,
+      );
+      for (final one in [
+        const DeckStowControl(look: DeckStowLook.header),
+        const DeckStowControl(label: 'x'),
+        DeckStowControl(countLabel: count),
+        DeckStowControl(builder: control),
+      ]) {
+        expect(one == const DeckStowControl(), isFalse, reason: '$one');
+      }
+
+      final changedMotion = const DeckStowMotion().copyWith(
+        look: DeckStowMotionLook.shrink,
+        builder: () => motion,
+      );
+      expect(
+        changedMotion,
+        DeckStowMotion(look: DeckStowMotionLook.shrink, builder: motion),
+      );
+      expect(
+        changedMotion.hashCode,
+        DeckStowMotion(
+          look: DeckStowMotionLook.shrink,
+          builder: motion,
+        ).hashCode,
+      );
+      expect(
+        changedMotion.copyWith(look: DeckStowMotionLook.fade).builder,
+        same(motion),
+      );
+      expect(changedMotion.copyWith(builder: () => null).builder, isNull);
+      expect(
+        const DeckStowMotion(look: DeckStowMotionLook.fade) ==
+            const DeckStowMotion(),
+        isFalse,
+      );
+
+      final changedHandle = const DeckStowHandle().copyWith(
+        countLabel: () => count,
+        builder: () => handle,
+      );
+      expect(changedHandle, DeckStowHandle(countLabel: count, builder: handle));
+      expect(
+        changedHandle.hashCode,
+        DeckStowHandle(countLabel: count, builder: handle).hashCode,
+      );
+      expect(changedHandle.copyWith().builder, same(handle), reason: 'kept');
+      expect(changedHandle.copyWith(builder: () => null).builder, isNull);
+      expect(
+        DeckStowHandle(countLabel: count) == const DeckStowHandle(),
+        isFalse,
+      );
+    });
+
+    test('copyWith keeps the stow fields unless given them, takes the two '
+        'nullable ones away, and a config with others is not equal', () {
+      const icon = DeckStowControl(look: DeckStowLook.icon);
+      const fade = DeckStowMotion(look: DeckStowMotionLook.fade);
+      const handle = DeckStowHandle();
+      const set = SonnerConfig(
+        stowControl: icon,
+        stowMotion: fade,
+        stowHandle: handle,
+      );
+
+      expect(set.copyWith(gap: 20).stowControl, icon, reason: 'kept');
+      expect(set.copyWith(gap: 20).stowMotion, fade, reason: 'kept');
+      expect(set.copyWith(gap: 20).stowHandle, handle, reason: 'kept');
+      expect(set.copyWith(stowControl: () => null).stowControl, isNull);
+      expect(set.copyWith(stowHandle: () => null).stowHandle, isNull);
+      expect(
+        set.copyWith(stowMotion: const DeckStowMotion()).stowMotion,
+        const DeckStowMotion(),
+      );
+
+      for (final one in [
+        const SonnerConfig(stowControl: null),
+        const SonnerConfig(stowControl: icon),
+        const SonnerConfig(stowMotion: fade),
+        const SonnerConfig(stowHandle: handle),
+      ]) {
+        expect(one == const SonnerConfig(), isFalse, reason: '$one');
+        expect(one.hashCode, isNot(const SonnerConfig().hashCode));
+      }
+      expect(
+        const SonnerConfig()
+            .copyWith(
+              stowControl: () => icon,
+              stowMotion: fade,
+              stowHandle: () => handle,
+            )
+            .hashCode,
+        set.hashCode,
+      );
     });
 
     test('copyWith keeps dismissAll unless given one, and can take it away; a '

@@ -8,6 +8,11 @@ export 'src/config.dart'
         DeckDismissAll,
         DeckDismissAllLook,
         DeckScrollbar,
+        DeckStowControl,
+        DeckStowHandle,
+        DeckStowLook,
+        DeckStowMotion,
+        DeckStowMotionLook,
         DeckScrollbarPlacement,
         SonnerConfig,
         SonnerPosition,
@@ -19,6 +24,14 @@ export 'src/controller.dart' show SonnerController, toast;
 export 'src/dismiss_all_view.dart'
     show DeckDismissAllBuilder, DeckDismissAllView;
 export 'src/host.dart' show SonnerHost;
+export 'src/stow_view.dart'
+    show
+        DeckStowBuilder,
+        DeckStowHandleBuilder,
+        DeckStowHandleView,
+        DeckStowMotionBuilder,
+        DeckStowMotionView,
+        DeckStowView;
 export 'src/toast_content.dart' show ToastContent;
 export 'src/toast_id.dart' show ToastId;
 export 'src/toast_state.dart' show ToastState;

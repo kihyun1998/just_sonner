@@ -27,6 +27,12 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   end dismisses every toast you may dismiss; a loading toast stays. With twenty up it waits at the
   cap while they scroll. The controls below switch it to a header, a Korean label and count, or
   the app's own builder.
+- **Stow the deck** (#60) — put toasts up, rest the pointer on the deck and press Hide: the deck
+  goes, and its toasts stay and keep counting down. Only a new toast brings it back — the
+  "Loading, done in 5 s" button shows an update leaving it away — or `unstow()`, or the handle
+  when one is configured. The controls below switch the control between a pill, a header shared
+  with Clear all and a chevron, the motion between a slide, a fade and a shrink, and each of the
+  three to the app's own builder.
 - **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
   that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
   mouse, press or turn the wheel there and it fans out and stops.
