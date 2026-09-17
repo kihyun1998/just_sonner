@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import 'config.dart';
+import 'time_left.dart';
 import 'toast_view.dart';
 
 /// The look a toast has when no builder replaces it.
 ///
 /// Colours and text come from the ambient [Theme]; padding, the title's weight
-/// and the gap under it follow sonner's styled toast.
+/// and the gap under it follow sonner's styled toast. A toast counting down
+/// draws its time left as `config.timeLeft` says.
 ///
 /// [fade] is how much of the content is drawn: 1 in front of the deck or while
 /// it is expanded, 0 once the collapsed deck covers the toast. The card keeps
@@ -49,6 +51,14 @@ class DefaultToastLook extends StatelessWidget {
   /// The space between the text and the action slot.
   static const _actionGap = 12.0;
 
+  static const _radius = 8.0;
+
+  /// The time left drawn over the card: faded with the content while the deck
+  /// covers the toast, unless [drawn] keeps it on the card.
+  Widget _covered(ToastTimeLeft drawn, Widget child) => drawn.fadeWhenCovered
+      ? FadeTransition(opacity: fade, child: child)
+      : child;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -60,78 +70,147 @@ class DefaultToastLook extends StatelessWidget {
     final leading = state.isLoading ? config.loadingIndicator : state.leading;
     final action = state.action;
     final closeButton = state.closeButtonNow(config.closeButton);
+    final timeLeft = toast.timeLeft;
+    final drawn = timeLeft == null ? null : config.timeLeft;
+    final color = drawn?.color ?? colors.primary;
+    final textDirection = Directionality.of(context);
+    final ring = timeLeft == null || drawn == null
+        ? null
+        : TimeLeftRingPainter(
+            timeLeft: timeLeft,
+            color: color,
+            strokeWidth: drawn.strokeWidth,
+          );
+    final ringed = drawn?.look == TimeLeftLook.leadingRing;
+
+    final content = FadeTransition(
+      opacity: fade,
+      // A covered toast is still on screen and still a live region: what
+      // the deck hides is the reading, not the announcement.
+      alwaysIncludeSemantics: true,
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // A toast with neither a leading widget nor the indicator
+                // has no slot at all, so its title starts at the padding
+                // edge.
+                if (leading != null || ringed) ...[
+                  SizedBox.square(
+                    dimension: config.leadingSize,
+                    child: ringed
+                        ? CustomPaint(
+                            painter: ring,
+                            child: Center(
+                              // Inside the ring rather than under it.
+                              child: leading == null
+                                  ? null
+                                  : Transform.scale(scale: 0.6, child: leading),
+                            ),
+                          )
+                        : Center(child: leading),
+                  ),
+                  const SizedBox(width: _slotGap),
+                ],
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        state.title,
+                        style: text.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w500,
+                          color: colors.onSurface,
+                        ),
+                      ),
+                      if (description != null) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          description,
+                          style: text.bodySmall?.copyWith(
+                            color: colors.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+                if (action != null) ...[
+                  const SizedBox(width: _actionGap),
+                  _Usable(pressable, child: action(context, toast)),
+                ],
+              ],
+            ),
+          ),
+          if (closeButton)
+            Positioned(
+              top: 0,
+              right: 0,
+              child: _Usable(
+                pressable,
+                child: _CloseButton(onPressed: toast.dismiss),
+              ),
+            ),
+        ],
+      ),
+    );
 
     return Material(
       color: colors.surfaceContainerHigh,
       shape: RoundedRectangleBorder(
-        side: BorderSide(color: colors.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
+        // A border sweep without keepBorder is the card's border itself.
+        side: drawn?.look == TimeLeftLook.border && !drawn!.keepBorder
+            ? BorderSide.none
+            : BorderSide(color: colors.outlineVariant),
+        borderRadius: BorderRadius.circular(_radius),
       ),
-      child: FadeTransition(
-        opacity: fade,
-        // A covered toast is still on screen and still a live region: what
-        // the deck hides is the reading, not the announcement.
-        alwaysIncludeSemantics: true,
-        child: Stack(
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // A toast with neither a leading widget nor the indicator
-                  // has no slot at all, so its title starts at the padding
-                  // edge.
-                  if (leading != null) ...[
-                    SizedBox.square(
-                      dimension: config.leadingSize,
-                      child: Center(child: leading),
-                    ),
-                    const SizedBox(width: _slotGap),
-                  ],
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text(
-                          state.title,
-                          style: text.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.w500,
-                            color: colors.onSurface,
+      child: timeLeft == null || drawn == null || ringed
+          ? content
+          : Stack(
+              children: [
+                content,
+                if (drawn.look == TimeLeftLook.cornerRing)
+                  PositionedDirectional(
+                    end: 8,
+                    bottom: 8,
+                    width: 12,
+                    height: 12,
+                    child: _covered(drawn, CustomPaint(painter: ring)),
+                  )
+                else
+                  Positioned.fill(
+                    child: _covered(
+                      drawn,
+                      CustomPaint(
+                        painter: switch (drawn.look) {
+                          TimeLeftLook.bottomBar ||
+                          TimeLeftLook.topBar => TimeLeftBarPainter(
+                            timeLeft: timeLeft,
+                            color: color,
+                            strokeWidth: drawn.strokeWidth,
+                            atTop: drawn.look == TimeLeftLook.topBar,
+                            textDirection: textDirection,
+                            radius: _radius,
                           ),
-                        ),
-                        if (description != null) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            description,
-                            style: text.bodySmall?.copyWith(
-                              color: colors.onSurfaceVariant,
-                            ),
+                          _ => TimeLeftBorderPainter(
+                            timeLeft: timeLeft,
+                            color: color,
+                            strokeWidth: drawn.strokeWidth,
+                            start: drawn.start,
+                            clockwise: drawn.clockwise,
+                            textDirection: textDirection,
+                            radius: _radius,
                           ),
-                        ],
-                      ],
+                        },
+                      ),
                     ),
                   ),
-                  if (action != null) ...[
-                    const SizedBox(width: _actionGap),
-                    _Usable(pressable, child: action(context, toast)),
-                  ],
-                ],
-              ),
+              ],
             ),
-            if (closeButton)
-              Positioned(
-                top: 0,
-                right: 0,
-                child: _Usable(
-                  pressable,
-                  child: _CloseButton(onPressed: toast.dismiss),
-                ),
-              ),
-          ],
-        ),
-      ),
     );
   }
 }

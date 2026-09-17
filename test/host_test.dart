@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
@@ -8,6 +9,7 @@ import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show toastsOf;
 import 'package:just_sonner/src/default_look.dart' show DefaultToastLook;
+import 'package:just_sonner/src/time_left.dart';
 
 void main() {
   late SonnerController controller;
@@ -2865,7 +2867,10 @@ void main() {
           return const SizedBox();
         },
       );
-      await tester.pumpAndSettle();
+      // Pumped by hand: a toast counting down draws its time left on every
+      // frame, so nothing settles until it is gone.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       view.holdTimer();
       await tester.pump(const Duration(seconds: 10));
@@ -4341,6 +4346,575 @@ void main() {
     expect(find.text('Saved'), findsNothing);
   });
 
+  group('time left', () {
+    /// The toasts' views by title, as their action slots were handed them.
+    final views = <String, ToastView>{};
+    setUp(views.clear);
+
+    ToastId showCounting(
+      String title, {
+      Duration duration = const Duration(seconds: 4),
+      bool isLoading = false,
+    }) => controller.show(
+      title,
+      duration: isLoading ? null : duration,
+      isLoading: isLoading,
+      action: (context, toast) {
+        views[toast.state.title] = toast;
+        return const SizedBox();
+      },
+    );
+
+    testWidgets('a toast counting down has a time left, starting full; one '
+        'with no timer has none until it starts counting', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      showCounting('Counting');
+      showCounting('Waits', duration: Duration.zero);
+      final saving = showCounting('Saving', isLoading: true);
+      await tester.pump();
+
+      expect(views['Counting']!.timeLeft?.value, 1);
+      expect(views['Waits']!.timeLeft, isNull, reason: 'Duration.zero');
+      expect(views['Saving']!.timeLeft, isNull, reason: 'loading');
+
+      controller.update(
+        saving,
+        isLoading: false,
+        duration: const Duration(seconds: 4),
+      );
+      await tester.pump();
+      expect(views['Saving']!.timeLeft?.value, 1);
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('time left runs down on every frame rather than a tick at a '
+        'time, and is empty when the timer dismisses the toast', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      showCounting('Counting', duration: const Duration(seconds: 1));
+      await tester.pump();
+
+      final values = <double>[];
+      while (toastsOf(controller).isNotEmpty) {
+        await tester.pump(const Duration(milliseconds: 16));
+        values.add(views['Counting']!.timeLeft!.value);
+      }
+      var moved = 0;
+      for (var i = 1; i < values.length; i++) {
+        final step = values[i - 1] - values[i];
+        expect(step, greaterThanOrEqualTo(0), reason: 'frame $i rose');
+        // A tick is a tenth of this toast's second.
+        expect(step, lessThan(0.05), reason: 'frame $i stepped a tick');
+        if (step > 0) moved++;
+      }
+      expect(moved, greaterThan(values.length * 0.8), reason: 'most frames');
+      expect(values.last, 0, reason: 'empty as the timer dismisses it');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('time left stands still while the timers are paused, and '
+        'goes on from where it stood', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      showCounting('Counting');
+      await tester.pump();
+      Future<List<double>> frames(int count) async => [
+        for (var i = 0; i < count; i++)
+          await tester
+              .pump(const Duration(milliseconds: 16))
+              .then((_) => views['Counting']!.timeLeft!.value),
+      ];
+      await frames(30);
+
+      // The pointer on the deck.
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: tester.getCenter(find.text('Counting')));
+      await tester.pump();
+      final stood = views['Counting']!.timeLeft!.value;
+      expect(await frames(60), everyElement(stood));
+
+      await mouse.moveTo(const Offset(10, 10));
+      await tester.pump();
+      var going = await frames(30);
+      expect(going.first, lessThanOrEqualTo(stood));
+      expect(stood - going.first, lessThan(0.01), reason: 'no jump');
+      expect(going.last, lessThan(stood));
+
+      // The app hidden.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump();
+      final hidden = views['Counting']!.timeLeft!.value;
+      expect(await frames(60), everyElement(hidden));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      going = await frames(30);
+      expect(hidden - going.first, lessThan(0.01), reason: 'no jump');
+      expect(going.last, lessThan(hidden));
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a countdown started again eases the time left back up over '
+        '400 ms, or jumps to full without easeRestart', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      for (final ease in [true, false]) {
+        controller.config = controller.config.copyWith(
+          timeLeft: () => ToastTimeLeft(easeRestart: ease),
+        );
+        final id = showCounting('Counting $ease');
+        await tester.pump();
+        for (var i = 0; i < 60; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        final left = views['Counting $ease']!.timeLeft!;
+        final before = left.value;
+        expect(before, lessThan(0.8));
+
+        controller.update(id, description: 'Again');
+        await tester.pump(const Duration(milliseconds: 16));
+        final first = left.value;
+        await tester.pump(const Duration(milliseconds: 184));
+        final halfway = left.value;
+        await tester.pump(const Duration(milliseconds: 250));
+        final after = left.value;
+        if (ease) {
+          expect(first - before, lessThan(0.05), reason: 'barely moved yet');
+          // On its way up toward a countdown that is already running again.
+          expect(halfway, inExclusiveRange(first + 0.05, 0.99));
+          expect(after, greaterThan(0.85), reason: 'up, and counting on');
+        } else {
+          expect(first, greaterThan(0.99), reason: 'full at once');
+          expect(after, lessThan(first), reason: 'counting on');
+          // A shorter duration starts it again too.
+          for (var i = 0; i < 20; i++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          controller.update(id, duration: const Duration(seconds: 2));
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(left.value, greaterThan(0.99), reason: 'a shorter restart');
+          for (var i = 0; i < 30; i++) {
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+          expect(
+            left.value,
+            lessThan(0.85),
+            reason: 'counting from the shorter duration, not the time before',
+          );
+        }
+        controller.dismissAll();
+        await tester.pumpAndSettle();
+      }
+    });
+
+    testWidgets('frames run for the time left only while a toast counts '
+        'down', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Waits');
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'no timer');
+
+      final id = showCounting('Counting');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.binding.hasScheduledFrame, isTrue, reason: 'counting');
+
+      controller.dismiss(id);
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse, reason: 'gone');
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    /// The painters the default look of [title] draws its time left with.
+    List<CustomPainter> painted(WidgetTester tester, String title) => [
+      for (final paint in tester.widgetList<CustomPaint>(
+        find.descendant(
+          of: find.ancestor(
+            of: find.text(title),
+            matching: find.byType(DefaultToastLook),
+          ),
+          matching: find.byType(CustomPaint),
+        ),
+      ))
+        if (paint.painter case final TimeLeftPainter painter) painter,
+    ];
+
+    testWidgets('the default look draws the time left as a border sweeping '
+        'clockwise from the top start, 2 px in the theme’s primary colour; a '
+        'toast with no timer draws none', (tester) async {
+      final theme = ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF6A1B9A)),
+      );
+      await tester.pumpWidget(app(controller: controller, theme: theme));
+      showCounting('Counting');
+      showCounting('Waits', duration: Duration.zero);
+      await tester.pump();
+
+      final [painter as TimeLeftBorderPainter] = painted(tester, 'Counting');
+      expect(painter.timeLeft, same(views['Counting']!.timeLeft));
+      expect(painter.color, theme.colorScheme.primary);
+      expect(painter.strokeWidth, 2);
+      expect(painter.start, TimeLeftStart.topStart);
+      expect(painter.clockwise, isTrue);
+      expect(painted(tester, 'Waits'), isEmpty);
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('each look is drawn where the config names it, and at once; '
+        'with none the default look draws nothing, and a builder still gets '
+        'the time left', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show(
+        'Built',
+        duration: const Duration(seconds: 4),
+        builder: (context, toast) {
+          views['Built'] = toast;
+          return const SizedBox(height: 40, child: Text('Built'));
+        },
+      );
+      // In front, so drawn at full scale.
+      showCounting('Counting');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      final card = toastRect(tester, 'Counting');
+
+      Rect paintedAt(CustomPainter painter) => tester.getRect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint && identical(widget.painter, painter),
+        ),
+      );
+
+      for (final look in TimeLeftLook.values) {
+        controller.config = controller.config.copyWith(
+          timeLeft: () => ToastTimeLeft(look: look),
+        );
+        await tester.pump();
+        final [painter] = painted(tester, 'Counting');
+        switch (look) {
+          case TimeLeftLook.border:
+            expect(painter, isA<TimeLeftBorderPainter>());
+            expect(paintedAt(painter), card);
+          case TimeLeftLook.bottomBar || TimeLeftLook.topBar:
+            expect(
+              painter,
+              isA<TimeLeftBarPainter>().having(
+                (it) => it.atTop,
+                'atTop',
+                look == TimeLeftLook.topBar,
+              ),
+            );
+            expect(paintedAt(painter), card);
+          case TimeLeftLook.cornerRing:
+            expect(painter, isA<TimeLeftRingPainter>());
+            expect(
+              paintedAt(painter),
+              Rect.fromLTRB(
+                card.right - 20,
+                card.bottom - 20,
+                card.right - 8,
+                card.bottom - 8,
+              ),
+              reason: '12 px, 8 px in from the bottom end corner',
+            );
+          case TimeLeftLook.leadingRing:
+            expect(painter, isA<TimeLeftRingPainter>());
+            expect(
+              paintedAt(painter),
+              Rect.fromLTWH(card.left + 16, card.center.dy - 10, 20, 20),
+              reason: 'the leading slot, which the ring makes',
+            );
+        }
+      }
+
+      controller.config = controller.config.copyWith(timeLeft: () => null);
+      await tester.pump();
+      expect(painted(tester, 'Counting'), isEmpty);
+      expect(views['Built']!.timeLeft, isNotNull);
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('the config’s own colour and stroke are drawn; the card’s '
+        'border goes from under a border sweep without keepBorder; a covered '
+        'toast’s time left fades with its content unless told otherwise', (
+      tester,
+    ) async {
+      const red = Color(0xFFFF0000);
+      final theme = ThemeData();
+      controller.config = controller.config.copyWith(
+        timeLeft: () =>
+            const ToastTimeLeft(color: red, strokeWidth: 3, keepBorder: false),
+      );
+      await tester.pumpWidget(app(controller: controller, theme: theme));
+      showCounting('Behind');
+      showCounting('Front');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final [front as TimeLeftBorderPainter] = painted(tester, 'Front');
+      expect(front.color, red);
+      expect(front.strokeWidth, 3);
+      BorderSide sideOf(String title) =>
+          (tester
+                      .widget<Material>(
+                        find
+                            .ancestor(
+                              of: find.text(title),
+                              matching: find.byType(Material),
+                            )
+                            .first,
+                      )
+                      .shape!
+                  as RoundedRectangleBorder)
+              .side;
+      expect(sideOf('Front'), BorderSide.none);
+
+      /// How opaque the look draws [painter], within the toast’s own look.
+      double opacityOf(CustomPainter painter) {
+        final paint = find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint && identical(widget.painter, painter),
+        );
+        var opacity = 1.0;
+        for (final fade in tester.widgetList<FadeTransition>(
+          find.ancestor(
+            of: paint,
+            matching: find.descendant(
+              of: find.byType(DefaultToastLook),
+              matching: find.byType(FadeTransition),
+            ),
+          ),
+        )) {
+          opacity *= fade.opacity.value;
+        }
+        return opacity;
+      }
+
+      final [behind] = painted(tester, 'Behind');
+      expect(opacityOf(front), 1);
+      expect(
+        opacityOf(behind),
+        0,
+        reason: 'covered, it fades with the content',
+      );
+
+      controller.config = controller.config.copyWith(
+        timeLeft: () => controller.config.timeLeft!.copyWith(
+          look: TimeLeftLook.bottomBar,
+          fadeWhenCovered: false,
+        ),
+      );
+      await tester.pump();
+      expect(
+        sideOf('Front'),
+        BorderSide(color: theme.colorScheme.outlineVariant),
+        reason: 'only a border sweep takes the card’s border',
+      );
+      final [stays] = painted(tester, 'Behind');
+      expect(opacityOf(stays), 1, reason: 'stays on the card');
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a leading ring goes round the leading widget, drawn smaller '
+        'inside it', (tester) async {
+      controller.config = controller.config.copyWith(
+        timeLeft: () => const ToastTimeLeft(look: TimeLeftLook.leadingRing),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      controller.show(
+        'Signed in',
+        duration: const Duration(seconds: 4),
+        leading: const SizedBox.square(key: Key('icon'), dimension: 20),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      final [ring] = painted(tester, 'Signed in');
+      final slot = tester.getRect(
+        find.byWidgetPredicate(
+          (widget) => widget is CustomPaint && identical(widget.painter, ring),
+        ),
+      );
+      final icon = tester.getRect(find.byKey(const Key('icon')));
+      expect(icon.center, slot.center);
+      expect(icon.width, closeTo(12, 0.01), reason: 'inside the ring');
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('what the time left is drawn over still takes the press', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      for (final look in TimeLeftLook.values) {
+        controller.config = controller.config.copyWith(
+          timeLeft: () => ToastTimeLeft(look: look),
+        );
+        var pressed = 0;
+        controller.show(
+          '$look',
+          duration: const Duration(seconds: 4),
+          action: (context, toast) =>
+              TextButton(onPressed: () => pressed++, child: const Text('Undo')),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.tap(find.text('Undo'));
+        expect(pressed, 1, reason: '$look');
+        controller.dismissAll();
+        await tester.pumpAndSettle();
+      }
+    });
+
+    test('a bar draws what is left from its start edge, and a ring from its '
+        'top going clockwise', () {
+      final left = AnimationController(vsync: const TestVSync(), value: 0.25);
+      addTearDown(left.dispose);
+      const size = Size(356, 72);
+      const red = Color(0xFFFF0000);
+
+      _Recording paint(CustomPainter painter, Size size) {
+        final canvas = _Recording();
+        painter.paint(canvas, size);
+        return canvas;
+      }
+
+      TimeLeftBarPainter bar({bool atTop = false, TextDirection? direction}) =>
+          TimeLeftBarPainter(
+            timeLeft: left,
+            color: red,
+            strokeWidth: 2,
+            atTop: atTop,
+            textDirection: direction ?? TextDirection.ltr,
+            radius: 8,
+          );
+      expect(paint(bar(), size).rects, [const Rect.fromLTWH(0, 70, 89, 2)]);
+      expect(paint(bar(atTop: true), size).rects, [
+        const Rect.fromLTWH(0, 0, 89, 2),
+      ]);
+      expect(paint(bar(direction: TextDirection.rtl), size).rects, [
+        const Rect.fromLTWH(267, 70, 89, 2),
+      ]);
+
+      final ring = paint(
+        TimeLeftRingPainter(timeLeft: left, color: red, strokeWidth: 2),
+        const Size.square(12),
+      );
+      expect(ring.arcs, [
+        (const Rect.fromLTWH(1, 1, 10, 10), -math.pi / 2, math.pi / 2),
+      ]);
+    });
+
+    group('the border sweep', () {
+      // A 356 × 72 card with an 8 px radius, drawn with a 2 px line: the
+      // line runs 1 px in from the edge, round corners of 7.
+      const size = Size(356, 72);
+      const topCenter = Offset(178, 1);
+      const centerEnd = Offset(355, 36);
+      const bottomCenter = Offset(178, 71);
+      const centerStart = Offset(1, 36);
+      // The middle of a 7 px arc whose centre is 8 px in from the corner.
+      final corner = 8 - 7 * math.sqrt1_2;
+
+      TimeLeftSweep sweep(
+        double value, {
+        TimeLeftStart start = TimeLeftStart.topStart,
+        bool clockwise = true,
+        TextDirection textDirection = TextDirection.ltr,
+      }) => TimeLeftSweep(
+        size,
+        radius: 8,
+        strokeWidth: 2,
+        value: value,
+        start: start,
+        clockwise: clockwise,
+        textDirection: textDirection,
+      );
+
+      Matcher at(Offset point) => isA<Offset>()
+          .having((it) => it.dx, 'dx', closeTo(point.dx, 0.5))
+          .having((it) => it.dy, 'dy', closeTo(point.dy, 0.5));
+
+      test('starts at the corners and the middle of each side', () {
+        final starts = {
+          TimeLeftStart.topStart: Offset(corner, corner),
+          TimeLeftStart.topCenter: topCenter,
+          TimeLeftStart.topEnd: Offset(356 - corner, corner),
+          TimeLeftStart.centerEnd: centerEnd,
+          TimeLeftStart.bottomEnd: Offset(356 - corner, 72 - corner),
+          TimeLeftStart.bottomCenter: bottomCenter,
+          TimeLeftStart.bottomStart: Offset(corner, 72 - corner),
+          TimeLeftStart.centerStart: centerStart,
+        };
+        for (final MapEntry(key: start, value: point) in starts.entries) {
+          final full = sweep(1, start: start);
+          expect(full.from, at(point), reason: '$start');
+          expect(full.to, at(point), reason: '$start, all the way round');
+          expect(full.length, closeTo(full.perimeter, 0.01));
+        }
+      });
+
+      test('clockwise, the gap opens from the start going clockwise; '
+          'otherwise the line runs back toward the start', () {
+        final open = sweep(0.75, start: TimeLeftStart.topCenter);
+        expect(open.to, at(topCenter), reason: 'ends at the start');
+        expect(open.from, at(centerEnd), reason: 'a quarter round clockwise');
+        expect(open.length, closeTo(open.perimeter * 0.75, 0.01));
+
+        final back = sweep(
+          0.75,
+          start: TimeLeftStart.topCenter,
+          clockwise: false,
+        );
+        expect(back.from, at(topCenter), reason: 'begins at the start');
+        expect(back.to, at(centerStart), reason: 'three quarters clockwise');
+
+        expect(sweep(0).length, 0);
+      });
+
+      test('start and end follow the text direction; clockwise does not', () {
+        final rtl = sweep(1, textDirection: TextDirection.rtl);
+        expect(rtl.from, at(Offset(356 - corner, corner)));
+        final open = sweep(
+          0.75,
+          start: TimeLeftStart.centerStart,
+          textDirection: TextDirection.rtl,
+        );
+        expect(open.to, at(centerEnd), reason: 'start is the right in rtl');
+        expect(open.from, at(bottomCenter), reason: 'still clockwise');
+      });
+    });
+
+    testWidgets('a toast dismissed while it counts keeps the time left it '
+        'had as it leaves', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      final id = showCounting('Counting');
+      await tester.pump();
+      for (var i = 0; i < 30; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final left = views['Counting']!.timeLeft!;
+
+      controller.dismiss(id);
+      final had = left.value;
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(left.value, had, reason: 'frame $i of the exit');
+      }
+      await tester.pumpAndSettle();
+    });
+  });
+
   group('with no controller', () {
     tearDown(toast.dismissAll);
 
@@ -4348,7 +4922,9 @@ void main() {
       await tester.pumpWidget(app());
 
       toast.show('From anywhere');
-      await tester.pumpAndSettle();
+      // Pumped by hand: it counts down, so nothing settles until it is gone.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
       expect(find.text('From anywhere'), findsOneWidget);
 
@@ -4450,4 +5026,25 @@ class _TrackedState extends State<_Tracked> {
 
   @override
   Widget build(BuildContext context) => Text(widget.name);
+}
+
+/// A canvas that keeps the rectangles and arcs drawn on it.
+class _Recording implements Canvas {
+  final rects = <Rect>[];
+  final arcs = <(Rect, double, double)>[];
+
+  @override
+  void drawRect(Rect rect, Paint paint) => rects.add(rect);
+
+  @override
+  void drawArc(
+    Rect rect,
+    double startAngle,
+    double sweepAngle,
+    bool useCenter,
+    Paint paint,
+  ) => arcs.add((rect, startAngle, sweepAngle));
+
+  @override
+  void noSuchMethod(Invocation invocation) {}
 }

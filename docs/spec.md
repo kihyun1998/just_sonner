@@ -49,6 +49,8 @@ What just_sonner adds, in the order a real consumer needed them:
 - Two mount modes (§5), root overlay by default
 - One default look — light and dark from `Theme.of(context)` — with a leading slot the caller
   fills, and a spinner in that slot while a toast is loading
+- Each toast's time left, drawn by the default look in the way `config.timeLeft` names — five
+  looks, each with settings of its own — and handed to a builder (§9)
 - A builder that fully replaces the look and receives the animation and a dismiss handle
 - **Windows, macOS, Linux**; no dependency beyond Flutter
 
@@ -58,7 +60,8 @@ What just_sonner adds, in the order a real consumer needed them:
 - A toast history / notification center
 - Semantic toast types (`success` / `error` / …) and the rich colors, custom fonts and icon packs
   that would follow from them — the caller fills the leading slot with its own widget, and the
-  builder is the escape hatch for everything else
+  builder is the escape hatch for the rest. What the default look does draw can be configured
+  where the maintainer asked for it (the time left, §12), rather than only replaced
 - Reporting that a toast went away and why — no callback, future or reason enum (sonner's
   `onDismiss` / `onAutoClose`, `SnackBarClosedReason`). A caller learns about its own button
   through the `action` slot's callback, and nothing else
@@ -155,6 +158,8 @@ abstract interface class ToastView {
                                          // dismisses the toast
   Animation<double> get covered;         // 0 at the front or expanded, 1 behind one fully
                                          // present (§6)
+  Animation<double>? get timeLeft;       // 1 as the countdown starts, 0 as it runs out; null
+                                         // with no timer (§7, §9)
   Future<void> dismiss();
   void holdTimer();                      // a widget-driven gesture started (see §7)
 }
@@ -168,6 +173,24 @@ enum SonnerPosition { topLeft, topCenter, topRight, bottomLeft, bottomCenter, bo
 /// A way a toast can be swiped out (§8). `SonnerConfig.swipeDirections` is a `Set` of these, or null
 /// for the ones the position names.
 enum SwipeDirection { up, down, left, right }
+
+/// How the default look draws the time left (§9). `SonnerConfig.timeLeft` is one of these, or null
+/// to draw none.
+class ToastTimeLeft {
+  const ToastTimeLeft({
+    TimeLeftLook look = TimeLeftLook.border,
+    TimeLeftStart start = TimeLeftStart.topStart, // border only
+    bool clockwise = true,                        // border only
+    double strokeWidth = 2,
+    Color? color,                                 // null: colorScheme.primary
+    bool keepBorder = true,                       // the card's own border, under a border
+    bool easeRestart = true,
+    bool fadeWhenCovered = true,
+  });
+}
+
+enum TimeLeftLook { border, bottomBar, topBar, cornerRing, leadingRing }
+enum TimeLeftStart { topStart, topCenter, topEnd, centerEnd, bottomEnd, bottomCenter, bottomStart, centerStart }
 ```
 
 A test, or an app that wants its own instance, constructs another `SonnerController`; it has the
@@ -178,10 +201,12 @@ same methods as `toast`. There is no static facade.
 `offset` (24), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
-`closeButton` (false). It is immutable and has a `copyWith`, so one field changes with
-`toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is given as a function,
-`copyWith(swipeDirections: () => null)`, so it can go back to following the position, and
-`builder` the same way, `copyWith(builder: () => null)`, back to the default look.
+`closeButton` (false), `timeLeft` (`ToastTimeLeft()`). It is immutable and has a `copyWith`, so
+one field changes with `toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is
+given as a function, `copyWith(swipeDirections: () => null)`, so it can go back to following the
+position, `builder` the same way, `copyWith(builder: () => null)`, back to the default look, and
+`timeLeft` too, `copyWith(timeLeft: () => null)`, to draw none. `ToastTimeLeft` has a `copyWith` of
+its own, with `color` given as a function to go back to the theme's.
 
 **The config lives on the controller and nowhere else.** `attach` does not take one and neither
 does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
@@ -518,6 +543,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   host inserted by that `show` is not built until the app returns, and its toast must already be
   waiting. A controller no host has drawn and that is not attached reads no binding, so a `show`
   before `runApp` still works.
+- **The time left a toast shows is the controller's number, eased by the host.** The host follows
+  each counting toast on every frame from the frame time stamps, and stands still wherever the
+  controller does not count: while the timers are paused, and for the partial tick a toast lets
+  pass uncounted. So the controller still reads no clock, and what is drawn keeps to the time
+  left the countdown will actually take. Frames run for it only while some toast counts down — which is also why a widget
+  test with a counting toast on screen pumps by hand: `pumpAndSettle` would run its timer out.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
   `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
 
@@ -601,6 +632,27 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   taking taps, so the deck still stops one reaching the app underneath, and the title and
   description keep their place in the semantics tree: a covered toast announces its **content**,
   not its controls, so a screen reader is not offered a Close that does nothing.
+- **The time left** of a toast counting down is drawn as `config.timeLeft` says, over the card and
+  taking no pointer, so what is under it still takes the press:
+  - `border` (the default): the card's outline, half the line's width in from the edge, starting
+    at `start` — a corner's midpoint or the middle of a side, with start and end following the
+    text direction — and running out so that, `clockwise`, the gap opens clockwise from `start`;
+    otherwise the line runs back toward it. Without `keepBorder` the card's own `outlineVariant`
+    border goes, and the sweep is the border.
+  - `bottomBar`, `topBar`: a bar of `strokeWidth` along that edge, running out toward the start
+    edge, cut to the card's corners.
+  - `cornerRing`: a 12 px ring 8 px in from the bottom end corner, over a faint track of the whole
+    ring.
+  - `leadingRing`: a ring filling the leading slot, which it makes when the toast has no leading
+    widget; a leading widget is drawn inside it at 0.6.
+
+  `color` null is `colorScheme.primary`. It fades with the content while the deck covers the toast
+  unless `fadeWhenCovered` is false — a `leadingRing` is content and fades either way. A toast
+  loading or with `Duration.zero` draws none, and `config.timeLeft` null draws none at all. A
+  countdown started again by an update or a replace eases the time left back up over 400 ms,
+  `ease`, toward a countdown already running again, or jumps with `easeRestart` false. A new
+  `config.timeLeft` redraws the toasts on screen at once. The looks and the defaults were chosen
+  by the maintainer from a spike in the example app (§12).
 - The close button carries a **semantics label**, not a tooltip. A tooltip needs an `Overlay` above
   it and mount mode 2 puts the host above the app's `Navigator`, where there is none — so a tooltip
   would throw in every mode-2 app. sonner labels its close button the same way (`aria-label`).
@@ -657,6 +709,15 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   toast or leave it standing. `ToastView.dismiss` completes once the toast has left the tree, and
   the animation it is handed runs 0 → 1 as the toast enters
 - `holdTimer` pauses the timers until its toast is dismissed, updated or replaced
+- Time left: null with no timer, and full once a loading toast starts counting; running down on
+  every frame rather than a tick at a time, and empty as the timer dismisses the toast; standing
+  still while the pointer is on the deck and while the app is hidden, and going on from where it
+  stood; easing back up on an update, or jumping with `easeRestart` false, a shorter duration
+  included; kept where it stood by a toast dismissed; frames asked for only while a toast counts
+  down. The border sweep's start points, directions and text direction; each look drawn where it
+  belongs, at once on a new config, and none with `timeLeft` null while a builder still gets it;
+  the config's colour and stroke, `keepBorder`, `fadeWhenCovered`; a bar and a ring drawing what is
+  left; a leading widget inside a leading ring; a control under any look taking the press
 - The close button follows `show(closeButton:) ?? config.closeButton`; a toast the user may not
   dismiss has none, so a loading toast gains one the moment `update(id, isLoading: false)` lands,
   with no second call; `dismissible: false` takes it away and leaves `dismiss(id)` working
@@ -744,8 +805,8 @@ Every test is reddened once before it is trusted: remove the rule it guards and 
 
 Mirrors the checks above as buttons: five toasts in a row, a toast with a `leading` widget and one
 without, loading → done, loading → failed, two promises at once, a toast over an open dialog
-(mode 1), position / expand / visible-count controls, light and dark, and a builder that wraps a
-flash `FlashBar` through the adapter in §1.
+(mode 1), position / expand / visible-count controls, light and dark, a builder that wraps a flash
+`FlashBar` through the adapter in §1, and every `ToastTimeLeft` field on a control.
 
 ## 11. Open questions (for review)
 
@@ -799,7 +860,7 @@ outside v0.1 is in §2's non-goals.
 | Resuming skips the partial tick for every counting toast; releasing what holds nothing is not a resume | derived | §7 promises a toast never runs short. Without the skip, a pause released 10 ms before a tick subtracts a whole tick for 10 ms of time, so each hover could cut up to a tick (the controller test of 50 ms counted, 40 ms held: gone at 1000 ms, 960 ms unheld). The tick keeps running while paused, per #18's join logic (`_ticker != null`, `_tickerZone`) |
 | Pausing is held per holder (a set), not a flag; a host releases its hold on `dispose` and when handed another controller | derived | two hosts can draw one controller, and `MouseRegion.onExit` is not called when the region is unmounted (`basic.dart`, Flutter 3.41.9), so a flag would leave the timers paused for good. #26's drag is another holder |
 | The controller watches the lifecycle, starting at the first host that draws it or the first `show` once attached | derived | a hidden app draws no frames, so a mode-1 host inserted by the first `show` is not built until the app returns (probe: `pumpWidget` builds nothing while `hidden`); watching from the host alone lets that toast count down unseen. Watching from the constructor instead reads `WidgetsBinding.instance` for the exported `toast` before `runApp`, which throws. Each later host or `show` reads the state again, because a binding can reset it without telling its observers: `flutter_test` sets it back to null between tests, and a long-lived controller such as the exported `toast` kept its timers paused in every later test (probe while working #22; the reading-again was the maintainer's call, shown against documenting that tests must restore the state and against a follow-up). **Not covered**: a mode-2 host that is itself first mounted while the app is hidden — nothing draws it, so a `show` on a never-attached controller in that moment counts down |
-| A pointer resting where the deck is pauses every toast that lands under it, for as long as it rests — from the first frame, since the region is each toast's layout box, not where its slide or scale draws it | maintainer | measured while working #22 (a toast paused while still drawn off-screen at 574.7–626.7). Accepted **for now** as what #13's pointer rule means, over counting hover only after the pointer moves: a deck that fans out under the pointer shows the reader why it stays. #13 was decided on sonner's one-toast hole, not on a resting pointer, so it did not already settle this; the question is open in #39. **Not covered**: a lone toast, which has nothing to fan out and so shows no sign that it is paused (#38) |
+| A pointer resting where the deck is pauses every toast that lands under it, for as long as it rests — from the first frame, since the region is each toast's layout box, not where its slide or scale draws it | maintainer | measured while working #22 (a toast paused while still drawn off-screen at 574.7–626.7). Accepted **for now** as what #13's pointer rule means, over counting hover only after the pointer moves: a deck that fans out under the pointer shows the reader why it stays. #13 was decided on sonner's one-toast hole, not on a resting pointer, so it did not already settle this; the question is open in #39. A lone toast, which has nothing to fan out, shows that it is paused by its time left standing still (#38) — unless an app sets `config.timeLeft` to null and draws none |
 | ~~A toast pushed out of the window by a newer one leaves the hover region at once, so a pointer resting on it collapses the deck and lets the timers run~~ | maintainer | **Superseded** by #41 (the row drawing every toast under the pointer): a toast pushed out while the pointer is over the deck stays drawn and in the region. Measured while working #22 (pointer on the third of three, a fourth shown: no holder by 80 ms, the deck collapsed). Kept, over letting a toast fading out of the window keep hover — not taps — for its 400 ms: the toast being read has left the screen. It follows the row that a toast outside the window takes no taps at once. **Provisional**: the maintainer will check it in use and may change it |
 | The hover region is one render object over the whole layer, hit only inside the deck's box; it takes the taps it covers | derived | a `MouseRegion` per toast would report an exit and an enter for each move between two toasts (reasoned from `MouseTracker`, not probed), and one around the layer would pause the whole screen. Taking the gap taps follows sonner, whose gap is each expanded toast's `::after` (`styles.css:283-290`) |
 | An exiting toast keeps the **distance** from the edge it was dismissed at, in pixels, rather than its depth | derived | the expanded deck has no depth-to-distance mapping (noted on #28): a frozen depth would move an exiting toast as the deck collapses under it. **Consequence for #28**: under a config change during the 200 ms exit, an exiting toast no longer follows a new `offset` or `gap`. The distance is on screen, after scrolling (row on scrolling an exiting toast, #41). **Superseded for a config change** by the row keeping an exiting toast's place on screen (#28), since a distance applied from a new edge moved it across the screen |
@@ -844,6 +905,14 @@ outside v0.1 is in §2's non-goals.
 | The flash adapter and its tests live in the example app only; the package's pubspec has no flash | maintainer | chosen while working #27 over also copying the adapter into the package's `test/` with flash as a dev dependency. The package's own tests pin the builder without flash |
 | `ToastView.dismiss` dismisses the toast it was handed and no other: on a toast already dismissed, a new toast shown at its id stays | derived | found while working #56: it dismissed by id, so with a new toast at the id of one exiting, flash's swipe on the old `FlashBar` reaching 0 — or an `action` on the old toast, without flash — dismissed the new one. `holdTimer` and a builder driving its animation to 0 already did nothing on a toast exiting. The doc already said it dismisses *the toast*. Fixing it inside #56 rather than filing it on its own was the maintainer's call |
 | A builder sits on `ToastState` beside `action`; `copyWith` takes `config.builder` as a `ValueGetter`; a toast's look is keyed by its state and the builder drawing it, so a new builder fades in and any other config change does not; a toast whose animation reaches 0 while not leaving is dismissed, and one already at 0 when it is dismissed is removed at once | derived | on `ToastState`, update keeps it and replace clears it by the rule every other field already follows. The `ValueGetter` is `swipeDirections`' reason again: null means the default look. Keyed by state alone, a new `config.builder` redrew with no fade; keyed by the builder alone, an update that kept it did not fade (each a mutation a test caught). An `AnimationController` already `dismissed` reports no change when it is animated back to 0 (`_checkStatusChanged`, Flutter 3.44.8), so an exit waiting for that report never removed a toast a builder had flung |
+| A toast's time left is shown, in v0.1, by the default look and to a builder | maintainer | triaged from #38, #22's hole: a lone toast under the pointer pauses and shows nothing. Chosen over closing it out of scope, as #16 was |
+| `ToastView.timeLeft` is an `Animation<double>?` — 1 → 0, eased by the host between ticks, null with no timer — and a pause shows only as it standing still | maintainer | asked while triaging #38, against handing a builder the raw `Duration` left and a paused flag (drawn as they are, a 10 fps step) or both, against a full value for a toast with no timer, and against a paused toast also dimming or changing colour. It follows `covered`'s shape. react-toastify's progress bar does the same on pause (`animationPlayState: paused`, `ProgressBar.tsx`); sonner has no indicator |
+| The default look draws it as a border sweeping round the card; five looks, and each setting, are `SonnerConfig.timeLeft: ToastTimeLeft?`, on by default, config-wide only | maintainer | chosen while triaging #38 from a throwaway spike in the example app with every option on a control: a bar along the bottom (react-toastify's) or the top, the border, a corner ring and a ring in the leading slot; then start point, direction, stroke, colour, the card's border, restart and covered. Shown a proposal to fix all but an on/off flag — citing §2's one default look with the builder as the escape hatch, the #28 rules each live config field brings, the theme owning colour, and react-toastify configuring only `hideProgressBar` — the maintainer judged §2 wrong here and chose configuration. One grouped object was chosen over nine flat fields, the name `timeLeft` over `countdown` and `progress`, and config only over a per-toast override as `closeButton` has |
+| The defaults: `border`, from `topStart`, `clockwise` (the gap opens from the start), 2 px, `colorScheme.primary`, the card's border kept under it, a restart eased over 400 ms, faded with the content while covered | maintainer | picked by the maintainer in the spike |
+| On by default, and a counting toast runs frames — so `pumpAndSettle` runs its timer out, and widget tests with one on screen pump by hand | maintainer | shown while triaging #38 that the spike broke two package tests this way, against off by default, which leaves the lone paused toast's hole in the default setup. Working #38 it broke two package tests and two in the example app, each now pumped by hand |
+| With `timeLeft` null a builder still gets `ToastView.timeLeft`; frames run only while a toast counts down; a dismissed toast's time left freezes; a new config redraws at once | derived | confirmed by the maintainer as part of #38's brief. `SonnerConfig.timeLeft` describes what the default look draws, and a builder has no other way to learn the time left |
+| The host eases the time left from frame time stamps, standing still while paused and through a skipped partial tick, with no clamp to the controller's count | derived | the controller reads no clock (§7). Measured while working #38: without standing through the skipped tick, a resumed toast's time left dropped 0.019 in one frame. Clamping to within a tick of the controller changed nothing any test could see, since the frames and the controller's `Timer` run on one clock, so it was left out |
+| The border starts at a corner's midpoint or a side's middle; `start` follows the text direction and `clockwise` is the screen's; a `leadingRing` fades with the content whatever `fadeWhenCovered` says; the painters take no pointer | derived | the spike's `topStart` began just past the corner, about 5 px along the line from the midpoint, which nobody can tell apart; eight points name every corner and side. §2 takes no RTL mirroring beyond what `Directionality` gives, and mirroring the direction too would reverse a sweep the maintainer chose. The leading slot is content (§9). A `CustomPaint` counts a hit by default: drawn over the card it took the taps of a toast revealed by hover, which that test caught while working #38 |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

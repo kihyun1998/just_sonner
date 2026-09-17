@@ -456,6 +456,9 @@ class SonnerController extends ChangeNotifier {
 List<ToastRecord> toastsOf(SonnerController controller) =>
     List.unmodifiable(controller._toasts);
 
+/// Whether [controller]'s timers are paused. For the host; not exported.
+bool timersPaused(SonnerController controller) => controller._paused;
+
 /// Dismisses [record] while it is on screen, and never a toast shown at its id
 /// since. For the host; not exported.
 void dismissRecord(SonnerController controller, ToastRecord record) {

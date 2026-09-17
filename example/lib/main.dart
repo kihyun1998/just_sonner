@@ -338,6 +338,82 @@ class _PanelState extends State<_Panel> {
     );
   });
 
+  /// A control for each field of `config.timeLeft`, and one to take it away.
+  List<Widget> _timeLeftControls(SonnerConfig config) {
+    final left = config.timeLeft;
+    void set(ToastTimeLeft? value) =>
+        widget.onConfig(config.copyWith(timeLeft: () => value));
+    return [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('timeLeft'),
+        value: left != null,
+        onChanged: (on) => set(on ? const ToastTimeLeft() : null),
+      ),
+      if (left != null) ...[
+        _Dropdown<TimeLeftLook>(
+          label: 'look',
+          value: left.look,
+          values: TimeLeftLook.values,
+          nameOf: (value) => value.name,
+          onChanged: (value) => set(left.copyWith(look: value)),
+        ),
+        _Dropdown<TimeLeftStart>(
+          label: 'start (border)',
+          value: left.start,
+          values: TimeLeftStart.values,
+          nameOf: (value) => value.name,
+          onChanged: (value) => set(left.copyWith(start: value)),
+        ),
+        _Dropdown<bool>(
+          label: 'clockwise (border)',
+          value: left.clockwise,
+          values: const [true, false],
+          nameOf: (value) => value
+              ? 'the gap opens clockwise from the start'
+              : 'the line runs back to the start',
+          onChanged: (value) => set(left.copyWith(clockwise: value)),
+        ),
+        _Dropdown<double>(
+          label: 'strokeWidth',
+          value: left.strokeWidth,
+          values: const [1, 1.5, 2, 3],
+          nameOf: (value) => '$value px',
+          onChanged: (value) => set(left.copyWith(strokeWidth: value)),
+        ),
+        _Dropdown<Color?>(
+          label: 'color',
+          value: left.color,
+          values: const [null, Color(0xFF2E7D32), Color(0xFFC62828)],
+          nameOf: (value) => switch (value) {
+            null => "the theme's primary",
+            const Color(0xFF2E7D32) => 'green',
+            _ => 'red',
+          },
+          onChanged: (value) => set(left.copyWith(color: () => value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("keepBorder (the card's own, under a border)"),
+          value: left.keepBorder,
+          onChanged: (value) => set(left.copyWith(keepBorder: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('easeRestart'),
+          value: left.easeRestart,
+          onChanged: (value) => set(left.copyWith(easeRestart: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('fadeWhenCovered'),
+          value: left.fadeWhenCovered,
+          onChanged: (value) => set(left.copyWith(fadeWhenCovered: value)),
+        ),
+      ],
+    ];
+  }
+
   List<Widget> _sections(SonnerConfig config) => [
     _Section(
       title: 'Show and dismiss',
@@ -399,6 +475,67 @@ class _PanelState extends State<_Panel> {
             _show('Toast $i of 20', duration: Duration.zero);
           }
         }),
+      ],
+    ),
+    _Section(
+      title: 'Time left',
+      issue: 38,
+      note:
+          'A toast counting down draws its time left, as config.timeLeft says. '
+          'Rest the pointer on the deck and every one stands still: the pause '
+          'is the whole deck. Put three up to see a covered toast.',
+      children: [
+        _Button(
+          'One, 8 s',
+          () => _show(
+            'Counting down',
+            description: 'Rest the pointer here and it stands still.',
+            duration: const Duration(seconds: 8),
+          ),
+        ),
+        _Button('Three: 4 s, 7 s, 10 s', () {
+          for (final seconds in const [10, 7, 4]) {
+            _show('$seconds seconds', duration: Duration(seconds: seconds));
+          }
+        }),
+        _Button('Updated at 3 s: counts from the top again', () {
+          final id = _show(
+            'Will be updated',
+            description: 'In 3 s its content changes.',
+            duration: const Duration(seconds: 8),
+          );
+          Timer(const Duration(seconds: 3), () {
+            if (mounted) {
+              _toast.update(id, description: 'Updated: counting again.');
+            }
+          });
+        }),
+        _Button('Loading for 2 s, then counting', () {
+          final id = _show('Saving…', isLoading: true);
+          Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              _toast.update(
+                id,
+                title: 'Saved',
+                isLoading: false,
+                duration: const Duration(seconds: 6),
+              );
+            }
+          });
+        }),
+        _Button(
+          'With a leading icon',
+          () => _show(
+            'Signed in',
+            leading: const Icon(Icons.check_circle, size: 20),
+            duration: const Duration(seconds: 8),
+          ),
+        ),
+        _Button(
+          'No timer: nothing to draw',
+          () => _show('Stays until dismissed', duration: Duration.zero),
+        ),
+        ..._timeLeftControls(config),
       ],
     ),
     _Section(

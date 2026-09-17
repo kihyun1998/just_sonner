@@ -38,6 +38,128 @@ enum SwipeDirection {
   bool get isHorizontal => this == left || this == right;
 }
 
+/// How the default look draws a toast's time left.
+enum TimeLeftLook {
+  /// The card's outline, running out round the card from [ToastTimeLeft.start].
+  border,
+
+  /// A bar along the bottom of the card, running out toward its start edge.
+  bottomBar,
+
+  /// A bar along the top of the card, running out toward its start edge.
+  topBar,
+
+  /// A small ring in the card's bottom end corner.
+  cornerRing,
+
+  /// A ring in the leading slot: round the leading widget, or on its own in
+  /// the slot when the toast has none.
+  leadingRing,
+}
+
+/// Where on the card's outline a [TimeLeftLook.border] starts: the corners
+/// and the middle of each side, with start and end following the text
+/// direction.
+enum TimeLeftStart {
+  topStart,
+  topCenter,
+  topEnd,
+  centerEnd,
+  bottomEnd,
+  bottomCenter,
+  bottomStart,
+  centerStart,
+}
+
+/// How the default look draws each toast's time left.
+@immutable
+class ToastTimeLeft {
+  const ToastTimeLeft({
+    this.look = TimeLeftLook.border,
+    this.start = TimeLeftStart.topStart,
+    this.clockwise = true,
+    this.strokeWidth = 2,
+    this.color,
+    this.keepBorder = true,
+    this.easeRestart = true,
+    this.fadeWhenCovered = true,
+  }) : assert(strokeWidth > 0, 'A stroke must have a width.');
+
+  final TimeLeftLook look;
+
+  /// Where a [TimeLeftLook.border] starts. The other looks do not read it.
+  final TimeLeftStart start;
+
+  /// Whether a [TimeLeftLook.border]'s gap opens clockwise from [start];
+  /// otherwise the line runs back toward it. The other looks do not read it.
+  final bool clockwise;
+
+  /// The width of the border's line, a bar's height and a ring's stroke.
+  final double strokeWidth;
+
+  /// Null for the theme's `colorScheme.primary`.
+  final Color? color;
+
+  /// Whether the card keeps its own border under a [TimeLeftLook.border].
+  final bool keepBorder;
+
+  /// Whether a countdown started again, by an update or a replace, eases the
+  /// time left back up over 400 ms rather than jumping to full.
+  final bool easeRestart;
+
+  /// Whether the time left fades with the content while the deck covers the
+  /// toast, rather than staying on the card. A [TimeLeftLook.leadingRing] sits
+  /// in the leading slot, which is content, and fades with it either way.
+  final bool fadeWhenCovered;
+
+  /// A copy with the fields given changed. [color] is given as a function,
+  /// since null is a value it can take: `copyWith(color: () => null)` follows
+  /// the theme again.
+  ToastTimeLeft copyWith({
+    TimeLeftLook? look,
+    TimeLeftStart? start,
+    bool? clockwise,
+    double? strokeWidth,
+    ValueGetter<Color?>? color,
+    bool? keepBorder,
+    bool? easeRestart,
+    bool? fadeWhenCovered,
+  }) => ToastTimeLeft(
+    look: look ?? this.look,
+    start: start ?? this.start,
+    clockwise: clockwise ?? this.clockwise,
+    strokeWidth: strokeWidth ?? this.strokeWidth,
+    color: color == null ? this.color : color(),
+    keepBorder: keepBorder ?? this.keepBorder,
+    easeRestart: easeRestart ?? this.easeRestart,
+    fadeWhenCovered: fadeWhenCovered ?? this.fadeWhenCovered,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ToastTimeLeft &&
+      other.look == look &&
+      other.start == start &&
+      other.clockwise == clockwise &&
+      other.strokeWidth == strokeWidth &&
+      other.color == color &&
+      other.keepBorder == keepBorder &&
+      other.easeRestart == easeRestart &&
+      other.fadeWhenCovered == fadeWhenCovered;
+
+  @override
+  int get hashCode => Object.hash(
+    look,
+    start,
+    clockwise,
+    strokeWidth,
+    color,
+    keepBorder,
+    easeRestart,
+    fadeWhenCovered,
+  );
+}
+
 /// How a controller's toasts are laid out and how long they stay.
 @immutable
 class SonnerConfig {
@@ -54,6 +176,7 @@ class SonnerConfig {
     this.closeButton = false,
     this.swipeDirections,
     this.builder,
+    this.timeLeft = const ToastTimeLeft(),
   });
 
   final SonnerPosition position;
@@ -118,11 +241,17 @@ class SonnerConfig {
   /// ellipse, and a toast with a slot lines its title up with every other.
   final double leadingSize;
 
+  /// How the default look draws each toast's time left, or null to draw none.
+  /// A builder is handed `ToastView.timeLeft` either way, and frames run for
+  /// it while a toast counts down whatever this says.
+  final ToastTimeLeft? timeLeft;
+
   /// A copy with the fields given changed.
   ///
-  /// [swipeDirections] and [builder] are given as functions, since null is a
-  /// value each can take: `copyWith(swipeDirections: () => null)` follows the
-  /// position again, and `copyWith(builder: () => null)` the default look.
+  /// [swipeDirections], [builder] and [timeLeft] are given as functions, since
+  /// null is a value each can take: `copyWith(swipeDirections: () => null)`
+  /// follows the position again, `copyWith(builder: () => null)` the default
+  /// look, and `copyWith(timeLeft: () => null)` draws no time left.
   SonnerConfig copyWith({
     SonnerPosition? position,
     double? width,
@@ -136,6 +265,7 @@ class SonnerConfig {
     bool? closeButton,
     ValueGetter<Set<SwipeDirection>?>? swipeDirections,
     ValueGetter<ToastBuilder?>? builder,
+    ValueGetter<ToastTimeLeft?>? timeLeft,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -151,6 +281,7 @@ class SonnerConfig {
         ? this.swipeDirections
         : swipeDirections(),
     builder: builder == null ? this.builder : builder(),
+    timeLeft: timeLeft == null ? this.timeLeft : timeLeft(),
   );
 
   @override
@@ -167,7 +298,8 @@ class SonnerConfig {
       other.leadingSize == leadingSize &&
       other.closeButton == closeButton &&
       setEquals(other.swipeDirections, swipeDirections) &&
-      other.builder == builder;
+      other.builder == builder &&
+      other.timeLeft == timeLeft;
 
   @override
   int get hashCode => Object.hash(
@@ -183,5 +315,6 @@ class SonnerConfig {
     closeButton,
     swipeDirections == null ? null : Object.hashAllUnordered(swipeDirections!),
     builder,
+    timeLeft,
   );
 }

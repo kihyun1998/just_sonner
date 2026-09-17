@@ -2,7 +2,14 @@
 /// changed in place.
 library;
 
-export 'src/config.dart' show SonnerConfig, SonnerPosition, SwipeDirection;
+export 'src/config.dart'
+    show
+        SonnerConfig,
+        SonnerPosition,
+        SwipeDirection,
+        TimeLeftLook,
+        TimeLeftStart,
+        ToastTimeLeft;
 export 'src/controller.dart' show SonnerController, toast;
 export 'src/host.dart' show SonnerHost;
 export 'src/toast_content.dart' show ToastContent;
