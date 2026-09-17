@@ -4,6 +4,9 @@ library;
 
 export 'src/config.dart'
     show
+        DeckCap,
+        DeckScrollbar,
+        DeckScrollbarPlacement,
         SonnerConfig,
         SonnerPosition,
         SwipeDirection,

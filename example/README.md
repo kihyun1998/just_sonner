@@ -23,6 +23,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **The deck** (#19, #22, #23, #41) — rest the pointer on the deck. It fans out, draws every toast
   rather than `visibleToasts`, and every timer stops while the pointer is there. A deck taller
   than the screen scrolls, and the toast under the pointer keeps its place while it does.
+- **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
+  that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
+  mouse, press or turn the wheel there and it fans out and stops.
 - **Mixed heights** (#19, #45) — press one, then the other. A toast behind the front is drawn at the
   front's height, and draws no content while it is covered: the deck is a pile of cards with only
   the front one written on. Hovering fans them out and every toast reads again.
@@ -46,6 +49,11 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   card by default. Rest the pointer on the deck and every one stands still; "Updated at 3 s"
   eases it back up. Every `ToastTimeLeft` field is on a control below the buttons, and the
   `timeLeft` switch takes it away.
+- **Deck cap and scrollbar** (#62) — put twenty up and rest the pointer on the deck. It reaches
+  no further than the cap; the rest scroll with the wheel or by dragging the scrollbar beside the
+  deck, and nothing shows past the cut, not even while the deck folds up as the pointer leaves.
+  Every `DeckCap` and `DeckScrollbar` field is on a control below the buttons, with a switch to
+  take each away.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

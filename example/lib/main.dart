@@ -339,6 +339,107 @@ class _PanelState extends State<_Panel> {
   });
 
   /// A control for each field of `config.timeLeft`, and one to take it away.
+  /// A control for each field of `config.deckCap` and `config.scrollbar`,
+  /// and one to take each away.
+  List<Widget> _deckCapControls(SonnerConfig config) {
+    final cap = config.deckCap;
+    final bar = config.scrollbar;
+    void setCap(DeckCap? value) =>
+        widget.onConfig(config.copyWith(deckCap: () => value));
+    void setBar(DeckScrollbar? value) =>
+        widget.onConfig(config.copyWith(scrollbar: () => value));
+    final fade = cap?.fade ?? 24;
+    return [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('deckCap'),
+        value: cap != null,
+        onChanged: (on) => setCap(on ? const DeckCap.pixels(400) : null),
+      ),
+      if (cap != null) ...[
+        _Dropdown<DeckCap>(
+          label: 'cap',
+          value: cap,
+          values: {
+            for (final value in [240.0, 320.0, 400.0, 480.0])
+              DeckCap.pixels(value, fade: fade),
+            for (final value in [0.33, 0.5, 0.66])
+              DeckCap.share(value, fade: fade),
+            for (final value in [3, 4, 5, 6]) DeckCap.toasts(value, fade: fade),
+            cap,
+          }.toList(),
+          nameOf: (value) => switch (value) {
+            DeckCap(:final pixels?) => '${pixels.round()} px',
+            DeckCap(:final share?) =>
+              '${(share * 100).round()} % of the window',
+            _ => '${value.toasts} toasts',
+          },
+          onChanged: setCap,
+        ),
+        _Dropdown<double>(
+          label: 'fade',
+          value: fade,
+          values: {0.0, 24.0, 48.0, fade}.toList(),
+          nameOf: (value) =>
+              value == 0 ? 'a hard cut' : 'over ${value.round()} px',
+          onChanged: (value) => setCap(switch (cap) {
+            DeckCap(:final pixels?) => DeckCap.pixels(pixels, fade: value),
+            DeckCap(:final share?) => DeckCap.share(share, fade: value),
+            _ => DeckCap.toasts(cap.toasts!, fade: value),
+          }),
+        ),
+      ],
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('scrollbar'),
+        value: bar != null,
+        onChanged: (on) => setBar(on ? const DeckScrollbar() : null),
+      ),
+      if (bar != null) ...[
+        _Dropdown<DeckScrollbarPlacement>(
+          label: 'placement',
+          value: bar.placement,
+          values: DeckScrollbarPlacement.values,
+          nameOf: (value) => switch (value) {
+            DeckScrollbarPlacement.outside => "outside the deck's right edge",
+            DeckScrollbarPlacement.inside => "inside the deck's right edge",
+          },
+          onChanged: (value) => setBar(bar.copyWith(placement: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('alwaysShown (off: while scrolling)'),
+          value: bar.alwaysShown,
+          onChanged: (value) => setBar(bar.copyWith(alwaysShown: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('draggable'),
+          value: bar.draggable,
+          onChanged: (value) => setBar(bar.copyWith(draggable: value)),
+        ),
+        _Dropdown<double>(
+          label: 'thickness',
+          value: bar.thickness,
+          values: {2.0, 4.0, 6.0, 8.0, bar.thickness}.toList(),
+          nameOf: (value) => '$value px',
+          onChanged: (value) => setBar(bar.copyWith(thickness: value)),
+        ),
+        _Dropdown<Color?>(
+          label: 'color',
+          value: bar.color,
+          values: const [null, Color(0xFF2E7D32), Color(0xFFC62828)],
+          nameOf: (value) => switch (value) {
+            null => "the theme's onSurface, faded",
+            const Color(0xFF2E7D32) => 'green',
+            _ => 'red',
+          },
+          onChanged: (value) => setBar(bar.copyWith(color: () => value)),
+        ),
+      ],
+    ];
+  }
+
   List<Widget> _timeLeftControls(SonnerConfig config) {
     final left = config.timeLeft;
     void set(ToastTimeLeft? value) =>
@@ -536,6 +637,44 @@ class _PanelState extends State<_Panel> {
           () => _show('Stays until dismissed', duration: Duration.zero),
         ),
         ..._timeLeftControls(config),
+      ],
+    ),
+    _Section(
+      title: 'Deck cap and scrollbar',
+      issue: 62,
+      note:
+          'Put twenty up and rest the pointer on the deck: it reaches no '
+          'further than the cap, the rest scroll with the wheel or the '
+          'scrollbar, and nothing shows past the cut — not even while the '
+          'deck folds up as the pointer leaves.',
+      children: [
+        _Button('Twenty, staying', () {
+          for (var i = 1; i <= 20; i++) {
+            _show('Capped $i of 20', duration: Duration.zero);
+          }
+        }),
+        _Button('Eight of mixed heights, staying', () {
+          for (var i = 1; i <= 8; i++) {
+            _show(
+              'Mixed $i of 8',
+              description: i.isEven ? 'A second line\nand a third' : null,
+              duration: Duration.zero,
+            );
+          }
+        }),
+        _Button('A newest toast taller than a small cap', () {
+          for (var i = 1; i <= 4; i++) {
+            _show('Behind $i of 4', duration: Duration.zero);
+          }
+          _show(
+            'Read me whole',
+            description: [
+              for (var line = 1; line <= 8; line++) 'Line $line',
+            ].join('\n'),
+            duration: Duration.zero,
+          );
+        }),
+        ..._deckCapControls(config),
       ],
     ),
     _Section(
