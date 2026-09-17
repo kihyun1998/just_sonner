@@ -539,6 +539,40 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
+      title: 'A still pointer',
+      issue: 39,
+      note:
+          'Press a button, move the mouse to where toasts appear and leave it '
+          'there. A toast that lands under a still pointer counts down and '
+          'goes, the deck collapsed; move the mouse, press or turn the wheel '
+          'and it fans out and stops.',
+      children: [
+        _Button('In 2 s: one, 4 s', () {
+          Timer(const Duration(seconds: 2), () {
+            if (mounted) {
+              _show(
+                'Landed under a still pointer',
+                description: 'Counting 4 s until the mouse moves.',
+                duration: const Duration(seconds: 4),
+              );
+            }
+          });
+        }),
+        _Button('In 2 s: one every 1.5 s, eight times, 3 s each', () {
+          for (var i = 0; i < 8; i++) {
+            Timer(Duration(milliseconds: 2000 + 1500 * i), () {
+              if (mounted) {
+                _show(
+                  'Stream ${i + 1} of 8',
+                  duration: const Duration(seconds: 3),
+                );
+              }
+            });
+          }
+        }),
+      ],
+    ),
+    _Section(
       title: 'Mixed heights',
       issue: 19,
       note:
