@@ -55,6 +55,9 @@ What just_sonner adds, in the order a real consumer needed them:
 - A cap on how far the expanded deck reaches — `config.deckCap`, in pixels, as a share of the layer
   or as a number of toasts, cut hard or faded — and a scrollbar beside it while its toasts scroll,
   `config.scrollbar` (§6)
+- A control at the expanded deck's far end that dismisses every toast the user may dismiss —
+  `config.dismissAll`, a pill or a header reading its `label`, or the app's own through a builder
+  (§6)
 - **Windows, macOS, Linux**; no dependency beyond Flutter
 
 ### Non-goals (v0.1)
@@ -214,6 +217,27 @@ class DeckScrollbar {
 
 enum DeckScrollbarPlacement { outside, inside } // of the deck's right edge
 
+/// The control at the expanded deck's far end that dismisses every toast the user may dismiss
+/// (§6). `SonnerConfig.dismissAll` is one of these, or null to draw none.
+class DeckDismissAll {
+  const DeckDismissAll({
+    DeckDismissAllLook look = DeckDismissAllLook.pill,
+    String label = 'Clear all',
+    String Function(int count)? countLabel,   // a header's; null: '$count notifications'
+    DeckDismissAllBuilder? builder,           // replaces the look
+  });
+}
+
+enum DeckDismissAllLook { pill, header }
+
+typedef DeckDismissAllBuilder = Widget Function(BuildContext context, DeckDismissAllView view);
+
+class DeckDismissAllView {
+  int get count;                     // the toasts dismiss() dismisses
+  void dismiss();                    // every one the user may dismiss, beyond the window too
+  Animation<double> get expansion;   // 0 collapsed → 1 expanded
+}
+
 enum TimeLeftLook { border, bottomBar, topBar, cornerRing, leadingRing }
 enum TimeLeftStart { topStart, topCenter, topEnd, centerEnd, bottomEnd, bottomCenter, bottomStart, centerStart }
 ```
@@ -227,14 +251,15 @@ same methods as `toast`. There is no static facade.
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false), `timeLeft` (`ToastTimeLeft()`), `deckCap` (`DeckCap.pixels(400)`),
-`scrollbar` (`DeckScrollbar()`). It is immutable and has a `copyWith`, so
+`scrollbar` (`DeckScrollbar()`), `dismissAll` (`DeckDismissAll()`). It is immutable and has a `copyWith`, so
 one field changes with `toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is
 given as a function, `copyWith(swipeDirections: () => null)`, so it can go back to following the
 position, `builder` the same way, `copyWith(builder: () => null)`, back to the default look, and
 `timeLeft` too, `copyWith(timeLeft: () => null)`, to draw none, and `deckCap` and `scrollbar`
-likewise, to reach as far as the layer and to draw no scrollbar. `ToastTimeLeft` and
-`DeckScrollbar` have a `copyWith` of their own, with `color` given as a function to go back to the
-theme's.
+likewise, to reach as far as the layer and to draw no scrollbar, and `dismissAll`, to draw no
+control. `ToastTimeLeft` and `DeckScrollbar` have a `copyWith` of their own, with `color` given as
+a function to go back to the theme's, and `DeckDismissAll` one with `countLabel` and `builder`
+given as functions.
 
 **The config lives on the controller and nowhere else.** `attach` does not take one and neither
 does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
@@ -494,6 +519,22 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     desktop scrollbar). Dragging a draggable thumb scrolls the deck by the thumb's share of its
     track, and holds the deck as any press that started on it does; one that is not draggable
     takes no pointer. A click on the track does nothing.
+- **The dismiss-all control** is `config.dismissAll`, drawn while the pointer holds the deck (a
+  hover, or a press that started on it) and at least two toasts the user may dismiss are on
+  screen — never on a collapsed deck, nor on an `expandByDefault` deck with no pointer on it. It
+  sits `gap` past the deck's far end, and on a deck that scrolls, past the cap however far the
+  toasts are scrolled; it lines up with the deck's right edge at a right position, its left at a
+  left one, and its centre at a centre one. Pressing it dismisses every toast whose
+  `dismissibleNow` holds, the ones beyond the window included; a loading toast and one not
+  dismissible stay, and `dismissAll()` on the controller still dismisses them all.
+  - A `pill` reads `label`; a `header` is as wide as the deck and reads `countLabel(count)` and a
+    button with `label`. Both fade with the expansion. A `builder` draws the control instead,
+    handed the count, `dismiss()` and the expansion, and is placed by the size it lays out at.
+  - **It is drawn outside the deck**, over it, so the cap's cut does not reach it, and laid out
+    before the deck, so the deck places it by its size in the same frame. The hover region takes
+    it in, so moving the pointer from the deck onto it does not collapse the deck.
+  - Pressing it leaves fewer than two dismissible toasts, so it goes at once, and the deck may
+    collapse with it under the pointer.
   - **A toast entering or leaving while the pointer is over the deck does not move the toasts in
     view**: the scroll moves with them, so a new toast arrives out of sight at the edge.
   - **A `position` on the other edge puts the scroll back at the edge** (top ↔ bottom runs the
@@ -776,6 +817,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   the pointer moved onto an outside thumb keeps the deck; a drag scrolls by the thumb's share and
   holds the deck until it lets go; one not draggable takes no pointer; a new cap keeps the toasts
   in view where they are
+- The dismiss-all control shows only while the pointer holds a deck with two dismissible toasts;
+  it sits a gap past the far end at a right, a left and a centre position, from the first frame,
+  and at the cap on a scrolling deck, drawn past the cut; the pointer moved onto it keeps the
+  deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
+  its count label and label; a builder replaces the look, is placed by its size and dismisses
+  through its view
 - a mode-1 toast shown while the app is hidden waits before its host is built
 - Only `visibleToasts` are hit-testable while the pointer is away
 - The `action` slot is placed at the trailing edge and handed the toast; its widget can dismiss the
@@ -991,6 +1038,8 @@ outside v0.1 is in §2's non-goals.
 | The newest toast is never cut: a cap shorter than it reaches its far end; an `expandByDefault` deck with no pointer is cut and does not scroll; a click on the scrollbar's track does nothing | derived | confirmed by the maintainer as part of #62's reading. A newest toast taller than the cap could not otherwise be read at all while the deck is collapsed. Nothing scrolls a deck with no pointer on it (§6), so a scrollbar is not drawn there either. A track click was not asked for |
 | The cut follows where toasts are drawn, not whether the scroll overflows; the hover region takes in a draggable thumb outside the deck; a drag of the thumb holds the deck as a press does; the thumb's defaults are 4 px thick, at least 24 px long, 8 px outside or 6 px inside the edge, taking the pointer 4 px either side; one not always shown lingers 600 ms and fades over 300 ms | derived | the cut: measured in #62's spike, where a cut keyed on the overflow let the toasts beyond the window show past the cap for the whole 400 ms collapse, since they leave the deck when the pointer does (read from pixels at 50, 100 and 150 ms). The region: a thumb outside the deck's box collapsed the deck as the pointer travelled to it, the same trap #59's control has. The thumb's size and placement are what the maintainer was shown in the spike; the linger and fade are Material's desktop scrollbar (`_kScrollbarTimeToFade`, `_kScrollbarFadeDuration`, `material/scrollbar.dart`), whose 8 px thickness and 48 px minimum were not taken over what was shown |
 | A toast cut at the cap stays in the semantics tree; a drag of the scrollbar carried off the deck lets the timers run, as any press held off the deck does | maintainer | asked before #62 merged. The first matches a toast scrolled out of view and a covered toast, which keep their place in the tree since what the deck hides is the reading, not the announcement (§6 Collapsed). The second keeps §7's one rule — a press that stays put is a pointer over the deck, and only a toast being dragged holds the timers — over adding a clause for the scrollbar |
+| The deck carries a control that dismisses every toast the user may dismiss: `SonnerConfig.dismissAll: DeckDismissAll?` — a `pill` (default, on) or a `header`, reading a `label` (`'Clear all'`), or a `builder` the app draws with, handed a `DeckDismissAllView` (`count`, `dismiss()`) — shown only while the deck is expanded under the pointer with at least two such toasts; in v0.1 | maintainer | #59, filed from #39's triage when the maintainer asked for a way to clear the deck (and for hiding it without dismissing, #60). Chosen from throwaway spikes in the example app: a pill past the far end, a header bar, a × on the far corner and a pill beside the far end, first on the uncapped deck and again on #62's capped one, then with a builder's control beside them. The maintainer liked the pill and the header and asked whether an API for an app's own would be better; shown the proposal of both — the looks for the common case, a builder for the rest, as `builder` and `timeLeft` already split it — they chose both, the corner and side placements dropped. A setting to show it on a collapsed deck was offered and not taken. `dismissAll` names were picked over `clearAll` to match **Dismissed** and `SonnerController.dismissAll()`; a `label` setting over a fixed English one, so an app in another language need not write a builder. sonner (8e4662b) has no such control |
+| The control leaves toasts loading or not dismissible, and counts the ones beyond the window; a header's count text is `countLabel`; the builder is handed the expansion as an `Animation`; it is drawn outside `DeckCutBox` and laid out before the deck; the hover region takes it in | derived | confirmed by the maintainer as part of #59's reading. **Dismissible** governs what the user may dismiss, and this is the user's control. The count text follows `label` for the same reason. The `Animation` follows `ToastView.covered` and `timeLeft`, which a look answers by repainting. Measured in the spikes: laid out among the toasts, a control past the cap was hidden by #62's cut; and outside the deck's box, moving the pointer onto it collapsed the deck before it could be pressed. Laying it out first keeps a builder's size and its place in one frame. **Not covered**: a widget test cannot tell that order from laying it out after the deck, since the layer lays out twice in the frame the pointer arrives in |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

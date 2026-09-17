@@ -43,6 +43,11 @@ import 'config.dart';
 /// drawn past a cap nearer than the layer's, the cut is reported through
 /// [onCut]; otherwise null is.
 ///
+/// While [dismissAllSize] gives a size, the dismiss-all control of that size
+/// is placed `gap` past the deck's far end, no further than the cap, on the
+/// side the position names; its box is reported through [onDismissAll] and
+/// taken into the box around the deck.
+///
 /// While the deck [follows] the pointer and its toasts scroll, a child with the
 /// id [scrollbar] is laid out as the thumb of `config.scrollbar` beside the
 /// deck's right edge, over the track from `offset` to the cap, and its
@@ -91,6 +96,8 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     this.scrollbar,
     this.onCut,
     this.onScrollbar,
+    this.dismissAllSize,
+    this.onDismissAll,
   }) : super(relayout: scroll);
 
   final SonnerConfig config;
@@ -127,6 +134,8 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   final Object? scrollbar;
   final ValueChanged<DeckCut?>? onCut;
   final ValueChanged<DeckScrollbarGeometry?>? onScrollbar;
+  final Size? Function()? dismissAllSize;
+  final ValueChanged<Rect?>? onDismissAll;
 
   /// The shortest thumb, where the track allows it.
   static const _minThumb = 24.0;
@@ -270,6 +279,12 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       extent: extent,
     );
 
+    final control = dismissAllSize?.call();
+    final dismissAll = around == null || control == null
+        ? null
+        : _placeDismissAll(size, around, far, control);
+    onDismissAll?.call(dismissAll);
+
     var deck = Rect.zero;
     if (around != null) {
       // A deck being scrolled moves its own ends across the margins, and must
@@ -289,6 +304,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
           around = around.expandToInclude(thumb);
         }
       }
+      if (dismissAll != null) around = around.expandToInclude(dismissAll);
       deck = around.intersect(Offset.zero & size);
       if (deck.isEmpty) deck = Rect.zero;
     }
@@ -349,6 +365,32 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   }
 
   double? _newestEnd(List<_Placed<T>> placed) => _endOf(placed, 1);
+
+  /// Where a dismiss-all control of [control]'s size sits: `gap` past the far
+  /// end of the deck's box [around] — cut to [far] from the edge — aligned to
+  /// the position's side, and kept on the layer.
+  Rect _placeDismissAll(Size size, Rect around, double far, Size control) {
+    final isTop = config.position.isTop;
+    final farEnd = isTop
+        ? math.min(around.bottom, far)
+        : math.max(around.top, size.height - far);
+    final x = switch (config.position) {
+      SonnerPosition.topLeft || SonnerPosition.bottomLeft => around.left,
+      SonnerPosition.topCenter ||
+      SonnerPosition.bottomCenter => around.center.dx - control.width / 2,
+      SonnerPosition.topRight ||
+      SonnerPosition.bottomRight => around.right - control.width,
+    };
+    final y = isTop
+        ? farEnd + config.gap
+        : farEnd - config.gap - control.height;
+    return Rect.fromLTWH(
+      x.clamp(0.0, math.max(0.0, size.width - control.width)),
+      y.clamp(0.0, math.max(0.0, size.height - control.height)),
+      control.width,
+      control.height,
+    );
+  }
 
   /// Lays out the [scrollbar] child as the thumb, or empty off the layer, and
   /// returns the box it takes the pointer in when laid out as the thumb.
