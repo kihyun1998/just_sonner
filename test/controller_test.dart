@@ -1341,6 +1341,100 @@ void main() {
       );
     });
 
+    test('a config caps the expanded deck at 400 px, fading over 24 px, and '
+        'draws a draggable scrollbar outside the deck, always shown', () {
+      expect(const SonnerConfig().deckCap, const DeckCap.pixels(400));
+      expect(const DeckCap.pixels(400).fade, 24);
+      const bar = DeckScrollbar();
+      expect(const SonnerConfig().scrollbar, bar);
+      expect(bar.placement, DeckScrollbarPlacement.outside);
+      expect(bar.alwaysShown, isTrue);
+      expect(bar.draggable, isTrue);
+      expect(bar.thickness, 4);
+      expect(bar.color, isNull, reason: 'the theme’s onSurface');
+    });
+
+    test('DeckCap compares by kind, value and fade', () {
+      expect(const DeckCap.pixels(300), const DeckCap.pixels(300));
+      expect(
+        const DeckCap.pixels(300).hashCode,
+        const DeckCap.pixels(300).hashCode,
+      );
+      for (final other in [
+        const DeckCap.pixels(301),
+        const DeckCap.pixels(300, fade: 0),
+        const DeckCap.share(0.5),
+        const DeckCap.toasts(4),
+      ]) {
+        expect(const DeckCap.pixels(300) == other, isFalse, reason: '$other');
+      }
+      expect(const DeckCap.share(0.5), const DeckCap.share(0.5));
+      expect(const DeckCap.share(0.5) == const DeckCap.share(0.6), isFalse);
+      expect(const DeckCap.toasts(4), const DeckCap.toasts(4));
+      expect(const DeckCap.toasts(4) == const DeckCap.toasts(5), isFalse);
+    });
+
+    test('DeckScrollbar copyWith keeps what it is not given, can put the '
+        'colour back to the theme’s, and compares by value', () {
+      const red = Color(0xFFFF0000);
+      final changed = const DeckScrollbar().copyWith(
+        placement: DeckScrollbarPlacement.inside,
+        alwaysShown: false,
+        draggable: false,
+        thickness: 6,
+        color: () => red,
+      );
+      expect(
+        changed,
+        const DeckScrollbar(
+          placement: DeckScrollbarPlacement.inside,
+          alwaysShown: false,
+          draggable: false,
+          thickness: 6,
+          color: red,
+        ),
+      );
+      expect(changed.hashCode, isNot(const DeckScrollbar().hashCode));
+      expect(changed.copyWith(thickness: 5).color, red, reason: 'kept');
+      expect(changed.copyWith(color: () => null).color, isNull);
+      for (final one in [
+        const DeckScrollbar(placement: DeckScrollbarPlacement.inside),
+        const DeckScrollbar(alwaysShown: false),
+        const DeckScrollbar(draggable: false),
+        const DeckScrollbar(thickness: 6),
+        const DeckScrollbar(color: red),
+      ]) {
+        expect(one == const DeckScrollbar(), isFalse, reason: '$one');
+      }
+    });
+
+    test('copyWith keeps deckCap and scrollbar unless given them, and can take '
+        'either away; a config with another is not equal', () {
+      const cap = DeckCap.toasts(3);
+      const bar = DeckScrollbar(draggable: false);
+      const set = SonnerConfig(deckCap: cap, scrollbar: bar);
+
+      expect(set.copyWith(gap: 20).deckCap, cap, reason: 'kept');
+      expect(set.copyWith(gap: 20).scrollbar, bar, reason: 'kept');
+      expect(set.copyWith(deckCap: () => null).deckCap, isNull);
+      expect(set.copyWith(scrollbar: () => null).scrollbar, isNull);
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+      expect(const SonnerConfig(deckCap: cap) == const SonnerConfig(), isFalse);
+      expect(
+        const SonnerConfig(scrollbar: bar) == const SonnerConfig(),
+        isFalse,
+      );
+      expect(
+        const SonnerConfig(deckCap: DeckCap.share(0.5)),
+        const SonnerConfig().copyWith(deckCap: () => const DeckCap.share(0.5)),
+      );
+      expect(
+        const SonnerConfig(scrollbar: bar),
+        const SonnerConfig().copyWith(scrollbar: () => bar),
+      );
+    });
+
     test('an equal config does not notify', () {
       final controller = SonnerController();
       var notifications = 0;

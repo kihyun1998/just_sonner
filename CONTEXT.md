@@ -9,6 +9,12 @@ The place at a toast's trailing edge that the caller fills with its own widget. 
 handed the toast, so it decides for itself whether acting on it also dismisses it.
 _Avoid_: action button, primary action
 
+**Cap**:
+How far the expanded deck reaches from its edge before its toasts scroll, as `config.deckCap`
+gives it, and never short of the newest toast. Nothing is drawn past it; a scrollbar beside the
+deck shows where in the scroll the toasts in view are.
+_Avoid_: max height, limit (for this)
+
 **Covered**:
 How much of a toast the deck hides: the running product of the presences of the toasts in front of
 it, 0 for the front and 1 behind one fully present. A covered toast draws no content and its

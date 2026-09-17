@@ -22,7 +22,9 @@ import 'config.dart';
 import 'content_fade.dart';
 import 'controller.dart';
 import 'default_look.dart';
+import 'deck_cut.dart';
 import 'deck_layout.dart';
+import 'deck_scrollbar.dart';
 import 'swipe.dart';
 import 'time_left.dart';
 import 'toast_id.dart';
@@ -128,6 +130,26 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   double _unscrollFrom = 0;
   late final _Eased _unscroll = _Eased(this, 1);
 
+  /// Where the deck is cut, as its layout last reported.
+  final _cut = ValueNotifier<DeckCut?>(null);
+
+  /// The scrollbar's thumb as the deck last laid it out, for turning a drag
+  /// into a scroll.
+  DeckScrollbarGeometry? _thumb;
+
+  /// How much of a scrollbar that is not always shown is showing: all of it
+  /// while the deck scrolls, fading out a moment after.
+  late final _scrollbarShown = AnimationController(
+    vsync: this,
+    duration: _scrollbarFade,
+  );
+  Timer? _scrollbarHide;
+
+  /// Material's desktop scrollbar: shown for 600 ms after a scroll, then
+  /// faded over 300 ms.
+  static const _scrollbarLinger = Duration(milliseconds: 600);
+  static const _scrollbarFade = Duration(milliseconds: 300);
+
   /// The toast the scroll keeps in place while the pointer is over the deck,
   /// its distance from the edge before scrolling, and the scroll, as last laid
   /// out.
@@ -151,6 +173,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _config = _controller.config;
     _controller.addListener(_onToastsChanged);
     watchLifecycle(_controller);
+    _scroll.addListener(_showScrollbar);
     _sync();
   }
 
@@ -187,7 +210,12 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _reveal.dispose();
     _glide.dispose();
     _unscroll.dispose();
-    _scroll.dispose();
+    _scroll
+      ..removeListener(_showScrollbar)
+      ..dispose();
+    _cut.dispose();
+    _scrollbarHide?.cancel();
+    _scrollbarShown.dispose();
     super.dispose();
   }
 
@@ -301,6 +329,31 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (_interacting == was) return;
     if (!_interacting) _unscrollDeck();
     _retarget();
+  }
+
+  void _showScrollbar() {
+    if (_config.scrollbar?.alwaysShown ?? true) return;
+    _scrollbarShown.forward();
+    _scrollbarHide?.cancel();
+    _scrollbarHide = Timer(_scrollbarLinger, _scrollbarShown.reverse);
+  }
+
+  /// Scrolls the deck as far as a drag of the scrollbar's thumb by [delta],
+  /// down the screen, carries it along its track.
+  void _dragScrollbar(double delta) {
+    final thumb = _thumb;
+    if (thumb == null || !_scroll.hasClients) return;
+    final travel = thumb.track - thumb.thumb;
+    if (travel <= 0) return;
+    // Away from the edge is up the screen from the bottom, down from the top.
+    final away = _config.position.isTop ? delta : -delta;
+    final position = _scroll.position;
+    position.jumpTo(
+      (position.pixels + away * thumb.extent / travel).clamp(
+        0.0,
+        position.maxScrollExtent,
+      ),
+    );
   }
 
   /// Puts the scroll back at the edge, and eases the deck there over
@@ -592,56 +645,80 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             ),
             _ => false,
           },
-          child: Scrollable(
-            controller: _scroll,
-            axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
-            hitTestBehavior: HitTestBehavior.deferToChild,
-            excludeFromSemantics: true,
-            scrollBehavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false, overscroll: false),
-            viewportBuilder: (context, position) => CustomMultiChildLayout(
-              delegate: ToastDeckDelegate<_Slot>(
-                config: config,
-                order: _slots,
-                expansion: expansion,
-                presence: (slot) => slot.presence.value,
-                depth: (slot) => slot.depth,
-                lift: (slot) => slot.lift,
-                natural: (slot) => slot.natural,
-                covering: (slot) => slot.covering,
-                pinned: (slot) => slot.pinned,
-                inDeck: (slot) => slot.inDeck,
-                onPlaced: (slot, height, covering, distance, place) => slot
-                  ..height = height
-                  ..covers = covering
-                  ..distance = distance
-                  ..place = place,
-                onDeck: (deck) => _deck = deck,
-                glide: _glide.value,
-                glideFrom: (slot) => slot.glideFrom,
-                screenPinned: (slot) => slot.screenPin,
-                onDrawn: (slot, drawn) => slot.drawnAt = drawn,
-                scroll: position,
-                follows: interacting,
-                unscrolled: _unscrolled,
-                // Read at layout, which a scroll runs without a build.
-                anchor: () => _interacting && _expand.value == 1
-                    ? (id: _anchor, distance: _anchorAt, pixels: _anchorPixels)
-                    : null,
-                onAnchor: (slot, distance, pixels) {
-                  _anchor = slot;
-                  _anchorAt = distance;
-                  _anchorPixels = pixels;
-                },
-                backdrop: _backdrop,
+          child: DeckCutBox(
+            cut: _cut,
+            fromTop: isTop,
+            margin: config.offset,
+            fades: (config.deckCap?.fade ?? 0) > 0,
+            child: Scrollable(
+              controller: _scroll,
+              axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
+              hitTestBehavior: HitTestBehavior.deferToChild,
+              excludeFromSemantics: true,
+              scrollBehavior: ScrollConfiguration.of(
+                context,
+              ).copyWith(scrollbars: false, overscroll: false),
+              viewportBuilder: (context, position) => CustomMultiChildLayout(
+                delegate: ToastDeckDelegate<_Slot>(
+                  config: config,
+                  order: _slots,
+                  expansion: expansion,
+                  presence: (slot) => slot.presence.value,
+                  depth: (slot) => slot.depth,
+                  lift: (slot) => slot.lift,
+                  natural: (slot) => slot.natural,
+                  covering: (slot) => slot.covering,
+                  pinned: (slot) => slot.pinned,
+                  inDeck: (slot) => slot.inDeck,
+                  onPlaced: (slot, height, covering, distance, place) => slot
+                    ..height = height
+                    ..covers = covering
+                    ..distance = distance
+                    ..place = place,
+                  onDeck: (deck) => _deck = deck,
+                  glide: _glide.value,
+                  glideFrom: (slot) => slot.glideFrom,
+                  screenPinned: (slot) => slot.screenPin,
+                  onDrawn: (slot, drawn) => slot.drawnAt = drawn,
+                  scroll: position,
+                  follows: interacting,
+                  unscrolled: _unscrolled,
+                  // Read at layout, which a scroll runs without a build.
+                  anchor: () => _interacting && _expand.value == 1
+                      ? (
+                          id: _anchor,
+                          distance: _anchorAt,
+                          pixels: _anchorPixels,
+                        )
+                      : null,
+                  onAnchor: (slot, distance, pixels) {
+                    _anchor = slot;
+                    _anchorAt = distance;
+                    _anchorPixels = pixels;
+                  },
+                  backdrop: _backdrop,
+                  scrollbar: _scrollbarId,
+                  onCut: (cut) => _cut.value = cut,
+                  onScrollbar: (thumb) => _thumb = thumb,
+                ),
+                children: [
+                  LayoutId(id: _backdrop, child: const _Backdrop()),
+                  // Oldest first: children paint in order, so the newest is on top.
+                  for (final slot in _slots.reversed)
+                    LayoutId(id: slot, child: _buildToast(slot, config)),
+                  if (config.scrollbar case final scrollbar?)
+                    LayoutId(
+                      id: _scrollbarId,
+                      child: DeckScrollbarThumb(
+                        scrollbar: scrollbar,
+                        opacity: scrollbar.alwaysShown
+                            ? kAlwaysCompleteAnimation
+                            : _scrollbarShown,
+                        onDrag: _dragScrollbar,
+                      ),
+                    ),
+                ],
               ),
-              children: [
-                LayoutId(id: _backdrop, child: const _Backdrop()),
-                // Oldest first: children paint in order, so the newest is on top.
-                for (final slot in _slots.reversed)
-                  LayoutId(id: slot, child: _buildToast(slot, config)),
-              ],
             ),
           ),
         ),
@@ -652,6 +729,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// The layout id of the box behind the deck that takes the wheel in the
   /// gaps between toasts.
   static const _backdrop = #backdrop;
+
+  /// The layout id of the scrollbar's thumb.
+  static const _scrollbarId = #scrollbar;
 
   /// [value] kept between [from] and [place], so it only moves toward
   /// [place].

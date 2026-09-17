@@ -160,6 +160,132 @@ class ToastTimeLeft {
   );
 }
 
+/// How far the expanded deck reaches from its edge before its toasts scroll,
+/// measured in one of three ways.
+///
+/// The newest toast is never cut: a cap shorter than it reaches to its far
+/// end. A cap that reaches further than the layer allows changes nothing.
+@immutable
+class DeckCap {
+  /// The deck's own height, from `offset` to its far end.
+  const DeckCap.pixels(double this.pixels, {this.fade = 24})
+    : share = null,
+      toasts = null,
+      assert(pixels > 0, 'A cap must have a height.'),
+      assert(fade >= 0, 'A fade cannot be negative.');
+
+  /// A share of the layer's height, `offset` included.
+  const DeckCap.share(double this.share, {this.fade = 24})
+    : pixels = null,
+      toasts = null,
+      assert(share > 0 && share <= 1, 'A share is above 0, and at most 1.'),
+      assert(fade >= 0, 'A fade cannot be negative.');
+
+  /// As far as the far end of the newest [toasts] toasts in the deck, at the
+  /// heights they are drawn at.
+  const DeckCap.toasts(int this.toasts, {this.fade = 24})
+    : pixels = null,
+      share = null,
+      assert(toasts >= 1, 'A cap holds at least one toast.'),
+      assert(fade >= 0, 'A fade cannot be negative.');
+
+  /// Set when the cap is given in pixels.
+  final double? pixels;
+
+  /// Set when the cap is given as a share of the layer.
+  final double? share;
+
+  /// Set when the cap is given as a number of toasts.
+  final int? toasts;
+
+  /// How far before the cut the toasts fade out; 0 cuts them hard.
+  final double fade;
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckCap &&
+      other.pixels == pixels &&
+      other.share == share &&
+      other.toasts == toasts &&
+      other.fade == fade;
+
+  @override
+  int get hashCode => Object.hash(pixels, share, toasts, fade);
+
+  @override
+  String toString() => switch (this) {
+    DeckCap(:final pixels?) => 'DeckCap.pixels($pixels, fade: $fade)',
+    DeckCap(:final share?) => 'DeckCap.share($share, fade: $fade)',
+    _ => 'DeckCap.toasts($toasts, fade: $fade)',
+  };
+}
+
+/// Which side of the deck's right edge a [DeckScrollbar] sits on.
+enum DeckScrollbarPlacement {
+  /// In the margin beyond the deck's right edge.
+  outside,
+
+  /// Over the toasts, just inside the deck's right edge.
+  inside,
+}
+
+/// The scrollbar drawn beside the expanded deck while its toasts scroll.
+@immutable
+class DeckScrollbar {
+  const DeckScrollbar({
+    this.placement = DeckScrollbarPlacement.outside,
+    this.alwaysShown = true,
+    this.draggable = true,
+    this.thickness = 4,
+    this.color,
+  }) : assert(thickness > 0, 'A scrollbar must have a thickness.');
+
+  final DeckScrollbarPlacement placement;
+
+  /// Whether it shows all the while the deck can scroll; otherwise it shows
+  /// while the deck scrolls, and fades a moment after.
+  final bool alwaysShown;
+
+  /// Whether dragging its thumb scrolls the deck. One that is not takes no
+  /// pointer.
+  final bool draggable;
+
+  final double thickness;
+
+  /// Null for the theme's `colorScheme.onSurface`, faded.
+  final Color? color;
+
+  /// A copy with the fields given changed. [color] is given as a function,
+  /// since null is a value it can take: `copyWith(color: () => null)` follows
+  /// the theme again.
+  DeckScrollbar copyWith({
+    DeckScrollbarPlacement? placement,
+    bool? alwaysShown,
+    bool? draggable,
+    double? thickness,
+    ValueGetter<Color?>? color,
+  }) => DeckScrollbar(
+    placement: placement ?? this.placement,
+    alwaysShown: alwaysShown ?? this.alwaysShown,
+    draggable: draggable ?? this.draggable,
+    thickness: thickness ?? this.thickness,
+    color: color == null ? this.color : color(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckScrollbar &&
+      other.placement == placement &&
+      other.alwaysShown == alwaysShown &&
+      other.draggable == draggable &&
+      other.thickness == thickness &&
+      other.color == color;
+
+  @override
+  int get hashCode =>
+      Object.hash(placement, alwaysShown, draggable, thickness, color);
+}
+
 /// How a controller's toasts are laid out and how long they stay.
 @immutable
 class SonnerConfig {
@@ -177,6 +303,8 @@ class SonnerConfig {
     this.swipeDirections,
     this.builder,
     this.timeLeft = const ToastTimeLeft(),
+    this.deckCap = const DeckCap.pixels(400),
+    this.scrollbar = const DeckScrollbar(),
   });
 
   final SonnerPosition position;
@@ -246,6 +374,14 @@ class SonnerConfig {
   /// it while a toast counts down whatever this says.
   final ToastTimeLeft? timeLeft;
 
+  /// How far the expanded deck reaches before its toasts scroll. Null lets it
+  /// reach as far as the layer, `offset` short of the far side.
+  final DeckCap? deckCap;
+
+  /// The scrollbar beside the expanded deck while its toasts scroll, capped
+  /// or not. Null draws none.
+  final DeckScrollbar? scrollbar;
+
   /// A copy with the fields given changed.
   ///
   /// [swipeDirections], [builder] and [timeLeft] are given as functions, since
@@ -266,6 +402,8 @@ class SonnerConfig {
     ValueGetter<Set<SwipeDirection>?>? swipeDirections,
     ValueGetter<ToastBuilder?>? builder,
     ValueGetter<ToastTimeLeft?>? timeLeft,
+    ValueGetter<DeckCap?>? deckCap,
+    ValueGetter<DeckScrollbar?>? scrollbar,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -282,6 +420,8 @@ class SonnerConfig {
         : swipeDirections(),
     builder: builder == null ? this.builder : builder(),
     timeLeft: timeLeft == null ? this.timeLeft : timeLeft(),
+    deckCap: deckCap == null ? this.deckCap : deckCap(),
+    scrollbar: scrollbar == null ? this.scrollbar : scrollbar(),
   );
 
   @override
@@ -299,7 +439,9 @@ class SonnerConfig {
       other.closeButton == closeButton &&
       setEquals(other.swipeDirections, swipeDirections) &&
       other.builder == builder &&
-      other.timeLeft == timeLeft;
+      other.timeLeft == timeLeft &&
+      other.deckCap == deckCap &&
+      other.scrollbar == scrollbar;
 
   @override
   int get hashCode => Object.hash(
@@ -316,5 +458,7 @@ class SonnerConfig {
     swipeDirections == null ? null : Object.hashAllUnordered(swipeDirections!),
     builder,
     timeLeft,
+    deckCap,
+    scrollbar,
   );
 }
