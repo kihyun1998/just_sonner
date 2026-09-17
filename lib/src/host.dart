@@ -7,7 +7,8 @@ import 'package:flutter/gestures.dart'
         DragStartDetails,
         DragUpdateDetails,
         PanGestureRecognizer,
-        PointerDeviceKind;
+        PointerDeviceKind,
+        PointerScrollEvent;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart'
     show SchedulerBinding, SchedulerPhase, Ticker;
@@ -396,6 +397,29 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _scrollbarHide = Timer(_scrollbarLinger, _scrollbarShown.reverse);
   }
 
+  /// Scrolls the deck by a wheel turned over the control past its far end.
+  ///
+  /// The control is drawn outside the deck, so the wheel never reaches the
+  /// deck's own viewport — but the control is inside the hover region, which
+  /// is where a hand holding the deck open rests.
+  void _scrollFromControl(PointerScrollEvent event) {
+    final at = _dismissAllAt.value;
+    if (at == null || !at.contains(event.localPosition)) return;
+    if (!_scroll.hasClients) return;
+    final position = _scroll.position;
+    // The deck scrolls away from its edge, which runs up the screen at a
+    // bottom position, as `Scrollable` reverses a reversed axis itself.
+    final delta = _config.position.isTop
+        ? event.scrollDelta.dy
+        : -event.scrollDelta.dy;
+    position.jumpTo(
+      (position.pixels + delta).clamp(
+        position.minScrollExtent,
+        position.maxScrollExtent,
+      ),
+    );
+  }
+
   /// Scrolls the deck as far as a drag of the scrollbar's thumb by [delta],
   /// down the screen, carries it along its track.
   void _dragScrollbar(double delta) {
@@ -752,7 +776,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       onPointerDown: (event) => _setPressed(event.device, down: true),
       onPointerUp: (event) => _setPressed(event.device, down: false),
       onPointerCancel: (event) => _setPressed(event.device, down: false),
-      onPointerSignal: (event) => _movePointer(event.device),
+      onPointerSignal: (event) {
+        _movePointer(event.device);
+        if (event is PointerScrollEvent) _scrollFromControl(event);
+      },
       child: _DeckRegion(
         deck: () => _stowShown ? Rect.zero : _deck,
         onEnter: (event) => _setPointer(event.device, over: true),

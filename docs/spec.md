@@ -601,7 +601,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     handed the count, `dismiss()` and the expansion, and is placed by the size it lays out at.
   - **It is drawn outside the deck**, over it, so the cap's cut does not reach it, and laid out
     before the deck, so the deck places it by its size in the same frame. The hover region takes
-    it in, so moving the pointer from the deck onto it does not collapse the deck.
+    it in, so moving the pointer from the deck onto it does not collapse the deck. **A wheel
+    turned over it scrolls the deck**, which it cannot reach on its own, being drawn outside it —
+    a hand holding the deck open rests there, and the same goes for the stow control.
 - **The stow control** is `config.stowControl`, drawn in the same place and on the same terms as
   the dismiss-all control, except that **one toast is enough** and it need not be one the user
   may dismiss: a loading toast in the way is the common reason to stow. Pressing it stows the
@@ -927,6 +929,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
   its count label and label; a builder replaces the look, is placed by its size and dismisses
   through its view
+- A wheel turned over a control past the far end scrolls the deck, at the top and at the bottom
 - Stowing takes the deck out of sight and lets go of the pointer as it goes — the timers run
   again, a press no longer holds the deck open when it comes back, and a swipe under way does not
   dismiss its toast; a pointer moving where the deck was holds nothing; a new toast brings the
