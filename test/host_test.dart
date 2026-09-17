@@ -5997,6 +5997,38 @@ void main() {
       return found;
     }
 
+    testWidgets('a wheel turned over the control past the far end scrolls '
+        'the deck, as one over the deck does', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          duration: Duration.zero,
+          deckCap: DeckCap.pixels(200, fade: 0),
+          scrollbar: null,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      for (var n = 0; n < 12; n++) {
+        controller.show('Toast $n');
+      }
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+      await settle(tester);
+
+      final control = tester.getRect(find.text('Hide')).center;
+      final before = boxOf(tester, 'Toast 11').top;
+      final wheel = TestPointer(9, PointerDeviceKind.mouse, 9);
+      await tester.sendEventToBinding(wheel.hover(control));
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -80)));
+      await settle(tester);
+
+      expect(
+        boxOf(tester, 'Toast 11').top,
+        greaterThan(before + 20),
+        reason: 'the deck scrolled under a wheel turned on its control',
+      );
+    });
+
     testWidgets('a stowed deck is out of the semantics tree', (tester) async {
       final semantics = tester.ensureSemantics();
       final controller = deckWith();
