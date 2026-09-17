@@ -35,8 +35,8 @@ class ToastState {
   /// `SonnerConfig.closeButton`.
   final bool? closeButton;
 
-  /// Whether the **user** may dismiss the toast, by the close button or a
-  /// swipe, or null to follow [isLoading].
+  /// Whether the **user** may dismiss the toast, by the close button, a swipe
+  /// or the deck's dismiss-all control, or null to follow [isLoading].
   ///
   /// Kept as given, unset included, and read through [dismissibleNow] rather
   /// than settled when the toast was shown — which is what lets a toast hand

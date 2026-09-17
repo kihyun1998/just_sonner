@@ -33,8 +33,15 @@ _Avoid_: closed, hidden
 A dismissed toast whose exit animation has finished and which has left the widget tree.
 _Avoid_: dismissed (for this moment), unmounted
 
+**Dismiss-all control**:
+The control past the expanded deck's far end that dismisses every toast the user may dismiss at
+once, as `config.dismissAll` draws it. A toast that is not **Dismissible** stays; `dismissAll()` on
+the controller is the app's, and dismisses every toast.
+_Avoid_: clear all (for the control), close all
+
 **Dismissible**:
-Whether the **user** may dismiss a toast, by the close button or a swipe. Never about the app or a
+Whether the **user** may dismiss a toast, by the close button, a swipe or the **dismiss-all
+control**. Never about the app or a
 widget in a slot: `dismiss(id)` and `ToastView.dismiss()` work whatever it says. Unset means
 `!isLoading`, and is resolved on each read rather than when the toast was shown.
 _Avoid_: closeable, locked, pinned
@@ -54,7 +61,7 @@ _Avoid_: loading type, pending, busy
 Dragging a toast off the screen to dismiss it. The ways out come from the position's own words
 unless `config.swipeDirections` names them; a drag the other way is damped rather than blocked, and
 one let go short of the threshold springs back. What **Dismissible** governs, along with the close
-button.
+button and the **dismiss-all control**.
 _Avoid_: drag (for this), fling, pan, swipe-to-dismiss
 
 **Time left**:
