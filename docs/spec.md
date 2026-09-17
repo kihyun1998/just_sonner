@@ -343,6 +343,10 @@ disposing the controller take it out altogether, and after `detach` the controll
 The host's entry keeps its State under an opaque entry (`maintainState: true`), so being covered
 and uncovered does not make the toasts enter again; their animations wait while it is covered.
 
+In either mode, a change that reaches a drawn host while the frame is being built, laid out or
+painted — a `show` from a `build` method, a `config` assigned from `didChangeDependencies` — is
+taken at the end of that frame, and the toasts follow it from the next one.
+
 ## 6. Layout and animation
 
 Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
@@ -691,6 +695,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   in; a toast exiting, or dismissed on the way, stays where it is on screen; an assignment on the
   way goes on from where the toasts are; a `position` on the other edge draws a scrolled deck from
   that edge; the close button, the window and the swipe directions follow it
+- With toasts drawn, a `show` during a build draws its toast in both mount modes and a `config`
+  assigned during a build moves the toasts from where they were, from a page below the host or a
+  widget above it, neither calling `setState` mid-build; a host taken out of the tree in that build
+  is not reached
 - A front whose height changes in place jumps to it, and the toasts behind ease to it over 400 ms
 - A toast shown at the id of one still exiting enters beside it
 - A change of builder fades the new one in over the old, and the old builder does not receive pointer events
@@ -780,6 +788,7 @@ outside v0.1 is in §2's non-goals.
 | Mode 1 fails only on a controller that has been attached; a never-attached controller shows toasts as before | maintainer | shown that "show before `attach` throws" would also throw for every mode-2 app and every controller unit test, which never call `attach`. Chosen over also failing when no `SonnerHost` is listening (which throws for a `show` before `runApp` or before the host mounts) and over checking the exported `toast` alone; the cost accepted is that a mode-1 app which forgets `attach` shows nothing, silently |
 | The root-navigator assert is `Overlay.maybeOf(navigator.context, rootOverlay: true) == null` | derived | the expression first written here, `Overlay.of(navigator.context, rootOverlay: true) == navigator.overlay`, throws for a correct root key: `navigator.context` is above the navigator's own overlay, so a plain `MaterialApp` has no overlay to find (probe while working #20, Flutter 3.41.9: `Overlay.of` throws for the root key, and `maybeOf` is null for it and non-null for a nested navigator and for an `Overlay` in `builder`) |
 | A `show` during a build re-raises at the end of the frame; otherwise the re-raise is synchronous | derived | `OverlayState.insert` and `rearrange` call `setState`, which throws during a build (same probe). `OverlayEntry.remove` defers its own rebuild the same way (`overlay.dart`, `SchedulerPhase.persistentCallbacks`) |
+| A drawn host takes a change that arrives during a build, layout or paint at the end of the frame — all of what it does with the change, not only its rebuild | derived | #36: the host's listener called `setState` mid-build, which throws in debug; the toast was not drawn in mode 2, and drawn in mode 1 only through the deferred re-raise above. Deferring the rebuild alone is not enough, since an assigned `config` starts the glide and the glide's animation notifies at once: a probe on `318eda6` threw three times (`_glide.jump`, `_glide.retarget`, `setState`) and the toast did not move. The deck is drawn with the config the host has taken, not the controller's: a widget **above** the host may notify it mid-build without throwing (the host is in that build's scope), and when the host then rebuilds in the same frame, reading the controller drew the new config before the glide had started — a one-frame jump from 576 to 520 where `main` glided (probe). The cost: a change arriving mid-frame is drawn from the next frame, including one from above the host that could have been taken at once, and a glide assigned mid-frame starts a frame later |
 | The host's entry is inserted on the first `show`, re-inserted when the navigator's overlay has been replaced, and removed by `attach` to another key and by `dispose` | derived | the navigator may not be built when `attach` is called after `runApp`. State restoration swaps the overlay and the old entry is no longer mounted (probe: `restartAndRestore` gives a new `OverlayState`), so the overlay the entry went into is compared with the one read from the key on each `show` |
 | `SonnerController.detach()` undoes `attach`: the host leaves the overlay and the controller is no longer in mode 1 | maintainer | shown that once the exported `toast` is attached nothing returns it to "never attached", so a later mode-2 test that shows on `toast` throws `StateError` (probe while working #20) — the same shape as the tick outliving a test zone. Chosen over treating an unmounted navigator as unattached (which also silences a `show` before the app is built) and over only documenting it |
 | The mode-1 host's entry uses `maintainState: true` | maintainer | shown that with the default `false` an opaque entry inserted over the host unbuilds it, and uncovering it replays every toast's enter while their countdowns kept running (probe while working #20); flash's own entries use `true`, which keeps State and freezes tickers while covered. Chosen over accepting the replay |

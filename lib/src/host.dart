@@ -9,6 +9,7 @@ import 'package:flutter/gestures.dart'
         PanGestureRecognizer,
         PointerDeviceKind;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/services.dart'
     show PointerEnterEventListener, PointerExitEventListener;
 import 'package:flutter/widgets.dart';
@@ -126,8 +127,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   SonnerController get _controller => widget.controller;
 
-  /// The config the deck was last told of, so an assigned one can be told
-  /// apart from any other change to the toasts.
+  /// The config the deck was last told of, and the one it is drawn with, so an
+  /// assigned one can be told apart from any other change to the toasts.
   late SonnerConfig _config;
 
   /// How far the toasts are on their way from where they were drawn to where
@@ -180,6 +181,15 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   void _onToastsChanged() {
+    // During a build, layout or paint the deck can neither rebuild nor move
+    // its animations, so the change waits for the end of the frame.
+    if (SchedulerBinding.instance.schedulerPhase ==
+        SchedulerPhase.persistentCallbacks) {
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onToastsChanged();
+      }, debugLabel: 'ToastLayer.onToastsChanged');
+      return;
+    }
     // A hold a widget took with `holdTimer` lasts until its toast is updated,
     // replaced or dismissed, and every one of those arrives here.
     for (final slot in _slots) {
@@ -424,7 +434,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final config = _controller.config;
+    final config = _config;
     return ListenableBuilder(
       listenable: Listenable.merge([
         _expand,
