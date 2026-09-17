@@ -339,6 +339,67 @@ class _PanelState extends State<_Panel> {
   });
 
   /// A control for each field of `config.timeLeft`, and one to take it away.
+  /// An app's own dismiss-all control, handed the count and a way to dismiss.
+  static Widget _ownDismissAll(BuildContext context, DeckDismissAllView view) =>
+      FadeTransition(
+        opacity: view.expansion,
+        child: Material(
+          color: Colors.transparent,
+          child: TextButton.icon(
+            onPressed: view.dismiss,
+            icon: const Icon(Icons.delete_sweep_outlined, size: 18),
+            label: Text('Dismiss ${view.count}'),
+          ),
+        ),
+      );
+
+  static String _koreanCount(int count) => '알림 $count개';
+
+  /// A control for each field of `config.dismissAll`, and one to take it away.
+  List<Widget> _dismissAllControls(SonnerConfig config) {
+    final control = config.dismissAll;
+    void set(DeckDismissAll? value) =>
+        widget.onConfig(config.copyWith(dismissAll: () => value));
+    return [
+      SwitchListTile(
+        contentPadding: EdgeInsets.zero,
+        title: const Text('dismissAll'),
+        value: control != null,
+        onChanged: (on) => set(on ? const DeckDismissAll() : null),
+      ),
+      if (control != null) ...[
+        _Dropdown<DeckDismissAllLook>(
+          label: 'look (dismissAll)',
+          value: control.look,
+          values: DeckDismissAllLook.values,
+          nameOf: (value) => value.name,
+          onChanged: (value) => set(control.copyWith(look: value)),
+        ),
+        _Dropdown<String>(
+          label: 'label',
+          value: control.label,
+          values: {'Clear all', '모두 지우기', control.label}.toList(),
+          nameOf: (value) => value,
+          onChanged: (value) => set(control.copyWith(label: value)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("countLabel: '알림 N개' (header)"),
+          value: control.countLabel != null,
+          onChanged: (on) =>
+              set(control.copyWith(countLabel: () => on ? _koreanCount : null)),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text("builder: the app's own"),
+          value: control.builder != null,
+          onChanged: (on) =>
+              set(control.copyWith(builder: () => on ? _ownDismissAll : null)),
+        ),
+      ],
+    ];
+  }
+
   /// A control for each field of `config.deckCap` and `config.scrollbar`,
   /// and one to take each away.
   List<Widget> _deckCapControls(SonnerConfig config) {
@@ -675,6 +736,33 @@ class _PanelState extends State<_Panel> {
           );
         }),
         ..._deckCapControls(config),
+      ],
+    ),
+    _Section(
+      title: 'Dismiss all',
+      issue: 59,
+      note:
+          'Put two or more up and rest the pointer on the deck: past its far '
+          'end, a control dismisses every toast you may dismiss. A loading '
+          'toast stays. With twenty up it waits at the cap as they scroll.',
+      children: [
+        _Button('Five, staying', () {
+          for (var i = 1; i <= 5; i++) {
+            _show('Staying $i of 5', duration: Duration.zero);
+          }
+        }),
+        _Button('Three staying and one loading', () {
+          for (var i = 1; i <= 3; i++) {
+            _show('Kept $i of 3', duration: Duration.zero);
+          }
+          _show('Saving…', isLoading: true);
+        }),
+        _Button('Twenty, staying (past the cap)', () {
+          for (var i = 1; i <= 20; i++) {
+            _show('Many $i of 20', duration: Duration.zero);
+          }
+        }),
+        ..._dismissAllControls(config),
       ],
     ),
     _Section(

@@ -23,6 +23,7 @@ import 'content_fade.dart';
 import 'controller.dart';
 import 'default_look.dart';
 import 'deck_cut.dart';
+import 'deck_dismiss_all.dart';
 import 'deck_layout.dart';
 import 'deck_scrollbar.dart';
 import 'swipe.dart';
@@ -214,6 +215,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       ..removeListener(_showScrollbar)
       ..dispose();
     _cut.dispose();
+    _dismissAllAt.dispose();
     _scrollbarHide?.cancel();
     _scrollbarShown.dispose();
     super.dispose();
@@ -624,6 +626,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           slot.windowFade == 0;
     }
     final isTop = config.position.isTop;
+    // The toasts the user may dismiss, the window's and beyond.
+    final dismissible = [
+      for (final slot in _slots)
+        if (!slot.exiting && slot.record.state.dismissibleNow) slot,
+    ];
+    final dismissAll = config.dismissAll;
+    _dismissAllExpansion.value = expansion;
     return Listener(
       onPointerDown: (event) => _setPressed(event.device, down: true),
       onPointerUp: (event) => _setPressed(event.device, down: false),
@@ -645,79 +654,99 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             ),
             _ => false,
           },
-          child: DeckCutBox(
-            cut: _cut,
-            fromTop: isTop,
-            margin: config.offset,
-            fades: (config.deckCap?.fade ?? 0) > 0,
-            child: Scrollable(
-              controller: _scroll,
-              axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
-              hitTestBehavior: HitTestBehavior.deferToChild,
-              excludeFromSemantics: true,
-              scrollBehavior: ScrollConfiguration.of(
-                context,
-              ).copyWith(scrollbars: false, overscroll: false),
-              viewportBuilder: (context, position) => CustomMultiChildLayout(
-                delegate: ToastDeckDelegate<_Slot>(
-                  config: config,
-                  order: _slots,
-                  expansion: expansion,
-                  presence: (slot) => slot.presence.value,
-                  depth: (slot) => slot.depth,
-                  lift: (slot) => slot.lift,
-                  natural: (slot) => slot.natural,
-                  covering: (slot) => slot.covering,
-                  pinned: (slot) => slot.pinned,
-                  inDeck: (slot) => slot.inDeck,
-                  onPlaced: (slot, height, covering, distance, place) => slot
-                    ..height = height
-                    ..covers = covering
-                    ..distance = distance
-                    ..place = place,
-                  onDeck: (deck) => _deck = deck,
-                  glide: _glide.value,
-                  glideFrom: (slot) => slot.glideFrom,
-                  screenPinned: (slot) => slot.screenPin,
-                  onDrawn: (slot, drawn) => slot.drawnAt = drawn,
-                  scroll: position,
-                  follows: interacting,
-                  unscrolled: _unscrolled,
-                  // Read at layout, which a scroll runs without a build.
-                  anchor: () => _interacting && _expand.value == 1
-                      ? (
-                          id: _anchor,
-                          distance: _anchorAt,
-                          pixels: _anchorPixels,
-                        )
-                      : null,
-                  onAnchor: (slot, distance, pixels) {
-                    _anchor = slot;
-                    _anchorAt = distance;
-                    _anchorPixels = pixels;
-                  },
-                  backdrop: _backdrop,
-                  scrollbar: _scrollbarId,
-                  onCut: (cut) => _cut.value = cut,
-                  onScrollbar: (thumb) => _thumb = thumb,
-                ),
-                children: [
-                  LayoutId(id: _backdrop, child: const _Backdrop()),
-                  // Oldest first: children paint in order, so the newest is on top.
-                  for (final slot in _slots.reversed)
-                    LayoutId(id: slot, child: _buildToast(slot, config)),
-                  if (config.scrollbar case final scrollbar?)
-                    LayoutId(
-                      id: _scrollbarId,
-                      child: DeckScrollbarThumb(
-                        scrollbar: scrollbar,
-                        opacity: scrollbar.alwaysShown
-                            ? kAlwaysCompleteAnimation
-                            : _scrollbarShown,
-                        onDrag: _dragScrollbar,
+          child: DeckLayers(
+            at: _dismissAllAt,
+            onControlSize: (size) => _dismissAllSize = size,
+            control:
+                dismissAll != null && dismissible.length >= 2 && interacting
+                ? DeckDismissAllButton(
+                    control: dismissAll,
+                    count: dismissible.length,
+                    expansion: _dismissAllExpansion,
+                    width: config.width,
+                    onDismiss: () {
+                      for (final slot in dismissible) {
+                        _controller.dismiss(slot.id);
+                      }
+                    },
+                  )
+                : null,
+            deck: DeckCutBox(
+              cut: _cut,
+              fromTop: isTop,
+              margin: config.offset,
+              fades: (config.deckCap?.fade ?? 0) > 0,
+              child: Scrollable(
+                controller: _scroll,
+                axisDirection: isTop ? AxisDirection.down : AxisDirection.up,
+                hitTestBehavior: HitTestBehavior.deferToChild,
+                excludeFromSemantics: true,
+                scrollBehavior: ScrollConfiguration.of(
+                  context,
+                ).copyWith(scrollbars: false, overscroll: false),
+                viewportBuilder: (context, position) => CustomMultiChildLayout(
+                  delegate: ToastDeckDelegate<_Slot>(
+                    config: config,
+                    order: _slots,
+                    expansion: expansion,
+                    presence: (slot) => slot.presence.value,
+                    depth: (slot) => slot.depth,
+                    lift: (slot) => slot.lift,
+                    natural: (slot) => slot.natural,
+                    covering: (slot) => slot.covering,
+                    pinned: (slot) => slot.pinned,
+                    inDeck: (slot) => slot.inDeck,
+                    onPlaced: (slot, height, covering, distance, place) => slot
+                      ..height = height
+                      ..covers = covering
+                      ..distance = distance
+                      ..place = place,
+                    onDeck: (deck) => _deck = deck,
+                    glide: _glide.value,
+                    glideFrom: (slot) => slot.glideFrom,
+                    screenPinned: (slot) => slot.screenPin,
+                    onDrawn: (slot, drawn) => slot.drawnAt = drawn,
+                    scroll: position,
+                    follows: interacting,
+                    unscrolled: _unscrolled,
+                    // Read at layout, which a scroll runs without a build.
+                    anchor: () => _interacting && _expand.value == 1
+                        ? (
+                            id: _anchor,
+                            distance: _anchorAt,
+                            pixels: _anchorPixels,
+                          )
+                        : null,
+                    onAnchor: (slot, distance, pixels) {
+                      _anchor = slot;
+                      _anchorAt = distance;
+                      _anchorPixels = pixels;
+                    },
+                    backdrop: _backdrop,
+                    scrollbar: _scrollbarId,
+                    onCut: (cut) => _cut.value = cut,
+                    onScrollbar: (thumb) => _thumb = thumb,
+                    dismissAllSize: () => _dismissAllSize,
+                    onDismissAll: (at) => _dismissAllAt.value = at,
+                  ),
+                  children: [
+                    LayoutId(id: _backdrop, child: const _Backdrop()),
+                    // Oldest first: children paint in order, so the newest is on top.
+                    for (final slot in _slots.reversed)
+                      LayoutId(id: slot, child: _buildToast(slot, config)),
+                    if (config.scrollbar case final scrollbar?)
+                      LayoutId(
+                        id: _scrollbarId,
+                        child: DeckScrollbarThumb(
+                          scrollbar: scrollbar,
+                          opacity: scrollbar.alwaysShown
+                              ? kAlwaysCompleteAnimation
+                              : _scrollbarShown,
+                          onDrag: _dragScrollbar,
+                        ),
                       ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -732,6 +761,14 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   /// The layout id of the scrollbar's thumb.
   static const _scrollbarId = #scrollbar;
+
+  /// Where the dismiss-all control is placed, as the deck's layout last
+  /// reported, and its size as it last laid itself out.
+  final _dismissAllAt = ValueNotifier<Rect?>(null);
+  Size? _dismissAllSize;
+
+  /// How far the deck is fanned out, for the dismiss-all control.
+  final _dismissAllExpansion = _Driven(0);
 
   /// [value] kept between [from] and [place], so it only moves toward
   /// [place].

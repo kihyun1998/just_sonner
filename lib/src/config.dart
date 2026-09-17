@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
+import 'dismiss_all_view.dart';
 import 'toast_view.dart' show ToastBuilder;
 
 /// Where on the screen the toasts sit.
@@ -286,6 +287,65 @@ class DeckScrollbar {
       Object.hash(placement, alwaysShown, draggable, thickness, color);
 }
 
+/// The built-in looks of the [DeckDismissAll] control.
+enum DeckDismissAllLook {
+  /// A small rounded button reading its label.
+  pill,
+
+  /// A bar as wide as the deck: the count, and a button reading its label.
+  header,
+}
+
+/// The control at the expanded deck's far end that dismisses every toast the
+/// user may dismiss. It shows while the pointer holds the deck and at least
+/// two such toasts are on screen.
+@immutable
+class DeckDismissAll {
+  const DeckDismissAll({
+    this.look = DeckDismissAllLook.pill,
+    this.label = 'Clear all',
+    this.countLabel,
+    this.builder,
+  });
+
+  final DeckDismissAllLook look;
+
+  /// What the button reads.
+  final String label;
+
+  /// What a [DeckDismissAllLook.header] reads for the count. Null reads
+  /// `'$count notifications'`.
+  final String Function(int count)? countLabel;
+
+  /// Draws the control in place of [look].
+  final DeckDismissAllBuilder? builder;
+
+  /// A copy with the fields given changed. [countLabel] and [builder] are
+  /// given as functions, since null is a value each can take.
+  DeckDismissAll copyWith({
+    DeckDismissAllLook? look,
+    String? label,
+    ValueGetter<String Function(int count)?>? countLabel,
+    ValueGetter<DeckDismissAllBuilder?>? builder,
+  }) => DeckDismissAll(
+    look: look ?? this.look,
+    label: label ?? this.label,
+    countLabel: countLabel == null ? this.countLabel : countLabel(),
+    builder: builder == null ? this.builder : builder(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckDismissAll &&
+      other.look == look &&
+      other.label == label &&
+      other.countLabel == countLabel &&
+      other.builder == builder;
+
+  @override
+  int get hashCode => Object.hash(look, label, countLabel, builder);
+}
+
 /// How a controller's toasts are laid out and how long they stay.
 @immutable
 class SonnerConfig {
@@ -305,6 +365,7 @@ class SonnerConfig {
     this.timeLeft = const ToastTimeLeft(),
     this.deckCap = const DeckCap.pixels(400),
     this.scrollbar = const DeckScrollbar(),
+    this.dismissAll = const DeckDismissAll(),
   });
 
   final SonnerPosition position;
@@ -382,6 +443,10 @@ class SonnerConfig {
   /// or not. Null draws none.
   final DeckScrollbar? scrollbar;
 
+  /// The control that dismisses every toast the user may dismiss, at the
+  /// expanded deck's far end. Null draws none.
+  final DeckDismissAll? dismissAll;
+
   /// A copy with the fields given changed.
   ///
   /// [swipeDirections], [builder] and [timeLeft] are given as functions, since
@@ -404,6 +469,7 @@ class SonnerConfig {
     ValueGetter<ToastTimeLeft?>? timeLeft,
     ValueGetter<DeckCap?>? deckCap,
     ValueGetter<DeckScrollbar?>? scrollbar,
+    ValueGetter<DeckDismissAll?>? dismissAll,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -422,6 +488,7 @@ class SonnerConfig {
     timeLeft: timeLeft == null ? this.timeLeft : timeLeft(),
     deckCap: deckCap == null ? this.deckCap : deckCap(),
     scrollbar: scrollbar == null ? this.scrollbar : scrollbar(),
+    dismissAll: dismissAll == null ? this.dismissAll : dismissAll(),
   );
 
   @override
@@ -441,7 +508,8 @@ class SonnerConfig {
       other.builder == builder &&
       other.timeLeft == timeLeft &&
       other.deckCap == deckCap &&
-      other.scrollbar == scrollbar;
+      other.scrollbar == scrollbar &&
+      other.dismissAll == dismissAll;
 
   @override
   int get hashCode => Object.hash(
@@ -460,5 +528,6 @@ class SonnerConfig {
     timeLeft,
     deckCap,
     scrollbar,
+    dismissAll,
   );
 }

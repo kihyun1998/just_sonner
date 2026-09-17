@@ -5,6 +5,8 @@ library;
 export 'src/config.dart'
     show
         DeckCap,
+        DeckDismissAll,
+        DeckDismissAllLook,
         DeckScrollbar,
         DeckScrollbarPlacement,
         SonnerConfig,
@@ -14,6 +16,8 @@ export 'src/config.dart'
         TimeLeftStart,
         ToastTimeLeft;
 export 'src/controller.dart' show SonnerController, toast;
+export 'src/dismiss_all_view.dart'
+    show DeckDismissAllBuilder, DeckDismissAllView;
 export 'src/host.dart' show SonnerHost;
 export 'src/toast_content.dart' show ToastContent;
 export 'src/toast_id.dart' show ToastId;

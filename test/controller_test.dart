@@ -1435,6 +1435,69 @@ void main() {
       );
     });
 
+    test('a config puts a pill labelled Clear all on the expanded deck, '
+        'counting in English, with no builder', () {
+      const control = DeckDismissAll();
+      expect(const SonnerConfig().dismissAll, control);
+      expect(control.look, DeckDismissAllLook.pill);
+      expect(control.label, 'Clear all');
+      expect(control.countLabel, isNull, reason: 'N notifications');
+      expect(control.builder, isNull);
+    });
+
+    test('DeckDismissAll copyWith keeps what it is not given, can take the '
+        'builder and count label away, and compares by value', () {
+      String count(int n) => '$n개';
+      Widget draw(BuildContext context, DeckDismissAllView view) =>
+          const SizedBox();
+      final changed = const DeckDismissAll().copyWith(
+        look: DeckDismissAllLook.header,
+        label: '모두 지우기',
+        countLabel: () => count,
+        builder: () => draw,
+      );
+      expect(
+        changed,
+        DeckDismissAll(
+          look: DeckDismissAllLook.header,
+          label: '모두 지우기',
+          countLabel: count,
+          builder: draw,
+        ),
+      );
+      expect(
+        changed.hashCode,
+        DeckDismissAll(
+          look: DeckDismissAllLook.header,
+          label: '모두 지우기',
+          countLabel: count,
+          builder: draw,
+        ).hashCode,
+      );
+      expect(changed.copyWith(label: 'x').builder, same(draw), reason: 'kept');
+      expect(changed.copyWith(builder: () => null).builder, isNull);
+      expect(changed.copyWith(countLabel: () => null).countLabel, isNull);
+      for (final one in [
+        const DeckDismissAll(look: DeckDismissAllLook.header),
+        const DeckDismissAll(label: 'x'),
+        DeckDismissAll(countLabel: count),
+        DeckDismissAll(builder: draw),
+      ]) {
+        expect(one == const DeckDismissAll(), isFalse, reason: '$one');
+      }
+    });
+
+    test('copyWith keeps dismissAll unless given one, and can take it away; a '
+        'config with another is not equal', () {
+      const header = DeckDismissAll(look: DeckDismissAllLook.header);
+      const set = SonnerConfig(dismissAll: header);
+      expect(set.copyWith(gap: 20).dismissAll, header, reason: 'kept');
+      expect(set.copyWith(dismissAll: () => null).dismissAll, isNull);
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+      expect(const SonnerConfig().copyWith(dismissAll: () => header), set);
+    });
+
     test('an equal config does not notify', () {
       final controller = SonnerController();
       var notifications = 0;

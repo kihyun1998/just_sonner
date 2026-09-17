@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show toastsOf;
+import 'package:just_sonner/src/deck_dismiss_all.dart';
 import 'package:just_sonner/src/deck_scrollbar.dart';
 import 'package:just_sonner/src/default_look.dart' show DefaultToastLook;
 import 'package:just_sonner/src/time_left.dart';
@@ -2817,6 +2818,8 @@ void main() {
             deckCap: cap,
             scrollbar: scrollbar,
             expandByDefault: expandByDefault,
+            // The cap's own reach, without the control past it.
+            dismissAll: null,
           ),
         );
         addTearDown(controller.dispose);
@@ -3379,6 +3382,262 @@ void main() {
         expect(boxOf(tester, 'Toast 9').top, moreOrLessEquals(before));
         await tester.pumpAndSettle();
         expect(boxOf(tester, 'Toast 9').top, moreOrLessEquals(before));
+      });
+    });
+
+    group('the dismiss-all control', () {
+      const edge = 24.0;
+      const gap = 14.0;
+      final control = find.byType(DeckDismissAllButton);
+
+      SonnerController deckWith({
+        DeckDismissAll? dismissAll = const DeckDismissAll(),
+        SonnerPosition position = SonnerPosition.bottomRight,
+        DeckCap? cap = const DeckCap.pixels(400, fade: 0),
+      }) {
+        final controller = SonnerController(
+          config: SonnerConfig(
+            duration: Duration.zero,
+            position: position,
+            deckCap: cap,
+            scrollbar: null,
+            dismissAll: dismissAll,
+          ),
+        );
+        addTearDown(controller.dispose);
+        return controller;
+      }
+
+      void showToasts(SonnerController controller, int count) {
+        for (var n = 0; n < count; n++) {
+          controller.show('Toast $n');
+        }
+      }
+
+      Future<void> settle(WidgetTester tester) async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+      }
+
+      testWidgets('shows only while the pointer holds an expanded deck with at '
+          'least two toasts the user may dismiss', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 1);
+        controller.show('Saving', isLoading: true);
+        await settle(tester);
+        final mouse = await mouseAt(tester, boxOf(tester, 'Saving').center);
+        await settle(tester);
+        expect(control, findsNothing, reason: 'one the user may dismiss');
+
+        controller.show('Toast 1');
+        await settle(tester);
+        expect(control, findsOneWidget);
+        final semantics = tester.ensureSemantics();
+        await tester.pump();
+        expect(
+          tester.getSemantics(find.text('Clear all')),
+          isSemantics(isButton: true, label: 'Clear all'),
+        );
+        semantics.dispose();
+
+        await mouse.moveTo(away);
+        await settle(tester);
+        expect(control, findsNothing, reason: 'collapsed');
+
+        controller.config = controller.config.copyWith(dismissAll: () => null);
+        await mouse.moveTo(boxOf(tester, 'Saving').center);
+        await settle(tester);
+        expect(control, findsNothing, reason: 'none configured');
+      });
+
+      for (final position in [
+        SonnerPosition.bottomRight,
+        SonnerPosition.topLeft,
+        SonnerPosition.bottomCenter,
+      ]) {
+        testWidgets('sits a gap past the deck’s far end, on the position’s '
+            'side, $position', (tester) async {
+          final controller = deckWith(position: position);
+          await tester.pumpWidget(app(controller: controller));
+          showToasts(controller, 3);
+          await tester.pumpAndSettle();
+          await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+          await tester.pumpAndSettle();
+
+          final far = boxOf(tester, 'Toast 0');
+          final rect = tester.getRect(control);
+          if (position.isTop) {
+            expect(rect.top, moreOrLessEquals(far.bottom + gap));
+          } else {
+            expect(rect.bottom, moreOrLessEquals(far.top - gap));
+          }
+          switch (position) {
+            case SonnerPosition.topLeft:
+              expect(rect.left, moreOrLessEquals(far.left));
+            case SonnerPosition.bottomCenter:
+              expect(rect.center.dx, moreOrLessEquals(far.center.dx));
+            default:
+              expect(rect.right, moreOrLessEquals(far.right));
+          }
+        });
+      }
+
+      testWidgets('is placed from the first frame the pointer holds the deck', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        await tester.pumpAndSettle();
+        // The frame the pointer's arrival is built in, and no later.
+        await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+
+        expect(control, findsOneWidget);
+        expect(
+          tester.getRect(control).bottom,
+          moreOrLessEquals(boxOf(tester, 'Toast 0').top - gap),
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('on a capped deck stays at the cap as the toasts scroll, and '
+          'is drawn past the cut', (tester) async {
+        final key = GlobalKey();
+        final controller = deckWith();
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: key,
+            child: app(controller: controller),
+          ),
+        );
+        showToasts(controller, 20);
+        await tester.pumpAndSettle();
+        final front = boxOf(tester, 'Toast 19').center;
+        await mouseAt(tester, front);
+        await tester.pumpAndSettle();
+
+        final atCap = 600 - (edge + 400) - gap;
+        expect(tester.getRect(control).bottom, moreOrLessEquals(atCap));
+        final wheel = TestPointer(7, PointerDeviceKind.mouse, 7);
+        await tester.sendEventToBinding(wheel.addPointer(location: front));
+        await tester.sendEventToBinding(wheel.scroll(const Offset(0, -300)));
+        await tester.sendEventToBinding(wheel.removePointer());
+        await tester.pumpAndSettle();
+        expect(tester.getRect(control).bottom, moreOrLessEquals(atCap));
+
+        final centre = tester.getRect(control).center;
+        final boundary =
+            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final image = (await tester.runAsync(() => boundary.toImage()))!;
+        final bytes = (await tester.runAsync(image.toByteData))!;
+        final alpha = bytes.getUint8(
+          (centre.dy.round() * image.width + centre.dx.round()) * 4 + 3,
+        );
+        image.dispose();
+        expect(alpha, greaterThan(0));
+      });
+
+      testWidgets('keeps the deck while the pointer moves onto it, and pressed '
+          'dismisses every toast the user may dismiss, beyond the window too', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Saving', isLoading: true);
+        controller.show('Pinned', dismissible: false);
+        showToasts(controller, 6);
+        await settle(tester);
+        final mouse = await mouseAt(tester, boxOf(tester, 'Toast 5').center);
+        await settle(tester);
+
+        final from = boxOf(tester, 'Toast 5').center;
+        final to = tester.getRect(control).center;
+        for (var step = 1; step <= 10; step++) {
+          await mouse.moveTo(Offset.lerp(from, to, step / 10)!);
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await settle(tester);
+        expect(control, findsOneWidget, reason: 'the deck is still held');
+
+        await mouse.down(tester.getRect(control).center);
+        await mouse.up();
+        await settle(tester);
+        expect(
+          toastsOf(controller).map((toast) => toast.state.title),
+          unorderedEquals(['Saving', 'Pinned']),
+        );
+      });
+
+      testWidgets('a header reads the count and the label, as given', (
+        tester,
+      ) async {
+        final controller = deckWith(
+          dismissAll: const DeckDismissAll(look: DeckDismissAllLook.header),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+        await tester.pumpAndSettle();
+        expect(find.text('3 notifications'), findsOneWidget);
+        expect(find.text('Clear all'), findsOneWidget);
+        expect(
+          tester.getRect(control).width,
+          moreOrLessEquals(boxOf(tester, 'Toast 2').width),
+        );
+
+        controller.config = controller.config.copyWith(
+          dismissAll: () => DeckDismissAll(
+            look: DeckDismissAllLook.header,
+            label: '모두 지우기',
+            countLabel: (count) => '$count개',
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('3개'), findsOneWidget);
+        expect(find.text('모두 지우기'), findsOneWidget);
+      });
+
+      testWidgets('a builder draws the control, is placed by its own size, and '
+          'dismisses through the view', (tester) async {
+        DeckDismissAllView? seen;
+        final controller = deckWith(
+          dismissAll: DeckDismissAll(
+            builder: (context, view) {
+              seen = view;
+              return GestureDetector(
+                onTap: view.dismiss,
+                child: SizedBox(
+                  width: 50,
+                  height: 20,
+                  child: Text('${view.count}'),
+                ),
+              );
+            },
+          ),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Toast 2').center);
+        await tester.pumpAndSettle();
+
+        expect(find.text('Clear all'), findsNothing);
+        expect(find.text('3'), findsOneWidget);
+        expect(seen!.count, 3);
+        expect(seen!.expansion.value, 1);
+        final rect = tester.getRect(control);
+        expect(rect.size, const Size(50, 20));
+        expect(
+          rect.bottom,
+          moreOrLessEquals(boxOf(tester, 'Toast 0').top - gap),
+        );
+        expect(rect.right, moreOrLessEquals(boxOf(tester, 'Toast 0').right));
+
+        await tester.tap(find.text('3'), kind: PointerDeviceKind.mouse);
+        await tester.pumpAndSettle();
+        expect(toastsOf(controller), isEmpty);
       });
     });
   });

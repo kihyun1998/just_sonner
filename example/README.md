@@ -23,6 +23,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **The deck** (#19, #22, #23, #41) — rest the pointer on the deck. It fans out, draws every toast
   rather than `visibleToasts`, and every timer stops while the pointer is there. A deck taller
   than the screen scrolls, and the toast under the pointer keeps its place while it does.
+- **Dismiss all** (#59) — put two or more up and rest the pointer on the deck. A pill past its far
+  end dismisses every toast you may dismiss; a loading toast stays. With twenty up it waits at the
+  cap while they scroll. The controls below switch it to a header, a Korean label and count, or
+  the app's own builder.
 - **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
   that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
   mouse, press or turn the wheel there and it fans out and stops.
