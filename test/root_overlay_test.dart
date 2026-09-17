@@ -65,6 +65,26 @@ void main() {
     },
   );
 
+  testWidgets('an attached controller follows a config assigned '
+      'with them on screen', (tester) async {
+    controller.attach(navigatorKey);
+    await tester.pumpWidget(app());
+    controller.show('Saved');
+    await tester.pumpAndSettle();
+    final before = centreOf(tester, 'Saved');
+
+    controller.config = controller.config.copyWith(
+      position: SonnerPosition.topLeft,
+    );
+    await tester.pump();
+    expect(centreOf(tester, 'Saved'), before, reason: 'from where it was');
+    await tester.pumpAndSettle();
+    final after = centreOf(tester, 'Saved');
+    expect(after.dx, lessThan(before.dx));
+    expect(after.dy, lessThan(before.dy));
+    await cleanUp(tester);
+  });
+
   testWidgets('a toast shown while a dialog is open is above the dialog', (
     tester,
   ) async {

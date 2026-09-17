@@ -37,9 +37,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   unset means "not while it loads" — watch the X appear the moment loading stops.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
-- **Config** — `SonnerConfig` is fixed at construction today, so changing one of these controls
-  builds a new controller and the toasts on screen go with it. #28 makes it live, and the panel
-  says so.
+- **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one
+  controller, so the toasts stay and move to the new config over 400 ms: across the screen for a
+  position on another side, fading out or in for `visibleToasts`. A toast dismissed just before
+  keeps its place on screen while it leaves.
 - **Light and dark** — the toggle in the app bar. The default look takes its colours from the
   ambient `Theme`.
 

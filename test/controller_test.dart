@@ -1179,4 +1179,107 @@ void main() {
     controller.dismissAll();
     expect(notifications, 1);
   });
+
+  group('config', () {
+    test('assigning a config notifies, and a lowered visibleToasts keeps the '
+        'hidden toasts in the list', () {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration.zero),
+      );
+      for (final title in ['First', 'Second', 'Third']) {
+        controller.show(title);
+      }
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+
+      controller.config = controller.config.copyWith(visibleToasts: 1);
+
+      expect(notifications, 1);
+      expect(controller.config.visibleToasts, 1);
+      expect(
+        [for (final record in toastsOf(controller)) record.state.title],
+        ['Third', 'Second', 'First'],
+        reason: 'lowering the window dismisses nothing',
+      );
+      controller.dispose();
+    });
+
+    test('copyWith keeps swipeDirections unless given one, and can put it '
+        'back to following the position', () {
+      const up = {SwipeDirection.up};
+      const set = SonnerConfig(swipeDirections: up);
+
+      expect(set.copyWith(gap: 20).swipeDirections, up, reason: 'kept');
+      expect(
+        const SonnerConfig()
+            .copyWith(swipeDirections: () => up)
+            .swipeDirections,
+        up,
+      );
+      final unset = set.copyWith(swipeDirections: () => null);
+      expect(unset.swipeDirections, isNull);
+      expect(
+        unset.copyWith(position: SonnerPosition.topLeft).swipeDirectionsNow,
+        {SwipeDirection.up, SwipeDirection.left},
+        reason: 'following the position again',
+      );
+    });
+
+    test('an equal config does not notify', () {
+      final controller = SonnerController();
+      var notifications = 0;
+      controller.addListener(() => notifications++);
+
+      controller.config = const SonnerConfig();
+      controller.config = controller.config.copyWith();
+
+      expect(notifications, 0);
+      controller.dispose();
+    });
+
+    test('an assigned config is refused where a constructed one would be', () {
+      final controller = SonnerController();
+      for (final config in [
+        const SonnerConfig(duration: Duration(seconds: -1)),
+        const SonnerConfig(visibleToasts: 0),
+        const SonnerConfig(visibleToasts: 21),
+      ]) {
+        expect(
+          () => controller.config = config,
+          throwsAssertionError,
+          reason: '$config',
+        );
+      }
+      expect(controller.config, const SonnerConfig(), reason: 'kept');
+      controller.dispose();
+    });
+
+    test('a new duration leaves the countdowns under way alone', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Four seconds');
+        controller.addListener(() => notifications++);
+
+        controller.config = controller.config.copyWith(
+          duration: const Duration(seconds: 1),
+        );
+        notifications = 0;
+
+        async.elapse(const Duration(seconds: 2));
+        expect(notifications, 0, reason: 'it started with 4 s, not 1 s');
+        async.elapse(const Duration(milliseconds: 2100));
+        expect(notifications, 1);
+
+        controller.show('One second');
+        async.elapse(const Duration(milliseconds: 1100));
+        expect(
+          toastsOf(controller),
+          isEmpty,
+          reason: 'the next toast gets 1 s',
+        );
+        controller.dispose();
+      });
+    });
+  });
 }

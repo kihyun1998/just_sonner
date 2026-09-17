@@ -33,22 +33,43 @@ final toast = SonnerController();
 /// dismiss it, or pump past its duration, before the test body ends:
 /// `testWidgets` fails on a pending timer before `tearDown` runs.
 class SonnerController extends ChangeNotifier {
-  SonnerController({this.config = const SonnerConfig()})
-    : assert(
-        config.duration >= Duration.zero,
-        'SonnerConfig.duration must not be negative; Duration.zero keeps '
-        'toasts until they are dismissed.',
-      ),
-      assert(
-        config.visibleToasts >= 1 && config.visibleToasts <= 20,
-        'SonnerConfig.visibleToasts must be between 1 and 20; at 21 the toast '
-        'at the back would be scaled to nothing.',
-      );
+  SonnerController({SonnerConfig config = const SonnerConfig()})
+    : assert(_debugCheckConfig(config)),
+      _config = config;
 
   static const _tick = Duration(milliseconds: 100);
 
   /// How this controller's toasts are laid out and how long they stay.
-  final SonnerConfig config;
+  ///
+  /// Assigning a different one notifies, so a host drawing the toasts follows
+  /// it with the toasts on screen. The countdowns under way keep the duration
+  /// they started with; a new `duration` reaches the next toast shown or
+  /// replaced.
+  SonnerConfig get config => _config;
+  SonnerConfig _config;
+
+  set config(SonnerConfig value) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    assert(_debugCheckConfig(value));
+    if (value == _config) return;
+    _config = value;
+    notifyListeners();
+  }
+
+  /// Asserts what a [SonnerConfig]'s const constructor cannot check.
+  static bool _debugCheckConfig(SonnerConfig config) {
+    assert(
+      config.duration >= Duration.zero,
+      'SonnerConfig.duration must not be negative; Duration.zero keeps '
+      'toasts until they are dismissed.',
+    );
+    assert(
+      config.visibleToasts >= 1 && config.visibleToasts <= 20,
+      'SonnerConfig.visibleToasts must be between 1 and 20; at 21 the toast '
+      'at the back would be scaled to nothing.',
+    );
+    return true;
+  }
 
   final List<ToastRecord> _toasts = [];
   int _serial = 0;

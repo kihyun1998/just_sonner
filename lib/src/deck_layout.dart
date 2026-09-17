@@ -44,6 +44,13 @@ import 'config.dart';
 /// the first fully present toast reaching into view takes its place. Either is
 /// reported through [onAnchor] with the scroll it was taken at.
 ///
+/// While [glide] is short of 1, a toast [glideFrom] gives a box for is drawn
+/// that much of the way from that box to the place the config gives it,
+/// holding the edges the config's position names, so a toast narrowed at the
+/// right keeps its right edge. A toast [screenPinned] gives a box for is drawn
+/// in that box, and counts toward neither the deck's box nor the scroll's
+/// reach. Where each toast is drawn is reported through [onDrawn].
+///
 /// It lays out again whenever it is rebuilt, since what moves the toasts is
 /// read from [depth], [lift] and [presence] rather than held by the delegate,
 /// and whenever [scroll] changes.
@@ -61,6 +68,10 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     required this.inDeck,
     required this.onPlaced,
     required this.onDeck,
+    this.glide = 1,
+    this.glideFrom,
+    this.screenPinned,
+    this.onDrawn,
     this.scroll,
     this.follows = false,
     this.unscrolled = 0,
@@ -90,6 +101,10 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   )
   onPlaced;
   final ValueChanged<Rect> onDeck;
+  final double glide;
+  final Rect? Function(T id)? glideFrom;
+  final Rect? Function(T id)? screenPinned;
+  final void Function(T id, Rect drawn)? onDrawn;
   final ViewportOffset? scroll;
   final bool follows;
   final double unscrolled;
@@ -114,9 +129,16 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final placed = <_Placed<T>>[];
     for (final id in order) {
       final pinnedHeights = pinned(id);
+      final screen = screenPinned?.call(id);
       final double own;
       final Size child;
-      if (pinnedHeights != null) {
+      if (screen != null) {
+        own = screen.height;
+        child = layoutChild(
+          id,
+          BoxConstraints.tightFor(width: screen.width, height: own),
+        );
+      } else if (pinnedHeights != null) {
         own = pinnedHeights.height;
         child = layoutChild(
           id,
@@ -145,9 +167,10 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
         fromEdge:
             distance ??
             config.offset + config.gap * depth(id) + lift(id) * expansion,
-        pinned: pinnedHeights != null,
+        pinned: pinnedHeights != null || screen != null,
         pinnedDistance: distance != null,
         place: pinnedHeights?.place,
+        screen: screen,
       ));
 
       final weight = (1 - covered) * presence(id);
@@ -158,9 +181,14 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final (:pixels, :overflows) = _scroll(size, placed);
     final scrolled = pixels + unscrolled;
 
-    double? nearest;
-    double? farthest;
+    Rect? around;
     for (final toast in placed) {
+      final screen = toast.screen;
+      if (screen != null) {
+        positionChild(toast.id, screen.topLeft);
+        onDrawn?.call(toast.id, screen);
+        continue;
+      }
       final fromEdge = toast.pinnedDistance
           ? toast.fromEdge
           : toast.fromEdge - scrolled;
@@ -177,28 +205,25 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       final top = config.position.isTop
           ? fromEdge
           : size.height - fromEdge - toast.height;
-      positionChild(toast.id, Offset(left, top));
+      final drawn = _glided(
+        toast.id,
+        Rect.fromLTWH(left, top, config.width, toast.height),
+      );
+      positionChild(toast.id, drawn.topLeft);
+      onDrawn?.call(toast.id, drawn);
 
-      if (inDeck(toast.id)) {
-        nearest = math.min(nearest ?? fromEdge, fromEdge);
-        farthest = math.max(farthest ?? fromEdge, fromEdge + toast.height);
-      }
+      if (inDeck(toast.id)) around = around?.expandToInclude(drawn) ?? drawn;
     }
 
     var deck = Rect.zero;
-    if (nearest != null && farthest != null) {
-      var top = config.position.isTop ? nearest : size.height - farthest;
-      var bottom = config.position.isTop ? farthest : size.height - nearest;
+    if (around != null) {
       // A deck being scrolled moves its own ends across the margins, and must
       // not slide out from under the pointer resting there. With no pointer on
       // it nothing scrolls, and the margins are the app's.
-      if (overflows && follows) (top, bottom) = (0, size.height);
-      deck = Rect.fromLTRB(
-        left,
-        top,
-        left + config.width,
-        bottom,
-      ).intersect(Offset.zero & size);
+      if (overflows && follows) {
+        around = Rect.fromLTRB(around.left, 0, around.right, size.height);
+      }
+      deck = around.intersect(Offset.zero & size);
       if (deck.isEmpty) deck = Rect.zero;
     }
     onDeck(deck);
@@ -208,6 +233,26 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       layoutChild(backdrop, BoxConstraints.tight(deck.size));
       positionChild(backdrop, deck.topLeft);
     }
+  }
+
+  /// [to] as drawn [glide] of the way from the box [glideFrom] gives, holding
+  /// the edges the position names.
+  Rect _glided(T id, Rect to) {
+    final from = glideFrom?.call(id);
+    if (from == null || glide >= 1) return to;
+    double lerp(double a, double b) => a + (b - a) * glide;
+    final left = switch (config.position) {
+      SonnerPosition.topLeft ||
+      SonnerPosition.bottomLeft => lerp(from.left, to.left),
+      SonnerPosition.topCenter || SonnerPosition.bottomCenter =>
+        lerp(from.center.dx, to.center.dx) - to.width / 2,
+      SonnerPosition.topRight ||
+      SonnerPosition.bottomRight => lerp(from.right, to.right) - to.width,
+    };
+    final top = config.position.isTop
+        ? lerp(from.top, to.top)
+        : lerp(from.bottom, to.bottom) - to.height;
+    return Rect.fromLTWH(left, top, to.width, to.height);
   }
 
   /// Tells [scroll] how far the toasts in the deck reach, keeps the anchored
@@ -223,7 +268,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final start = scroll.pixels;
     var reach = 0.0;
     for (final toast in placed) {
-      if (!inDeck(toast.id)) continue;
+      if (!inDeck(toast.id) || toast.screen != null) continue;
       if (toast.pinnedDistance) {
         // An exiting toast gives its place and the gap before it back as it
         // goes, so the end of the scroll does not jump when it is removed.
@@ -287,6 +332,7 @@ typedef _Placed<T> = ({
   bool pinned,
   bool pinnedDistance,
   double? place,
+  Rect? screen,
 });
 
 /// Draws [child] at the height its parent allows, stretching it when it would

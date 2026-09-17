@@ -22,23 +22,12 @@ class _ExampleAppState extends State<ExampleApp> {
   final GlobalKey<NavigatorState> _navigatorKey = GlobalKey<NavigatorState>();
 
   ThemeMode _themeMode = ThemeMode.light;
-  SonnerConfig _config = const SonnerConfig();
-  late SonnerController _controller = _attached(_config);
+  late final SonnerController _controller = SonnerController()
+    ..attach(_navigatorKey);
 
-  SonnerController _attached(SonnerConfig config) =>
-      SonnerController(config: config)..attach(_navigatorKey);
-
-  /// `SonnerConfig` is fixed at construction today, so a change here builds a
-  /// new controller and the toasts on screen go with the old one. Issue #28
-  /// makes `config` settable, and this becomes an assignment.
-  void _setConfig(SonnerConfig config) {
-    final previous = _controller;
-    setState(() {
-      _config = config;
-      _controller = _attached(config);
-    });
-    previous.dispose();
-  }
+  /// Assigned to the one controller, so the toasts on screen stay and follow.
+  void _setConfig(SonnerConfig config) =>
+      setState(() => _controller.config = config);
 
   @override
   void dispose() {
@@ -63,7 +52,7 @@ class _ExampleAppState extends State<ExampleApp> {
     ),
     home: _Panel(
       controller: _controller,
-      config: _config,
+      config: _controller.config,
       onConfig: _setConfig,
       themeMode: _themeMode,
       onThemeMode: (mode) => setState(() => _themeMode = mode),
@@ -714,9 +703,14 @@ class _PanelState extends State<_Panel> {
       title: 'Config',
       issue: 28,
       note:
-          'Fixed at construction today, so changing one of these builds a new '
-          'controller and drops the toasts on screen. #28 makes it live.',
+          'Assigned to the controller with the toasts on screen: they stay, '
+          'and move to the new config in place. Put a few up first.',
       children: [
+        _Button('Three that stay', () {
+          for (var i = 3; i >= 1; i--) {
+            _show('Watch me move ($i of 3)', duration: Duration.zero);
+          }
+        }),
         _Dropdown<SonnerPosition>(
           label: 'position',
           value: config.position,
@@ -751,24 +745,23 @@ class _PanelState extends State<_Panel> {
             {SwipeDirection.down},
             {SwipeDirection.left},
             {SwipeDirection.right},
+            {SwipeDirection.left, SwipeDirection.right},
+            {
+              SwipeDirection.up,
+              SwipeDirection.down,
+              SwipeDirection.left,
+              SwipeDirection.right,
+            },
             <SwipeDirection>{},
           ],
           nameOf: (value) => switch (value) {
             null => 'from the position',
             final set when set.isEmpty => 'none',
+            final set when set.length == SwipeDirection.values.length => 'all',
             final set => set.map((it) => it.name).join(', '),
           },
-          // Built rather than copied: `copyWith` cannot put an optional field
-          // back to unset, and unset is what "from the position" means.
-          onChanged: (value) => widget.onConfig(
-            SonnerConfig(
-              position: config.position,
-              visibleToasts: config.visibleToasts,
-              duration: config.duration,
-              expandByDefault: config.expandByDefault,
-              swipeDirections: value,
-            ),
-          ),
+          onChanged: (value) =>
+              widget.onConfig(config.copyWith(swipeDirections: () => value)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
@@ -784,7 +777,6 @@ class _PanelState extends State<_Panel> {
       note: 'Each of these gets its own section here as it lands.',
       children: [
         _Missing(27, 'Replace the look with a builder, and the flash adapter'),
-        _Missing(28, 'Change the config while toasts are on screen'),
       ],
     ),
   ];

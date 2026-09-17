@@ -111,6 +111,10 @@ class SonnerConfig {
   /// ellipse, and a toast with a slot lines its title up with every other.
   final double leadingSize;
 
+  /// A copy with the fields given changed.
+  ///
+  /// [swipeDirections] is given as a function, since null is a value it can
+  /// take: `copyWith(swipeDirections: () => null)` follows the position again.
   SonnerConfig copyWith({
     SonnerPosition? position,
     double? width,
@@ -122,7 +126,7 @@ class SonnerConfig {
     Widget? loadingIndicator,
     double? leadingSize,
     bool? closeButton,
-    Set<SwipeDirection>? swipeDirections,
+    ValueGetter<Set<SwipeDirection>?>? swipeDirections,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -134,7 +138,9 @@ class SonnerConfig {
     loadingIndicator: loadingIndicator ?? this.loadingIndicator,
     leadingSize: leadingSize ?? this.leadingSize,
     closeButton: closeButton ?? this.closeButton,
-    swipeDirections: swipeDirections ?? this.swipeDirections,
+    swipeDirections: swipeDirections == null
+        ? this.swipeDirections
+        : swipeDirections(),
   );
 
   @override
