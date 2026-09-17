@@ -410,6 +410,33 @@ void main() {
     await cleanUp(tester);
   });
 
+  testWidgets('a toast shown during a build, with the toasts already drawn, '
+      'is drawn', (tester) async {
+    controller.attach(navigatorKey);
+    late StateSetter rebuild;
+    var builds = 0;
+    await tester.pumpWidget(
+      app(
+        home: StatefulBuilder(
+          builder: (context, setState) {
+            rebuild = setState;
+            if (++builds == 2) controller.show('From a build');
+            return const SizedBox.expand();
+          },
+        ),
+      ),
+    );
+    controller.show('Before');
+    await tester.pumpAndSettle();
+
+    rebuild(() {});
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(find.text('From a build'), findsOneWidget);
+    expect(find.text('Before'), findsOneWidget);
+    await cleanUp(tester);
+  });
+
   group('a show during a build, then before the frame ends', () {
     Widget showingApp(GlobalKey<NavigatorState> key, void Function() then) {
       var shown = false;

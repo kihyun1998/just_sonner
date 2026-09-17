@@ -27,6 +27,26 @@ void main() {
     home: const SizedBox.expand(),
   );
 
+  /// Builds the page of [rebuildingApp] again.
+  late void Function() rebuild;
+
+  /// An app like [app] whose page runs [duringBuild] while it builds the
+  /// second time, once [rebuild] asks for it.
+  Widget rebuildingApp(void Function() duringBuild) {
+    var builds = 0;
+    return MaterialApp(
+      builder: (context, child) =>
+          SonnerHost(controller: controller, child: child!),
+      home: StatefulBuilder(
+        builder: (context, setState) {
+          rebuild = () => setState(() {});
+          if (++builds == 2) duringBuild();
+          return const SizedBox.expand();
+        },
+      ),
+    );
+  }
+
   testWidgets(
     'a toast shown on the controller is drawn, with its description',
     (tester) async {
@@ -3729,6 +3749,100 @@ void main() {
       );
       await tester.pump(const Duration(milliseconds: 400));
       expect(boxOf(tester, 'Front').bottom, 576);
+    });
+
+    testWidgets('a config assigned during a build moves the toasts from where '
+        'they were', (tester) async {
+      await tester.pumpWidget(
+        rebuildingApp(
+          () => controller.config = controller.config.copyWith(offset: 80),
+        ),
+      );
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      rebuild();
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+      // The glide starts at the end of the frame that assigned it, so its
+      // first frame is the next one.
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        boxOf(tester, 'Front').bottom,
+        allOf(lessThan(575), greaterThan(521)),
+        reason: 'on its way',
+      );
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Front').bottom, 520);
+    });
+
+    testWidgets('a config assigned while a widget above the host builds moves '
+        'the toasts from where they were', (tester) async {
+      late StateSetter rebuildAbove;
+      var builds = 0;
+      await tester.pumpWidget(
+        StatefulBuilder(
+          builder: (context, setState) {
+            rebuildAbove = setState;
+            if (++builds == 2) {
+              controller.config = controller.config.copyWith(offset: 80);
+            }
+            return app(controller: controller);
+          },
+        ),
+      );
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      rebuildAbove(() {});
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(
+        boxOf(tester, 'Front').bottom,
+        allOf(lessThan(575), greaterThan(521)),
+        reason: 'on its way',
+      );
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Front').bottom, 520);
+    });
+  });
+
+  group('a show during a build', () {
+    testWidgets('is drawn, with the toasts already drawn', (tester) async {
+      await tester.pumpWidget(
+        rebuildingApp(() => controller.show('From a build')),
+      );
+      controller.show('Before');
+      await tester.pumpAndSettle();
+
+      rebuild();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(find.text('From a build'), findsOneWidget);
+      expect(find.text('Before'), findsOneWidget);
+    });
+
+    testWidgets('by a page that takes the host out of the tree reaches no '
+        'host', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Before');
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(
+        Builder(
+          builder: (context) {
+            controller.show('From a build');
+            return const SizedBox.expand();
+          },
+        ),
+      );
+      await tester.pump();
+      expect(tester.takeException(), isNull);
     });
   });
 
