@@ -51,6 +51,12 @@ one let go short of the threshold springs back. What **Dismissible** governs, al
 button.
 _Avoid_: drag (for this), fling, pan, swipe-to-dismiss
 
+**Time left**:
+How much of its duration a counting toast has left, from 1 as its countdown starts to 0 as it runs
+out. It stands still while the timers are paused, and a toast loading or with no duration has none.
+The default look draws it as `config.timeLeft` says; a builder is handed it either way.
+_Avoid_: progress (that reads as a loading toast's), countdown (that is the controller counting), timer bar
+
 **Toast**:
 One notification, with an id, content and a lifetime.
 _Avoid_: toast (for the thing that shows toasts — that is the controller)

@@ -9,7 +9,8 @@ import 'package:flutter/gestures.dart'
         PanGestureRecognizer,
         PointerDeviceKind;
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
+import 'package:flutter/scheduler.dart'
+    show SchedulerBinding, SchedulerPhase, Ticker;
 import 'package:flutter/services.dart'
     show PointerEnterEventListener, PointerExitEventListener;
 import 'package:flutter/widgets.dart';
@@ -20,6 +21,7 @@ import 'controller.dart';
 import 'default_look.dart';
 import 'deck_layout.dart';
 import 'swipe.dart';
+import 'time_left.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
 import 'toast_view.dart';
@@ -172,6 +174,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     for (final slot in _slots) {
       slot.dispose();
     }
+    _timeLeftTicker.dispose();
     _expand.dispose();
     _reveal.dispose();
     _glide.dispose();
@@ -375,7 +378,33 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     for (final slot in leaving) {
       _exit(slot);
     }
+    if (!_timeLeftTicker.isActive && _slots.any(_counting)) {
+      _timeLeftTicker.start();
+    }
   }
+
+  static bool _counting(_Slot slot) =>
+      !slot.exiting && slot.record.remaining != null;
+
+  /// Runs on every frame while a toast counts down, for [_Slot.timeLeft].
+  late final Ticker _timeLeftTicker = createTicker((_) {
+    final now = SchedulerBinding.instance.currentFrameTimeStamp;
+    final paused = timersPaused(_controller);
+    final easeRestart = (_config.timeLeft ?? const ToastTimeLeft()).easeRestart;
+    var counting = false;
+    for (final slot in _slots) {
+      if (slot.exiting) continue;
+      // Followed without a timer too, so one that starts counting starts full.
+      slot.timeLeftFollower.follow(
+        now,
+        slot.record,
+        paused: paused,
+        easeRestart: easeRestart,
+      );
+      counting = counting || _counting(slot);
+    }
+    if (!counting) _timeLeftTicker.stop();
+  });
 
   _Slot _reuseOrEnter(ToastRecord record, Map<ToastRecord, _Slot> existing) {
     final slot = existing.remove(record);
@@ -407,6 +436,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       AnimationController(vsync: this),
       _Sprung(this),
       _controller,
+      TimeLeftFollower(this),
     );
     // A builder may take its toast out itself, flinging the animation to 0
     // as flash's swipe does before it says anything.
@@ -422,6 +452,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// to, then removes the slot.
   void _exit(_Slot slot) {
     slot.exiting = true;
+    slot.timeLeftFollower.stop(slot.record);
     if (_glide.value < 1) slot.screenPin ??= slot.drawnAt;
     // A toast dismissed under a drag takes its recognizer with it, and a
     // recognizer disposed of reports nothing.
@@ -658,8 +689,14 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 /// A toast as the host draws it: the controller's record, and the animations
 /// that bring it in and take it out and that ease the height it covers with.
 final class _Slot implements ToastView {
-  _Slot(this.record, this.controller, this.resize, this.swipe, this.owner)
-    : presence = CurvedAnimation(parent: controller, curve: Curves.ease),
+  _Slot(
+    this.record,
+    this.controller,
+    this.resize,
+    this.swipe,
+    this.owner,
+    this.timeLeftFollower,
+  ) : presence = CurvedAnimation(parent: controller, curve: Curves.ease),
       _resizeCurve = CurvedAnimation(parent: resize, curve: Curves.ease);
 
   static const _fadeDuration = Duration(milliseconds: 200);
@@ -677,6 +714,13 @@ final class _Slot implements ToastView {
 
   @override
   late final Animation<double> covered = ReverseAnimation(contentFade);
+
+  /// Follows the countdown for [timeLeft].
+  final TimeLeftFollower timeLeftFollower;
+
+  @override
+  Animation<double>? get timeLeft =>
+      record.remaining == null ? null : timeLeftFollower.animation;
 
   /// The controller whose toast this is, for [dismiss] and [holdTimer].
   final SonnerController owner;
@@ -932,6 +976,7 @@ final class _Slot implements ToastView {
     if (!_removed.isCompleted) _removed.complete();
     presence.dispose();
     controller.dispose();
+    timeLeftFollower.dispose();
     _resizeCurve.dispose();
     resize.dispose();
     swipe.dispose();

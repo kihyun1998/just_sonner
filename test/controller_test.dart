@@ -1265,6 +1265,82 @@ void main() {
       expect(set == const SonnerConfig(), isFalse);
     });
 
+    test('a config draws the time left by default, as a border sweeping '
+        'clockwise from the top start, 2 px in the primary colour, over the '
+        'card’s own border', () {
+      const left = ToastTimeLeft();
+      expect(const SonnerConfig().timeLeft, left);
+      expect(left.look, TimeLeftLook.border);
+      expect(left.start, TimeLeftStart.topStart);
+      expect(left.clockwise, isTrue);
+      expect(left.strokeWidth, 2);
+      expect(left.color, isNull, reason: 'the theme’s primary');
+      expect(left.keepBorder, isTrue);
+      expect(left.easeRestart, isTrue);
+      expect(left.fadeWhenCovered, isTrue);
+    });
+
+    test('ToastTimeLeft copyWith keeps what it is not given, can put the '
+        'colour back to the theme’s, and compares by value', () {
+      const red = Color(0xFFFF0000);
+      final changed = const ToastTimeLeft().copyWith(
+        look: TimeLeftLook.bottomBar,
+        start: TimeLeftStart.bottomEnd,
+        clockwise: false,
+        strokeWidth: 3,
+        color: () => red,
+        keepBorder: false,
+        easeRestart: false,
+        fadeWhenCovered: false,
+      );
+      expect(
+        changed,
+        const ToastTimeLeft(
+          look: TimeLeftLook.bottomBar,
+          start: TimeLeftStart.bottomEnd,
+          clockwise: false,
+          strokeWidth: 3,
+          color: red,
+          keepBorder: false,
+          easeRestart: false,
+          fadeWhenCovered: false,
+        ),
+      );
+      expect(changed.hashCode, isNot(const ToastTimeLeft().hashCode));
+      expect(changed.copyWith(strokeWidth: 1).color, red, reason: 'kept');
+      expect(changed.copyWith(color: () => null).color, isNull);
+      expect(changed == const ToastTimeLeft(), isFalse);
+      for (final one in [
+        const ToastTimeLeft(look: TimeLeftLook.cornerRing),
+        const ToastTimeLeft(start: TimeLeftStart.centerEnd),
+        const ToastTimeLeft(clockwise: false),
+        const ToastTimeLeft(strokeWidth: 1),
+        const ToastTimeLeft(color: red),
+        const ToastTimeLeft(keepBorder: false),
+        const ToastTimeLeft(easeRestart: false),
+        const ToastTimeLeft(fadeWhenCovered: false),
+      ]) {
+        expect(one == const ToastTimeLeft(), isFalse, reason: '$one');
+      }
+    });
+
+    test('copyWith keeps timeLeft unless given one, and can take it away; a '
+        'config with another is not equal', () {
+      const bar = ToastTimeLeft(look: TimeLeftLook.topBar);
+      const set = SonnerConfig(timeLeft: bar);
+
+      expect(set.copyWith(gap: 20).timeLeft, bar, reason: 'kept');
+      expect(set.copyWith(timeLeft: () => null).timeLeft, isNull);
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+      expect(
+        const SonnerConfig(timeLeft: ToastTimeLeft(strokeWidth: 3)),
+        const SonnerConfig().copyWith(
+          timeLeft: () => const ToastTimeLeft(strokeWidth: 3),
+        ),
+      );
+    });
+
     test('an equal config does not notify', () {
       final controller = SonnerController();
       var notifications = 0;

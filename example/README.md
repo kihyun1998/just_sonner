@@ -42,6 +42,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   `dismissDirections: const []` the toast's swipe stays; with flash's default its swipe wins,
   `dismissible: false` springs back rather than going, and a trackpad pan on it never scrolls the
   deck: one way it drags the toast away, the other does nothing.
+- **Time left** (#38) — a toast counting down draws its time left, the border sweeping round the
+  card by default. Rest the pointer on the deck and every one stands still; "Updated at 3 s"
+  eases it back up. Every `ToastTimeLeft` field is on a control below the buttons, and the
+  `timeLeft` switch takes it away.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

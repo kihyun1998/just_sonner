@@ -40,13 +40,17 @@ void main() {
     await tester.pump();
     expect(find.text('Toast 5 of 5'), findsOneWidget);
 
+    // Pumped past the 200 ms exit by hand: the toasts left are counting down
+    // and draw their time left on every frame, so nothing settles.
     await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss the newest'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Toast 5 of 5'), findsNothing);
     expect(find.text('Toast 4 of 5'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'Dismiss the newest'));
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Toast 4 of 5'), findsNothing);
     expect(find.text('Toast 3 of 5'), findsOneWidget);
 
@@ -129,6 +133,25 @@ void main() {
     );
   });
 
+  testWidgets('the time left section shows a counting toast, and its switch '
+      'takes the time left away', (tester) async {
+    await pumpHarness(tester);
+
+    await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'One, 8 s'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'One, 8 s'));
+    await tester.pump();
+    expect(find.text('Counting down'), findsOneWidget);
+
+    expect(find.text('look'), findsOneWidget);
+    await tester.tap(find.widgetWithText(SwitchListTile, 'timeLeft'));
+    await tester.pump();
+    expect(find.text('look'), findsNothing, reason: 'the config has none');
+    await tester.pump(const Duration(seconds: 9));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a config control is assigned, and the deck stays', (
     tester,
   ) async {
@@ -141,7 +164,9 @@ void main() {
     // The panel grows a section per issue, so scroll the control into view
     // rather than trusting where it happens to sit today.
     await tester.ensureVisible(find.text('expandByDefault'));
-    await tester.pumpAndSettle();
+    // The toast counts down, so nothing settles: pump the scroll by hand.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(find.text('expandByDefault'));
     await tester.pump();
     expect(find.text('Event has been created'), findsOneWidget);

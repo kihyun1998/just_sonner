@@ -24,6 +24,19 @@ abstract interface class ToastView {
   /// content while covered and keeps its card; a builder decides for itself.
   Animation<double> get covered;
 
+  /// How much of its duration the toast has left: 1 when its countdown starts
+  /// and 0 when it runs out, moving on every frame. It stands still while the
+  /// timers are paused, goes back up when an update or a replace starts the
+  /// countdown again, and keeps where it stood once the toast is dismissed.
+  /// Null while the toast has no timer — while it is loading, or when its
+  /// duration is [Duration.zero].
+  ///
+  /// It is here whatever `SonnerConfig.timeLeft` says, which governs only what
+  /// the default look draws. While a toast counts down, frames run for it, so a
+  /// widget test pumps by hand rather than with `pumpAndSettle`, which would
+  /// run the toast's timer out.
+  Animation<double>? get timeLeft;
+
   /// Dismisses the toast, whatever `dismissible` says: that governs the ways a
   /// **user** dismisses one, not the app or the widget in a slot.
   ///
