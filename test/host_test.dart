@@ -2720,6 +2720,53 @@ void main() {
         expect(boxOf(tester, 'Toast 6'), rectMoreOrLessEquals(read));
       }
 
+      testWidgets('the toast reaching past the edge’s own offset into view '
+          'keeps its place as it grows, however far the far edge’s is', (
+        tester,
+      ) async {
+        controller.config = controller.config.copyWith(
+          offset: const EdgeInsets.only(bottom: 10, top: 60, right: 24),
+          deckCap: () => null,
+        );
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -12));
+        await tester.pumpAndSettle();
+        // Past the near edge's offset, not the far edge's.
+        final front = boxOf(tester, 'Toast 11');
+        expect(600 - front.top, inExclusiveRange(10, 60));
+
+        controller.update(
+          toastsOf(
+            controller,
+          ).firstWhere((toast) => toast.state.title == 'Toast 11').id,
+          description: 'One\nTwo\nThree',
+        );
+        await tester.pump();
+        for (var elapsed = 0; elapsed <= 500; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(
+            // The old content lies over the new while it fades.
+            tester
+                .getRect(
+                  find
+                      .ancestor(
+                        of: find.text('Toast 11'),
+                        matching: find.byType(SlideTransition),
+                      )
+                      .first,
+                )
+                .bottom,
+            moreOrLessEquals(front.bottom, epsilon: 0.5),
+            reason: 'at $elapsed ms',
+          );
+        }
+        await tester.pumpAndSettle();
+      });
+
       testWidgets('a toast shown while scrolled keeps the toasts being read in '
           'place', (tester) async {
         await expectReadInPlace(
@@ -3373,6 +3420,29 @@ void main() {
         await mouse.moveTo(Offset(x, 600 - (30 + 200 + 56)));
         await tester.pumpAndSettle();
         expect(find.text('Toast 0'), findsNothing, reason: 'left');
+      });
+
+      testWidgets('a toast laid out up to the far edge’s offset past the cap '
+          'takes the pointer', (tester) async {
+        final controller = capped(offset: unequal);
+        await tester.pumpWidget(app(controller: controller));
+        await showToasts(tester, controller, 12);
+        final x = boxOf(tester, 'Toast 11').center.dx;
+        await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+        await tester.pumpAndSettle();
+
+        // Past the near edge's offset, inside the far edge's.
+        final at = Offset(x, 600 - (30 + 200 + 40));
+        final title = [
+          for (var n = 0; n < 12; n++) 'Toast $n',
+        ].firstWhere((title) => boxOf(tester, title).contains(at));
+        final toast = tester.renderObject(
+          find
+              .ancestor(of: find.text(title), matching: find.byType(Material))
+              .first,
+        );
+        final path = tester.hitTestOnBinding(at).path;
+        expect(path.map((entry) => entry.target), contains(toast));
       });
 
       testWidgets('a click is the deck’s up to the far edge’s offset past the '
