@@ -2540,6 +2540,81 @@ void main() {
         },
       );
 
+      testWidgets('a wheel turned while the deck fans out scrolls it by the '
+          'turn, and the fan-out carries on under it', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pump(const Duration(milliseconds: 200));
+        final read = boxOf(tester, 'Toast 6').top;
+        await wheel(tester, at, const Offset(0, -150));
+        await tester.pumpAndSettle();
+        expect(
+          boxOf(tester, 'Toast 11').bottom,
+          moreOrLessEquals(576 + 150),
+          reason: 'no toast is kept in place against the fan-out',
+        );
+        expect(
+          boxOf(tester, 'Toast 6').top,
+          lessThan(read + 150 - 1),
+          reason: 'turned while the deck was still fanning out',
+        );
+      });
+
+      testWidgets('a pointer leaving again on the way back to the edge eases '
+          'on from where the deck is drawn', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        final mouse = await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pumpAndSettle();
+
+        await mouse.moveTo(away);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        // Toast 9 is still in the deck, where one beyond the window is not.
+        await mouse.moveTo(boxOf(tester, 'Toast 9').center);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        final easing = boxOf(tester, 'Toast 11').bottom;
+        expect(easing, greaterThan(576), reason: 'still easing to the edge');
+        await wheel(
+          tester,
+          boxOf(tester, 'Toast 9').center,
+          const Offset(0, -40),
+        );
+        await tester.pump();
+        final drawn = boxOf(tester, 'Toast 11').bottom;
+        expect(drawn, greaterThan(easing), reason: 'the wheel scrolled it');
+
+        await mouse.moveTo(away);
+        await tester.pump();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(drawn));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, 576);
+      });
+
+      testWidgets('a wheel turned while a toast enters at the edge keeps the '
+          'toasts being read in place, not the one entering', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        controller.show('New');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        final read = boxOf(tester, 'Toast 11').top;
+        await wheel(tester, at, const Offset(0, -5));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').top, moreOrLessEquals(read + 5));
+        expect(boxOf(tester, 'New').top, greaterThan(576));
+      });
+
       /// Hovers 12 toasts scrolled by [scrolled], makes [change], and expects
       /// `Toast 6`, which is in view, not to move in any frame.
       Future<void> expectReadInPlace(
