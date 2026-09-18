@@ -13,7 +13,7 @@ ships a default look that a builder can replace whole.
 - Each toast's time left, drawn as a border, a bar or a ring
 - No dependency beyond Flutter
 
-**v0.1 is desktop only: Windows, macOS and Linux.** The package builds for mobile and web, but it
+**Desktop only, for now: Windows, macOS and Linux.** The package builds for mobile and web, but it
 makes no promises there: nothing is specified or tested for touch, notches or the keyboard.
 
 ## Quick start
@@ -107,6 +107,8 @@ toast.dismissAll();
 One toast for the whole of a future: loading at once, then its result or its error.
 
 ```dart
+import 'dart:async'; // unawaited
+
 unawaited(
   toast
       .promise(
@@ -247,7 +249,7 @@ toast.config = toast.config.copyWith(
 - **Settings:** `start` and `clockwise` for the border, `strokeWidth`, `color`, `keepBorder`,
   `easeRestart` and `fadeWhenCovered`.
 - **None:** `copyWith(timeLeft: () => null)`.
-- **Builders** read `toast.timeLeft` whatever `config.timeLeft` says. It stands still while the
+- **A builder** reads `ToastView.timeLeft` whatever `config.timeLeft` says. It stands still while the
   timers are paused, and eases back up when an update or a replace starts the countdown again.
 
 ## Configuration
@@ -369,10 +371,10 @@ Copy it into your app.
 toast.show(
   'Saved',
   builder: flashToast(
-    (context, controller, toast) => FlashBar(
+    (context, controller, view) => FlashBar(
       controller: controller,
       dismissDirections: const [],
-      content: Text(toast.state.title),
+      content: Text(view.state.title),
     ),
   ),
 );
@@ -384,7 +386,7 @@ toast.show(
   direction, and its drag wins over the toast's: it ignores `dismissible`, which the adapter can
   only spring back, and takes trackpad pans that would scroll the deck. With no directions of its
   own, the swipe is the toast's.
-- A `FlashBar` draws its card and its content as one, so fading the content by `toast.covered` is
+- A `FlashBar` draws its card and its content as one, so fading the content by `view.covered` is
   up to your builder.
 
 ## Widget tests
