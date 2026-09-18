@@ -1,3 +1,9 @@
+## 0.2.1
+
+- **Nothing is drawn past the deck's cap while it stows** (#75). With many toasts and a cap that
+  fades (the default), pressing Hide drew the oldest toasts past the cap for the first half of a
+  `slide` or `shrink` stow. The fading cut now keeps them out, as a hard cut already did.
+
 ## 0.2.0
 
 - **A taller toast behind a shorter front keeps its whole card** (#72). It is laid out at the
