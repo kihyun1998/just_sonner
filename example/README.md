@@ -36,9 +36,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
   that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
   mouse, press or turn the wheel there and it fans out and stops.
-- **Mixed heights** (#19, #45) — press one, then the other. A toast behind the front is drawn at the
-  front's height, and draws no content while it is covered: the deck is a pile of cards with only
-  the front one written on. Hovering fans them out and every toast reads again.
+- **Mixed heights** (#19, #45, #72) — press one, then the other. A toast behind the front is drawn at
+  the front's height, and draws no content while it is covered: the deck is a pile of cards with
+  only the front one written on. A taller one behind keeps its whole card, bottom edge and corners
+  included. Hovering fans them out and every toast reads again.
 - **promise** (#46) — one toast for the whole arc: loading, then the result. The future’s own
   value or error goes back to the caller untouched, so a button that drives one handles the error
   itself. Dismiss the loading toast mid-flight and the result still arrives, as a new toast.
@@ -50,7 +51,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   unset means "not while it loads" — watch the X appear the moment loading stops.
 - **Builder** (#27) — a builder replaces the whole look and is handed the toast, which still enters,
   leaves, stacks and swipes on its own. Put three up and watch the ones behind: a builder reads
-  `covered` to draw no content under the front, as the default look does. The FlashBar buttons
+  `covered` to draw no content under the front, as the default look does. The panel's own look is
+  built by `toastCardBuilder`, which does that and fits the text to the card: "A tall one in your
+  look, then a short one" keeps the tall card whole behind the short one. The FlashBar buttons
   come through `lib/flash_adapter.dart`, which keeps flash's own motion at rest. With
   `dismissDirections: const []` the toast's swipe stays; with flash's default its swipe wins,
   `dismissible: false` springs back rather than going, and a trackpad pan on it never scrolls the

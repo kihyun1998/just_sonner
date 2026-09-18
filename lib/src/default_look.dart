@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'config.dart';
 import 'time_left.dart';
+import 'toast_fit.dart';
 import 'toast_view.dart';
 
 /// The look a toast has when no builder replaces it.
@@ -83,79 +84,86 @@ class DefaultToastLook extends StatelessWidget {
           );
     final ringed = drawn?.look == TimeLeftLook.leadingRing;
 
-    final content = FadeTransition(
-      opacity: fade,
-      // A covered toast is still on screen and still a live region: what
-      // the deck hides is the reading, not the announcement.
-      alwaysIncludeSemantics: true,
-      child: Stack(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // A toast with neither a leading widget nor the indicator
-                // has no slot at all, so its title starts at the padding
-                // edge.
-                if (leading != null || ringed) ...[
-                  SizedBox.square(
-                    dimension: config.leadingSize,
-                    child: ringed
-                        ? CustomPaint(
-                            painter: ring,
-                            child: Center(
-                              // Inside the ring rather than under it.
-                              child: leading == null
-                                  ? null
-                                  : Transform.scale(scale: 0.6, child: leading),
-                            ),
-                          )
-                        : Center(child: leading),
-                  ),
-                  const SizedBox(width: _slotGap),
-                ],
-                Expanded(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Text(
-                        state.title,
-                        style: text.bodyMedium?.copyWith(
-                          fontWeight: FontWeight.w500,
-                          color: colors.onSurface,
-                        ),
-                      ),
-                      if (description != null) ...[
-                        const SizedBox(height: 2),
+    // Behind a shorter front the card is laid out at the front's height, and
+    // what is written on it keeps its own.
+    final content = ToastFit(
+      child: FadeTransition(
+        opacity: fade,
+        // A covered toast is still on screen and still a live region: what
+        // the deck hides is the reading, not the announcement.
+        alwaysIncludeSemantics: true,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // A toast with neither a leading widget nor the indicator
+                  // has no slot at all, so its title starts at the padding
+                  // edge.
+                  if (leading != null || ringed) ...[
+                    SizedBox.square(
+                      dimension: config.leadingSize,
+                      child: ringed
+                          ? CustomPaint(
+                              painter: ring,
+                              child: Center(
+                                // Inside the ring rather than under it.
+                                child: leading == null
+                                    ? null
+                                    : Transform.scale(
+                                        scale: 0.6,
+                                        child: leading,
+                                      ),
+                              ),
+                            )
+                          : Center(child: leading),
+                    ),
+                    const SizedBox(width: _slotGap),
+                  ],
+                  Expanded(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
                         Text(
-                          description,
-                          style: text.bodySmall?.copyWith(
-                            color: colors.onSurfaceVariant,
+                          state.title,
+                          style: text.bodyMedium?.copyWith(
+                            fontWeight: FontWeight.w500,
+                            color: colors.onSurface,
                           ),
                         ),
+                        if (description != null) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            description,
+                            style: text.bodySmall?.copyWith(
+                              color: colors.onSurfaceVariant,
+                            ),
+                          ),
+                        ],
                       ],
-                    ],
+                    ),
                   ),
-                ),
-                if (action != null) ...[
-                  const SizedBox(width: _actionGap),
-                  _Usable(pressable, child: action(context, toast)),
+                  if (action != null) ...[
+                    const SizedBox(width: _actionGap),
+                    _Usable(pressable, child: action(context, toast)),
+                  ],
                 ],
-              ],
-            ),
-          ),
-          if (closeButton)
-            Positioned(
-              top: 0,
-              right: 0,
-              child: _Usable(
-                pressable,
-                child: _CloseButton(onPressed: toast.dismiss),
               ),
             ),
-        ],
+            if (closeButton)
+              Positioned(
+                top: 0,
+                right: 0,
+                child: _Usable(
+                  pressable,
+                  child: _CloseButton(onPressed: toast.dismiss),
+                ),
+              ),
+          ],
+        ),
       ),
     );
 

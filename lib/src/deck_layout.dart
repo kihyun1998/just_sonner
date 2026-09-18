@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import 'config.dart';
+import 'toast_fit.dart' show ClipsOverflow;
 
 /// Lays out toasts newest first as a deck, between collapsed and expanded by
 /// [expansion] (0 to 1).
@@ -527,9 +528,10 @@ typedef _Placed<T> = ({
   Rect? screen,
 });
 
-/// Draws [child] at the height its parent allows, stretching it when it would
-/// be shorter and clipping it when it would be taller, and reports through
-/// [onMeasured] the height it takes on its own.
+/// Lays [child] out at the height its parent allows, stretched when it would
+/// be shorter and squeezed when it would be taller, and reports through
+/// [onMeasured] the height it takes on its own. What a squeezed child draws
+/// past that height is clipped.
 class ToastHeight extends SingleChildRenderObjectWidget {
   const ToastHeight({super.key, required this.onMeasured, super.child});
 
@@ -546,19 +548,20 @@ class ToastHeight extends SingleChildRenderObjectWidget {
   ) => renderObject.onMeasured = onMeasured;
 }
 
-class RenderToastHeight extends RenderProxyBox {
+class RenderToastHeight extends RenderProxyBox with ClipsOverflow {
   RenderToastHeight(this.onMeasured);
 
   ValueChanged<double> onMeasured;
 
-  final _clip = LayerHandle<ClipRectLayer>();
+  /// The child's own height, as last measured.
+  double _natural = 0;
 
-  static BoxConstraints _unbounded(BoxConstraints constraints) =>
-      constraints.copyWith(minHeight: 0, maxHeight: double.infinity);
+  @override
+  bool get overflows => _natural > size.height;
 
   @override
   Size computeDryLayout(covariant BoxConstraints constraints) {
-    final natural = child?.getDryLayout(_unbounded(constraints)) ?? Size.zero;
+    final natural = child?.getDryLayout(ownHeight(constraints)) ?? Size.zero;
     return constraints.constrain(natural);
   }
 
@@ -569,39 +572,16 @@ class RenderToastHeight extends RenderProxyBox {
       size = constraints.smallest;
       return;
     }
-    child.layout(_unbounded(constraints), parentUsesSize: true);
-    final natural = child.size.height;
+    child.layout(ownHeight(constraints), parentUsesSize: true);
+    final natural = _natural = child.size.height;
     onMeasured(natural);
     final height = constraints.constrainHeight(natural);
-    if (height > natural) {
+    if (height != natural) {
       child.layout(
         constraints.copyWith(minHeight: height, maxHeight: height),
         parentUsesSize: true,
       );
     }
     size = constraints.constrain(Size(child.size.width, height));
-  }
-
-  @override
-  void paint(PaintingContext context, Offset offset) {
-    final child = this.child;
-    if (child == null || child.size.height <= size.height) {
-      _clip.layer = null;
-      super.paint(context, offset);
-      return;
-    }
-    _clip.layer = context.pushClipRect(
-      needsCompositing,
-      offset,
-      Offset.zero & size,
-      super.paint,
-      oldLayer: _clip.layer,
-    );
-  }
-
-  @override
-  void dispose() {
-    _clip.layer = null;
-    super.dispose();
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import 'toast_fit.dart' show ToastFit, toastCardBuilder;
 import 'toast_id.dart';
 import 'toast_state.dart';
 
@@ -21,7 +22,8 @@ abstract interface class ToastView {
 
   /// How much the deck covers the toast: 0 at the front or with the deck
   /// expanded, and 1 behind a toast fully present. The default look draws no
-  /// content while covered and keeps its card; a builder decides for itself.
+  /// content while covered and keeps its card; a builder decides for itself,
+  /// and [toastCardBuilder] decides as the default look does.
   Animation<double> get covered;
 
   /// How much of its duration the toast has left: 1 when its countdown starts
@@ -58,6 +60,11 @@ abstract interface class ToastView {
 
 /// Replaces a toast's whole look: it returns everything the toast draws, and
 /// receives the toast to animate, dismiss and read with.
+///
+/// Behind a shorter front the toast is laid out at the front's height, below
+/// its own, so the card it draws is drawn at that height. What is written on
+/// the card goes in a [ToastFit] inside it, or it overflows in debug;
+/// [toastCardBuilder] builds one from a card and its content with that done.
 typedef ToastBuilder = Widget Function(BuildContext context, ToastView toast);
 
 /// A slot the caller fills. It returns the whole widget and receives the

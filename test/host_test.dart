@@ -8,6 +8,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show timersPaused, toastsOf;
+import 'package:just_sonner/src/deck_layout.dart' show ToastHeight;
 import 'package:just_sonner/src/deck_stow.dart';
 import 'package:just_sonner/src/deck_dismiss_all.dart';
 import 'package:just_sonner/src/deck_scrollbar.dart';
@@ -424,9 +425,8 @@ void main() {
       expect(short.bottom, moreOrLessEquals(collapsed(1, tall.height).bottom));
     });
 
-    testWidgets('a taller toast behind is cut to the front height', (
-      tester,
-    ) async {
+    testWidgets('a taller toast behind is clipped at the front height, and '
+        'takes no taps below it', (tester) async {
       final controller = SonnerController(
         config: const SonnerConfig(
           position: SonnerPosition.topLeft,
@@ -482,6 +482,48 @@ void main() {
 
       await tester.tapAt(Offset(tall.center.dx, tall.bottom + 20));
       expect(taps, 1, reason: 'the part cut off takes no taps');
+    });
+
+    testWidgets('a taller toast behind is laid out at the front height, so '
+        'its whole card is drawn there', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          position: SonnerPosition.topLeft,
+          duration: Duration.zero,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Tall', description: 'One\nTwo\nThree\nFour\nFive');
+      controller.show('Short');
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull, reason: 'the look fits');
+      expect(
+        toastRect(tester, 'Tall').height,
+        moreOrLessEquals(toastRect(tester, 'Short').height * 0.95),
+        reason: 'the card itself, not only the box it is cut to',
+      );
+    });
+
+    testWidgets('the default look reports no overflow while a taller toast '
+        'behind eases to the height of a shorter one entering', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Tall', description: 'One\nTwo\nThree\nFour\nFive');
+      await tester.pumpAndSettle();
+      final natural = toastRect(tester, 'Tall').height;
+
+      controller.show('Short');
+      await tester.pump();
+      var eased = false;
+      for (var elapsed = 0; elapsed <= 400; elapsed += 40) {
+        await tester.pump(const Duration(milliseconds: 40));
+        expect(tester.takeException(), isNull, reason: 'at $elapsed ms');
+        final height = toastRect(tester, 'Tall').height;
+        if (height < natural * 0.95 - 1 && height > 0) eased = true;
+      }
+      expect(eased, isTrue, reason: 'the card went below its own height');
+      await tester.pumpAndSettle();
     });
 
     testWidgets(
@@ -4138,6 +4180,121 @@ void main() {
       expect(find.byType(DefaultToastLook), findsOneWidget);
       expect(find.text('Plain'), findsOneWidget);
       expect(views['Custom']!.id, id);
+    });
+
+    group('behind a shorter front', () {
+      late SonnerController controller;
+      setUp(
+        () => controller = SonnerController(
+          config: const SonnerConfig(
+            position: SonnerPosition.topLeft,
+            duration: Duration.zero,
+          ),
+        ),
+      );
+      tearDown(() => controller.dispose());
+
+      const five = 'One\nTwo\nThree\nFour\nFive';
+
+      Widget text(BuildContext context, ToastView toast) => Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(toast.state.title),
+          if (toast.state.description case final description?)
+            Text(description),
+        ],
+      );
+
+      Widget card(ToastView toast, Widget child) => Container(
+        key: ValueKey('card ${toast.state.title}'),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(border: Border.all()),
+        child: child,
+      );
+
+      Rect cardOf(WidgetTester tester, String title) =>
+          tester.getRect(find.byKey(ValueKey('card $title')));
+
+      Future<void> showTallThenShort(
+        WidgetTester tester,
+        ToastBuilder builder,
+      ) async {
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Tall', description: five, builder: builder);
+        controller.show('Short', builder: builder);
+        await tester.pumpAndSettle();
+      }
+
+      testWidgets('a builder from toastCardBuilder draws its card at the '
+          'drawn height, and fades only its content', (tester) async {
+        await showTallThenShort(
+          tester,
+          toastCardBuilder(
+            card: (context, toast, child) => card(toast, child),
+            content: text,
+          ),
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(
+          cardOf(tester, 'Tall').height,
+          moreOrLessEquals(cardOf(tester, 'Short').height * 0.95),
+        );
+        expect(contentOpacityOf(tester, 'Short'), 1, reason: 'the front');
+        expect(contentOpacityOf(tester, 'Tall'), 0, reason: 'covered');
+        expect(
+          _fadesAbove(tester, find.byKey(const ValueKey('card Tall'))),
+          1,
+          reason: 'the card stays',
+        );
+      });
+
+      testWidgets('a builder that wraps its content in ToastFit draws its '
+          'card at the drawn height', (tester) async {
+        await showTallThenShort(
+          tester,
+          (context, toast) =>
+              card(toast, ToastFit(child: text(context, toast))),
+        );
+
+        expect(tester.takeException(), isNull);
+        expect(
+          cardOf(tester, 'Tall').height,
+          moreOrLessEquals(cardOf(tester, 'Short').height * 0.95),
+        );
+      });
+
+      testWidgets('a builder that does neither reports its overflow, and '
+          'nothing it lets overflow is drawn past the drawn height', (
+        tester,
+      ) async {
+        await showTallThenShort(
+          tester,
+          (context, toast) => card(toast, text(context, toast)),
+        );
+
+        expect(
+          tester.takeException(),
+          isA<FlutterError>().having(
+            (error) => error.message,
+            'message',
+            contains('overflowed'),
+          ),
+        );
+        final drawn = tester.renderObject<RenderBox>(
+          find.ancestor(
+            of: find.text('Tall'),
+            matching: find.byType(ToastHeight),
+          ),
+        );
+        expect(
+          cardOf(tester, 'Tall').height,
+          moreOrLessEquals(drawn.size.height * 0.95),
+          reason: 'its card is drawn whole',
+        );
+        expect(drawn, paints..clipRect(rect: Offset.zero & drawn.size));
+      });
     });
 
     testWidgets('config.builder draws every toast without a builder of its '
