@@ -996,6 +996,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   the pointer moved onto an outside thumb keeps the deck; a drag scrolls by the thumb's share and
   holds the deck until it lets go; one not draggable takes no pointer; a new cap keeps the toasts
   in view where they are
+- The backdrop draws nothing with no `deckBackdrop` and nothing on a collapsed deck; hovering brings it and leaving takes it away; a `blur` of 0 draws no filter and a `dim` of 0 no cover; what it draws reaches past the deck by its `padding` and no further, read from the pixels; a click in that padding still reaches the app while the deck keeps its own; `speed` carries it ahead of the deck; stowing takes it away
 - The dismiss-all control shows only while the pointer holds a deck with two dismissible toasts;
   it sits a gap past the far end at a right, a left and a centre position, from the first frame,
   and at the cap on a scrolling deck, drawn past the cut; the pointer moved onto it keeps the
