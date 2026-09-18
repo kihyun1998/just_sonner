@@ -1,3 +1,15 @@
+## 0.2.0
+
+- **A taller toast behind a shorter front keeps its whole card** (#72). It is laid out at the
+  front's height rather than cut to it, so its bottom edge and corners are drawn. Before, only the
+  two side edges of its card peeked out past the front.
+- **Breaking for a builder:** a builder is now laid out below its own height whenever its toast is
+  behind a shorter front. Wrap what is written on the card in the new **`ToastFit`**, inside the
+  card, or build the look with the new **`toastCardBuilder`**, which takes the card and its
+  content apart and also fades the content by `covered`. A builder that does neither reports an
+  overflow in debug, which fails a widget test showing toasts of mixed heights. In release the
+  deck clips it, so nothing shows past the card.
+
 ## 0.1.0
 
 First release. Desktop only: Windows, macOS and Linux.

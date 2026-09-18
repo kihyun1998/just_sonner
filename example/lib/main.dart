@@ -292,35 +292,37 @@ class _PanelState extends State<_Panel> {
     ),
   );
 
-  /// A look of the panel's own: a dark card whose text the deck covers.
-  static Widget _ownLook(BuildContext context, ToastView toast) {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.inverseSurface,
+  /// A look of the panel's own: a dark card, given apart from what is written
+  /// on it, so the package fits the text to the card and fades it while the
+  /// deck covers the toast.
+  static final ToastBuilder _ownLook = toastCardBuilder(
+    card: (context, toast, child) => Material(
+      color: Theme.of(context).colorScheme.inverseSurface,
       borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: FadeTransition(
-          opacity: ReverseAnimation(toast.covered),
-          child: Row(
-            children: [
-              Icon(
-                Icons.rocket_launch,
-                color: theme.colorScheme.onInverseSurface,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  toast.state.title,
-                  style: TextStyle(color: theme.colorScheme.onInverseSurface),
-                ),
-              ),
-            ],
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
+    ),
+    content: (context, toast) {
+      final onCard = Theme.of(context).colorScheme.onInverseSurface;
+      final description = toast.state.description;
+      return Row(
+        children: [
+          Icon(Icons.rocket_launch, color: onCard),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(toast.state.title, style: TextStyle(color: onCard)),
+                if (description != null)
+                  Text(description, style: TextStyle(color: onCard)),
+              ],
+            ),
           ),
-        ),
-      ),
-    );
-  }
+        ],
+      );
+    },
+  );
 
   /// A `FlashBar` through the adapter, its text faded by `covered`, with
   /// flash's own swipe or the toast's.
@@ -993,9 +995,10 @@ class _PanelState extends State<_Panel> {
       issue: 19,
       note:
           'Press one, then the other. A toast behind the front is drawn at the '
-          'front’s height — stretched when it is shorter, cut when it is '
-          'taller — and eases to it over the 400 ms the new one takes to '
-          'enter. Watch that 400 ms, not just where it lands.',
+          'front’s height — stretched when it is shorter, squeezed when '
+          'it is taller, its card whole either way (#72) — and eases to it '
+          'over the 400 ms the new one takes to enter. Watch that 400 ms, not '
+          'just where it lands.',
       children: [
         _Button(
           'A tall one, staying',
@@ -1329,13 +1332,24 @@ class _PanelState extends State<_Panel> {
           'A builder replaces the whole look and is handed the toast. The toast '
           'still enters, leaves, stacks and swipes on its own; the builder '
           'reads `covered` to draw no content while the deck covers it, as the '
-          'default look does. A FlashBar comes through the flash adapter, '
+          'default look does. The panel’s own look is built by '
+          '`toastCardBuilder`, which does that and fits the text to the card, so '
+          'a tall one behind a short one keeps its whole card (#72). A FlashBar comes through the flash adapter, '
           'which keeps flash’s own motion at rest — give it '
           '`dismissDirections: const []` to keep the toast’s swipe, or leave '
           'flash’s and it wins, dismissible or not.',
       children: [
         _Button('A look of your own', () {
           _show('Deployed', duration: Duration.zero, builder: _ownLook);
+        }),
+        _Button('A tall one in your look, then a short one', () {
+          _show(
+            'Deployed to three regions',
+            description: 'us-east\neu-west\nap-south',
+            duration: Duration.zero,
+            builder: _ownLook,
+          );
+          _show('Rolled back', duration: Duration.zero, builder: _ownLook);
         }),
         _Button('Change its look in place', () {
           final id = _show(

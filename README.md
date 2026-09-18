@@ -188,12 +188,14 @@ A builder replaces the whole look. Give one to `show(builder:)` for one toast, o
 `config.builder` for every toast. The toast still enters, leaves, stacks and swipes on its own.
 
 ```dart
-Widget myToast(BuildContext context, ToastView toast) => Card(
+Widget myToast(BuildContext context, ToastView view) => Card(
   child: Padding(
     padding: const EdgeInsets.all(16),
-    child: FadeTransition(
-      opacity: ReverseAnimation(toast.covered),
-      child: Text(toast.state.title),
+    child: ToastFit(
+      child: FadeTransition(
+        opacity: ReverseAnimation(view.covered),
+        child: Text(view.state.title),
+      ),
     ),
   ),
 );
@@ -213,6 +215,23 @@ The builder is handed a `ToastView`:
 **Read `covered`.** The default look draws no content while a toast is covered and keeps its card,
 so the deck reads as a pile of cards with only the front one written on. A builder does that only if
 it reads `covered`, as above. One that ignores it paints its text under the front toast.
+
+**Fit the content to the card.** A toast behind a shorter front is laid out at the front's height,
+below its own, so its card is drawn whole at that height. Whatever is written on the card has to
+take that: wrap it in `ToastFit`, inside the card as above, and it keeps its own height, drawn
+from the top and clipped at the card's edge. A builder that does not reports an overflow in debug whenever it
+is behind a shorter front. In release the deck clips it, so nothing shows past the card.
+
+`toastCardBuilder` does both for you. Give it the card and the content, and it puts the content in
+the card with `ToastFit` and fades it by `covered`:
+
+```dart
+final myToast = toastCardBuilder(
+  card: (context, view, child) =>
+      Card(child: Padding(padding: const EdgeInsets.all(16), child: child)),
+  content: (context, view) => Text(view.state.title),
+);
+```
 
 ## Time left
 
@@ -370,7 +389,7 @@ toast.show(
 
 ## Widget tests
 
-Five things an app's widget tests meet with toasts on screen.
+Six things an app's widget tests meet with toasts on screen.
 
 **A counting toast's timer outlives the widget tree.** The timer belongs to the controller, not to
 the host, so unmounting the app does not stop it. `testWidgets` checks for pending timers before
@@ -401,6 +420,10 @@ a Flutter test. Pump by hand, or pass an indicator that ends.
 **The deck's controls are on by default.** `deckCap`, `dismissAll` and `stowControl` change where a
 hovered deck takes the pointer and what it draws. A test that relies on the deck taking a click
 anywhere down the window's side, or pins the deck's own geometry, sets them to null.
+
+**A builder that does not fit its content fails a test with toasts of mixed heights.** Behind a
+shorter front, its content overflows the height it is laid out at, and a widget test fails on the
+overflow. Use `ToastFit` or `toastCardBuilder` ([Your own look](#your-own-look)).
 
 **`toast` is one controller for the whole test run.** A test that wants a clean slate gives
 `SonnerHost` a `SonnerController` of its own and disposes of it at the end.

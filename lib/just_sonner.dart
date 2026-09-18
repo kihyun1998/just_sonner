@@ -34,5 +34,6 @@ export 'src/stow_view.dart'
         DeckStowView;
 export 'src/toast_content.dart' show ToastContent;
 export 'src/toast_id.dart' show ToastId;
+export 'src/toast_fit.dart' show ToastFit, toastCardBuilder;
 export 'src/toast_state.dart' show ToastState;
 export 'src/toast_view.dart' show ToastBuilder, ToastSlot, ToastView;
