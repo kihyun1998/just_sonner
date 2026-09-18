@@ -576,7 +576,7 @@ class SonnerConfig {
 
   /// How the default look draws each toast's time left, or null to draw none.
   /// A builder is handed `ToastView.timeLeft` either way, and frames run for
-  /// it while a toast counts down whatever this says.
+  /// it while a toast counting down is drawn, whatever this says.
   final ToastTimeLeft? timeLeft;
 
   /// How far the expanded deck reaches before its toasts scroll. Null lets it

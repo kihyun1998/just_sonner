@@ -5,15 +5,21 @@ import 'package:flutter/animation.dart';
 import 'package:flutter/rendering.dart';
 
 import 'config.dart' show TimeLeftStart;
-import 'controller.dart' show ToastRecord;
+import 'controller.dart' show ToastRecord, countdownTick;
 
 /// A toast's time left as a value drawn on every frame: 1 when its countdown
 /// starts, 0 when it runs out.
 ///
-/// The controller counts in whole ticks and reads no clock (§7), so this runs
-/// down on the frames' own time stamps from where the countdown started, and
-/// stands still wherever the controller does not count: while the timers are
-/// paused, and for the partial tick a toast lets pass uncounted.
+/// The controller counts in whole ticks and reads no clock (§7), so this fills
+/// in the frames between two ticks from their own time stamps, and stands
+/// still wherever the controller does not count: while the timers are paused,
+/// and for the partial tick a toast lets pass uncounted.
+///
+/// What it fills in is only ever the way into the tick under way, never more:
+/// each tick puts the drawn value back on [ToastRecord.remaining], the number
+/// of record. So the drawn value cannot drift from the countdown, and a span
+/// of frames this never saw — the host stops following while nothing counting
+/// is drawn — costs one tick at most, which the next tick takes back.
 class TimeLeftFollower {
   TimeLeftFollower(TickerProvider vsync)
     : animation = AnimationController(vsync: vsync, value: 1);
@@ -21,11 +27,14 @@ class TimeLeftFollower {
   /// What a look reads.
   final AnimationController animation;
 
-  /// The time left the controller last reported, what is drawn, and the frame
-  /// it was drawn on.
+  /// The time left the controller last reported, and the frame it was drawn
+  /// on.
   Duration? _remaining;
-  Duration _shown = Duration.zero;
   Duration? _lastFrame;
+
+  /// How far into the tick under way the drawn value is, from zero at the tick
+  /// that anchored it to [countdownTick] at the next one. Never past it.
+  Duration _into = Duration.zero;
 
   /// Where a restart's ease started, and on which frame; null when none runs.
   double? _easeFrom;
@@ -50,20 +59,26 @@ class TimeLeftFollower {
     _lastFrame = now;
     if (remaining == null || duration <= Duration.zero) return;
     if (previous == null) {
-      _shown = remaining;
+      _into = Duration.zero;
       _easeFrom = null;
     } else if (remaining > previous ||
         (remaining == duration && remaining != previous)) {
       // Started again: an update or a replace, with any duration.
-      _shown = remaining;
+      _into = Duration.zero;
       _easeFrom = easeRestart ? animation.value : null;
       _easeAt = now;
+    } else if (remaining != previous) {
+      // A tick landed: back onto the controller's number.
+      _into = Duration.zero;
     } else if (!paused && !record.skipTick && lastFrame != null) {
-      // A tick the controller will pass by uncounted is not time going.
-      _shown -= now - lastFrame;
+      // A tick the controller will pass by uncounted is not time going. The
+      // way in stops at the tick, so the frames between two of them run the
+      // value down exactly one tick's worth however many of them there were.
+      final into = _into + (now - lastFrame);
+      _into = into < countdownTick ? into : countdownTick;
     }
     final value = clampDouble(
-      _shown.inMicroseconds / duration.inMicroseconds,
+      (remaining - _into).inMicroseconds / duration.inMicroseconds,
       0,
       1,
     );

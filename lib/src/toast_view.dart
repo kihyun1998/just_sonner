@@ -32,9 +32,13 @@ abstract interface class ToastView {
   /// duration is [Duration.zero].
   ///
   /// It is here whatever `SonnerConfig.timeLeft` says, which governs only what
-  /// the default look draws. While a toast counts down, frames run for it, so a
-  /// widget test pumps by hand rather than with `pumpAndSettle`, which would
-  /// run the toast's timer out.
+  /// the default look draws. While a toast counting down is drawn, frames run
+  /// for it, so a widget test pumps by hand rather than with `pumpAndSettle`,
+  /// which would run the toast's timer out.
+  ///
+  /// It stands still while nothing draws it — a stowed deck, or every counting
+  /// toast beyond `visibleToasts` — and comes back on the countdown's own
+  /// number rather than where it stood, since the countdown ran on without it.
   Animation<double>? get timeLeft;
 
   /// Dismisses the toast, whatever `dismissible` says: that governs the ways a

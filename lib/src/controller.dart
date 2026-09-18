@@ -491,6 +491,11 @@ class SonnerController extends ChangeNotifier {
   }
 }
 
+/// How long one of the countdown's ticks is: how far apart two values of
+/// [ToastRecord.remaining] are, and so how far the host may interpolate
+/// between them. For the host; not exported.
+const countdownTick = SonnerController._tick;
+
 /// The toasts on screen, newest first. For the host; not exported.
 List<ToastRecord> toastsOf(SonnerController controller) =>
     List.unmodifiable(controller._toasts);

@@ -536,20 +536,43 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     for (final slot in leaving) {
       _exit(slot);
     }
-    if (!_timeLeftTicker.isActive && _slots.any(_counting)) {
-      _timeLeftTicker.start();
-    }
   }
 
   static bool _counting(_Slot slot) =>
       !slot.exiting && slot.record.remaining != null;
 
-  /// Runs on every frame while a toast counts down, for [_Slot.timeLeft].
+  /// Whether a counting toast is drawn for its time left to be seen on.
+  ///
+  /// The countdown is the controller's and runs on a timer of its own, so a
+  /// toast nobody can see runs out exactly when it would have on screen; only
+  /// the drawn value needs frames. A stowed deck draws none of its toasts, and
+  /// a deck whose counting toasts are all beyond its window draws none of the
+  /// values, so neither is worth a frame.
+  ///
+  /// Read from what the deck last drew with, not from a second answer to the
+  /// same question: [_Slot.hidden] and [_stowed] are the numbers [_buildDeck]
+  /// itself lays the toasts out by.
+  bool get _timeLeftDrawn {
+    if (_stowShown && _stowed.value >= 1) return false;
+    return _slots.any((slot) => _counting(slot) && !slot.hidden);
+  }
+
+  /// Follows the time left again, if it has something to be seen on and is not
+  /// already. Called from [_buildDeck], where what is drawn is decided.
+  void _startTimeLeftIfNeeded() {
+    if (!_timeLeftTicker.isActive && _timeLeftDrawn) _timeLeftTicker.start();
+  }
+
+  /// Runs on every frame while a drawn toast counts down, for [_Slot.timeLeft].
+  ///
+  /// It stops a frame after the last of them goes out of sight, and starts
+  /// again from [_buildDeck]. What it missed in between costs one tick at
+  /// most, whatever the gap: [TimeLeftFollower] puts the drawn value back on
+  /// the controller's number at every tick.
   late final Ticker _timeLeftTicker = createTicker((_) {
     final now = SchedulerBinding.instance.currentFrameTimeStamp;
     final paused = timersPaused(_controller);
     final easeRestart = (_config.timeLeft ?? const ToastTimeLeft()).easeRestart;
-    var counting = false;
     for (final slot in _slots) {
       if (slot.exiting) continue;
       // Followed without a timer too, so one that starts counting starts full.
@@ -559,9 +582,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         paused: paused,
         easeRestart: easeRestart,
       );
-      counting = counting || _counting(slot);
     }
-    if (!counting) _timeLeftTicker.stop();
+    if (!_timeLeftDrawn) _timeLeftTicker.stop();
   });
 
   _Slot _reuseOrEnter(ToastRecord record, Map<ToastRecord, _Slot> existing) {
@@ -715,6 +737,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final dismissAll = config.dismissAll;
     _dismissAllExpansion.value = expansion;
     _stowed.value = _stow.value;
+    // With what is drawn decided, take the time left up again where a toast
+    // counting down has come back into sight.
+    _startTimeLeftIfNeeded();
     // Every toast on screen is one the stow would put away, whether or not
     // the user may dismiss it.
     final live = _slots.where((slot) => !slot.exiting).length;

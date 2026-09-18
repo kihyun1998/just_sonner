@@ -5513,6 +5513,118 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    /// Runs frames until the ticker has stopped, or says it has not: it stops
+    /// from inside its own callback, so one frame after the last drawn toast
+    /// counting down goes out of sight.
+    Future<bool> settledWithoutFrames(WidgetTester tester) async {
+      for (var n = 0; n < 4; n++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        if (!tester.binding.hasScheduledFrame) return true;
+      }
+      return false;
+    }
+
+    testWidgets('and only while one of them is drawn: a stowed deck is worth '
+        'no frames, and takes them up again as it comes back', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      showCounting('Counting', duration: const Duration(seconds: 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(tester.binding.hasScheduledFrame, isTrue, reason: 'drawn');
+
+      controller.stow();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(
+        await settledWithoutFrames(tester),
+        isTrue,
+        reason: 'out of sight: nothing to draw the time left on',
+      );
+
+      controller.unstow();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.binding.hasScheduledFrame, isTrue, reason: 'drawn again');
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a toast counting beyond the window is worth no frames on its '
+        'own, and is followed again once the pointer reveals it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      // Newest first, so the counting one is the one the others push out.
+      showCounting('Counting', duration: const Duration(seconds: 10));
+      for (var n = 0; n < 3; n++) {
+        showCounting('Waits $n', duration: Duration.zero);
+      }
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(
+        await settledWithoutFrames(tester),
+        isTrue,
+        reason: 'the only toast counting is beyond visibleToasts',
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(find.text('Waits 2')));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        tester.binding.hasScheduledFrame,
+        isTrue,
+        reason: 'revealed, so drawn, so followed again',
+      );
+
+      await mouse.moveTo(const Offset(-100, -100));
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a time left taken up again is the controller’s number, not '
+        'where it stood when it went out of sight', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      showCounting('Counting', duration: const Duration(seconds: 10));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+      final timeLeft = views['Counting']!.timeLeft!;
+
+      controller.stow();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(await settledWithoutFrames(tester), isTrue);
+      final stood = timeLeft.value;
+      expect(stood, closeTo(0.91, 0.02), reason: 'about 0.9 s has gone');
+
+      // Twenty seconds pass with the deck away and the app gone, so the
+      // countdown does not run either: the toast has spent none of them. The
+      // follower sees none of them go by.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(seconds: 20));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      // The tick the resume lets pass is spent out of sight, so the frame the
+      // deck comes back on has nothing shielding it from the gap.
+      await tester.pump(const Duration(milliseconds: 300));
+
+      controller.unstow();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(
+        timeLeft.value,
+        closeTo(0.89, 0.02),
+        reason:
+            'about 0.2 s more has been counted since, and not one of the 20 '
+            'seconds the countdown stood still for',
+      );
+
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
     /// The painters the default look of [title] draws its time left with.
     List<CustomPainter> painted(WidgetTester tester, String title) => [
       for (final paint in tester.widgetList<CustomPaint>(
