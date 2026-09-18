@@ -126,24 +126,23 @@ class RenderDeckCut extends RenderProxyBox {
       super.paint(context, offset);
       return;
     }
+    final cutAt = _down(cut.at);
+    final shown = fromTop
+        ? Rect.fromLTRB(-_unbounded, -_unbounded, _unbounded, cutAt)
+        : Rect.fromLTRB(-_unbounded, cutAt, _unbounded, _unbounded);
     if (!_fades || cut.fadeFrom >= cut.at) {
       _mask.layer = null;
-      final at = _down(cut.at);
-      final kept = fromTop
-          ? Rect.fromLTRB(-_unbounded, -_unbounded, _unbounded, at)
-          : Rect.fromLTRB(-_unbounded, at, _unbounded, _unbounded);
       _clip.layer = context.pushClipRect(
         needsCompositing,
         offset,
-        kept,
+        shown,
         super.paint,
         oldLayer: _clip.layer,
       );
       return;
     }
-    _clip.layer = null;
     final height = size.height;
-    final at = (_down(cut.at) / height).clamp(0.0, 1.0);
+    final at = (cutAt / height).clamp(0.0, 1.0);
     final from = (_down(cut.fadeFrom) / height).clamp(0.0, 1.0);
     const kept = Color(0xFFFFFFFF);
     const gone = Color(0x00FFFFFF);
@@ -159,7 +158,15 @@ class RenderDeckCut extends RenderProxyBox {
       ..shader = gradient.createShader(Offset.zero & size)
       ..maskRect = offset & size
       ..blendMode = BlendMode.dstIn;
-    context.pushLayer(_mask.layer!, super.paint, offset);
+    // The mask reaches only as far as the box, so what is laid out beyond it
+    // is cut by the same clip as a hard cut.
+    _clip.layer = context.pushClipRect(
+      needsCompositing,
+      offset,
+      shown,
+      (context, offset) => context.pushLayer(_mask.layer!, super.paint, offset),
+      oldLayer: _clip.layer,
+    );
   }
 
   /// Far enough past the layer's sides that nothing drawn beside the deck is

@@ -3080,14 +3080,16 @@ void main() {
       });
 
       /// An app whose layer is captured by [key], over a page that counts its
-      /// taps in [taps].
+      /// taps in [taps], with the debug banner only where [banner] asks.
       Widget shotApp(
         SonnerController controller,
         GlobalKey key, {
         List<int>? taps,
+        bool banner = true,
       }) => RepaintBoundary(
         key: key,
         child: MaterialApp(
+          debugShowCheckedModeBanner: banner,
           builder: (context, child) =>
               SonnerHost(controller: controller, child: child!),
           home: GestureDetector(
@@ -3181,6 +3183,76 @@ void main() {
         expect(fading, everyElement(lessThan(255)));
         expect(band(column, edge + 201, 600), everyElement(0));
       });
+
+      /// How many pixels of [key]'s layer, across its whole width, are drawn
+      /// further than [far] from the edge of [position].
+      Future<int> drawnPast(
+        WidgetTester tester,
+        GlobalKey key,
+        SonnerPosition position,
+        double far,
+      ) async {
+        final boundary =
+            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final image = (await tester.runAsync(() => boundary.toImage()))!;
+        final bytes = (await tester.runAsync(image.toByteData))!;
+        final rows = position.isTop
+            ? [for (var y = far.round() + 1; y < image.height; y++) y]
+            : [for (var y = 0; y < image.height - far.round() - 1; y++) y];
+        var drawn = 0;
+        for (final y in rows) {
+          for (var x = 0; x < image.width; x++) {
+            if (bytes.getUint8((y * image.width + x) * 4 + 3) > 0) drawn++;
+          }
+        }
+        image.dispose();
+        return drawn;
+      }
+
+      for (final position in [
+        SonnerPosition.bottomRight,
+        SonnerPosition.topRight,
+      ]) {
+        for (final look in [
+          DeckStowMotionLook.slide,
+          DeckStowMotionLook.shrink,
+        ]) {
+          testWidgets('a fading cut keeps the toasts laid out off the layer '
+              'out of sight while the deck stows, $position, $look', (
+            tester,
+          ) async {
+            final key = GlobalKey();
+            final controller = capped(
+              cap: const DeckCap.pixels(200, fade: 24),
+              position: position,
+            );
+            controller.config = controller.config.copyWith(
+              stowMotion: DeckStowMotion(look: look),
+            );
+            // The banner is drawn in a top corner, past a bottom deck's cap.
+            await tester.pumpWidget(shotApp(controller, key, banner: false));
+            // Enough that the oldest are laid out past the layer's far side.
+            await showToasts(tester, controller, 20);
+            await mouseAt(tester, boxOf(tester, 'Toast 19').center);
+            await tester.pumpAndSettle();
+            const far = edge + 200;
+            expect(await drawnPast(tester, key, position, far), 0);
+
+            controller.stow();
+            await tester.pump();
+            // The stow moves the deck most in its first half.
+            for (var ms = 25; ms <= 150; ms += 25) {
+              await tester.pump(const Duration(milliseconds: 25));
+              expect(
+                await drawnPast(tester, key, position, far),
+                0,
+                reason: '$ms ms into the stow',
+              );
+            }
+            await tester.pumpAndSettle();
+          });
+        }
+      }
 
       testWidgets(
         'a click past the cap and its margin reaches the app, and one '
