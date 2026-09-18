@@ -76,6 +76,9 @@ _Avoid_: drag (for this), fling, pan, swipe-to-dismiss
 **Time left**:
 How much of its duration a counting toast has left, from 1 as its countdown starts to 0 as it runs
 out. It stands still while the timers are paused, and a toast loading or with no duration has none.
+It is the countdown's own number filled in between ticks, never a second count of its own: each
+tick puts it back on the countdown, so it stands still while nothing draws it — a stowed deck, or a
+toast beyond the window — and comes back on the number rather than where it stood.
 The default look draws it as `config.timeLeft` says; a builder is handed it either way.
 _Avoid_: progress (that reads as a loading toast's), countdown (that is the controller counting), timer bar
 
