@@ -39,3 +39,7 @@ migrate_working_dir/
 /CLAUDE.md
 /CONTEXT.md
 /docs/
+
+# The suite is 368 KB against lib's 240, and nobody consuming the package runs
+# it. It stays in the repository, which is where it is read.
+/test/
