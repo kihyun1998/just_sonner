@@ -231,6 +231,89 @@ enum DeckScrollbarPlacement {
   inside,
 }
 
+/// What is drawn behind the deck while it is fanned out.
+///
+/// It is drawn under the fanned-out toasts and the gaps between them, over the
+/// deck's own box and [padding] further. [blur] and [dim] both follow the expansion, so a
+/// collapsed deck draws neither and there is nothing to see until the pointer
+/// fans the deck out.
+///
+/// What it draws over takes no pointer of its own: a click in the [padding] it
+/// reaches into still reaches the app.
+@immutable
+class DeckBackdrop {
+  const DeckBackdrop({
+    this.blur = 4,
+    this.dim = 0,
+    this.padding = const EdgeInsets.all(12),
+    this.radius = 16,
+    this.color,
+  }) : assert(blur >= 0, 'A blur cannot be negative.'),
+       assert(dim >= 0 && dim <= 1, 'A dim is a fraction.'),
+       assert(radius >= 0, 'A radius cannot be negative.');
+
+  /// The filter's sigma at full expansion. 0 draws no blur.
+  ///
+  /// It blurs **what the app painted**, not the desktop behind the window: a
+  /// `BackdropFilter` reaches the content under it inside the window, and the
+  /// wallpaper needs a transparent native window, which is the app's decision
+  /// and not this package's.
+  final double blur;
+
+  /// How much of [color] is laid over the blur at full expansion, 0 to 1.
+  final double dim;
+
+  /// How far past the deck's own box it reaches, per edge. The deck's box is
+  /// the toasts and the gaps between them, so with no padding the blur stops
+  /// exactly at the cards' edges.
+  final EdgeInsets padding;
+
+  /// The corner radius of what is drawn. 0 is a hard rectangle.
+  final double radius;
+
+  /// What is laid over the blur, at [dim]'s opacity. Null for the theme's
+  /// `colorScheme.scrim`, which is Material's own role for what covers the
+  /// content behind a surface and follows light and dark for free.
+  ///
+  /// The colour's own alpha is not read: [dim] is the one handle on how much
+  /// of it there is.
+  final Color? color;
+
+  /// A copy with the fields given changed. [color] is given as a function,
+  /// since null is a value it can take: `copyWith(color: () => null)` follows
+  /// the theme again.
+  DeckBackdrop copyWith({
+    double? blur,
+    double? dim,
+    EdgeInsets? padding,
+    double? radius,
+    ValueGetter<Color?>? color,
+  }) => DeckBackdrop(
+    blur: blur ?? this.blur,
+    dim: dim ?? this.dim,
+    padding: padding ?? this.padding,
+    radius: radius ?? this.radius,
+    color: color == null ? this.color : color(),
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is DeckBackdrop &&
+      other.blur == blur &&
+      other.dim == dim &&
+      other.padding == padding &&
+      other.radius == radius &&
+      other.color == color;
+
+  @override
+  int get hashCode => Object.hash(blur, dim, padding, radius, color);
+
+  @override
+  String toString() =>
+      'DeckBackdrop(blur: $blur, dim: $dim, padding: $padding, '
+      'radius: $radius, color: $color)';
+}
+
 /// The scrollbar drawn beside the expanded deck while its toasts scroll.
 @immutable
 class DeckScrollbar {
@@ -505,6 +588,7 @@ class SonnerConfig {
     this.builder,
     this.timeLeft = const ToastTimeLeft(),
     this.deckCap = const DeckCap.pixels(400),
+    this.deckBackdrop,
     this.scrollbar = const DeckScrollbar(),
     this.dismissAll = const DeckDismissAll(),
     this.stowControl = const DeckStowControl(),
@@ -587,6 +671,10 @@ class SonnerConfig {
   /// reach as far as the layer, `offset` short of the far side.
   final DeckCap? deckCap;
 
+  /// What is drawn behind the deck while it is fanned out. Null, the default,
+  /// draws nothing.
+  final DeckBackdrop? deckBackdrop;
+
   /// The scrollbar beside the expanded deck while its toasts scroll, capped
   /// or not. Null draws none.
   final DeckScrollbar? scrollbar;
@@ -626,6 +714,7 @@ class SonnerConfig {
     ValueGetter<ToastBuilder?>? builder,
     ValueGetter<ToastTimeLeft?>? timeLeft,
     ValueGetter<DeckCap?>? deckCap,
+    ValueGetter<DeckBackdrop?>? deckBackdrop,
     ValueGetter<DeckScrollbar?>? scrollbar,
     ValueGetter<DeckDismissAll?>? dismissAll,
     ValueGetter<DeckStowControl?>? stowControl,
@@ -648,6 +737,7 @@ class SonnerConfig {
     builder: builder == null ? this.builder : builder(),
     timeLeft: timeLeft == null ? this.timeLeft : timeLeft(),
     deckCap: deckCap == null ? this.deckCap : deckCap(),
+    deckBackdrop: deckBackdrop == null ? this.deckBackdrop : deckBackdrop(),
     scrollbar: scrollbar == null ? this.scrollbar : scrollbar(),
     dismissAll: dismissAll == null ? this.dismissAll : dismissAll(),
     stowControl: stowControl == null ? this.stowControl : stowControl(),
@@ -672,6 +762,7 @@ class SonnerConfig {
       other.builder == builder &&
       other.timeLeft == timeLeft &&
       other.deckCap == deckCap &&
+      other.deckBackdrop == deckBackdrop &&
       other.scrollbar == scrollbar &&
       other.dismissAll == dismissAll &&
       other.stowControl == stowControl &&
@@ -694,6 +785,7 @@ class SonnerConfig {
     builder,
     timeLeft,
     deckCap,
+    deckBackdrop,
     scrollbar,
     dismissAll,
     stowControl,

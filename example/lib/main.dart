@@ -148,6 +148,123 @@ class _PanelState extends State<_Panel> {
 
   SonnerController get _toast => widget.controller;
 
+  /// What is drawn behind the deck once it fans out, and every field of
+  /// `SonnerConfig.deckBackdrop` that draws it.
+  Widget _backdropSection(SonnerConfig config) {
+    final backdrop = config.deckBackdrop;
+    void set(DeckBackdrop? value) =>
+        widget.onConfig(config.copyWith(deckBackdrop: () => value));
+
+    return _Section(
+      title: 'Behind the fanned-out deck',
+      issue: 78,
+      note:
+          'Hover the deck and watch what is behind it. It is drawn to the '
+          'deck\'s own box and reaches padding further, and it follows the '
+          'expansion, so a collapsed deck draws none of it. Off is the '
+          'default.',
+      children: [
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('deckBackdrop'),
+          value: backdrop != null,
+          onChanged: (on) => set(on ? const DeckBackdrop() : null),
+        ),
+        if (backdrop != null) ...[
+          _Dropdown<double>(
+            label: 'blur',
+            value: backdrop.blur,
+            values: {0.0, 4.0, 8.0, 12.0, 20.0, 32.0, backdrop.blur}.toList()
+              ..sort(),
+            nameOf: (value) =>
+                value == 0 ? 'none (dim only)' : 'sigma ${value.round()}',
+            onChanged: (value) => set(backdrop.copyWith(blur: value)),
+          ),
+          _Dropdown<double>(
+            label: 'dim',
+            value: backdrop.dim,
+            values: {0.0, 0.06, 0.12, 0.2, 0.32, backdrop.dim}.toList()..sort(),
+            nameOf: (value) => value == 0
+                ? 'none (blur only)'
+                : '${(value * 100).round()} % of the colour',
+            onChanged: (value) => set(backdrop.copyWith(dim: value)),
+          ),
+          Builder(
+            builder: (context) => _Dropdown<Color?>(
+              label: 'colour',
+              value: backdrop.color,
+              // A set, so a colour set from code that is already offered here
+              // does not become a second item with the same value.
+              values: {
+                null,
+                Theme.of(context).colorScheme.primary,
+                Theme.of(context).colorScheme.inverseSurface,
+                const Color(0xFF000000),
+                const Color(0xFFFFFFFF),
+                backdrop.color,
+              }.toList(),
+              nameOf: (value) => switch (value) {
+                null => "the theme's scrim",
+                const Color(0xFF000000) => 'black',
+                const Color(0xFFFFFFFF) => 'white',
+                _ when value == Theme.of(context).colorScheme.primary =>
+                  'colorScheme.primary',
+                _ when value == Theme.of(context).colorScheme.inverseSurface =>
+                  'colorScheme.inverseSurface',
+                _ => value.toString(),
+              },
+              onChanged: (value) => set(backdrop.copyWith(color: () => value)),
+            ),
+          ),
+          _Dropdown<EdgeInsets>(
+            label: 'padding',
+            value: backdrop.padding,
+            values: {
+              EdgeInsets.zero,
+              const EdgeInsets.all(6),
+              const EdgeInsets.all(12),
+              const EdgeInsets.all(20),
+              const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              backdrop.padding,
+            }.toList(),
+            nameOf: (value) => value == EdgeInsets.zero
+                ? 'none — stops at the cards'
+                : 'L${value.left.round()} T${value.top.round()} '
+                      'R${value.right.round()} B${value.bottom.round()}',
+            onChanged: (value) => set(backdrop.copyWith(padding: value)),
+          ),
+          _Dropdown<double>(
+            label: 'radius',
+            value: backdrop.radius,
+            values: {0.0, 8.0, 12.0, 16.0, 24.0, backdrop.radius}.toList()
+              ..sort(),
+            nameOf: (value) =>
+                value == 0 ? 'a hard rectangle' : value.round().toString(),
+            onChanged: (value) => set(backdrop.copyWith(radius: value)),
+          ),
+        ],
+        _Button('Show three to hover', () {
+          for (final line in [
+            ('Build finished', 'main · 2 m 14 s'),
+            ('Tests passed', '318 of 318'),
+            ('Deploy finished', 'staging · 41 s'),
+          ]) {
+            _show(line.$1, description: line.$2, duration: Duration.zero);
+          }
+        }),
+        _Button('Show ten, so the deck is tall', () {
+          for (var n = 0; n < 10; n++) {
+            _show(
+              'Toast $n',
+              description: 'one of ten',
+              duration: Duration.zero,
+            );
+          }
+        }),
+      ],
+    );
+  }
+
   /// The offsets the "Offset per edge" section offers, by name.
   static final _offsets = {
     const EdgeInsets.all(24): 'all 24 (the default)',
@@ -932,6 +1049,7 @@ class _PanelState extends State<_Panel> {
         ..._deckCapControls(config),
       ],
     ),
+    _backdropSection(config),
     _Section(
       title: 'Dismiss all',
       issue: 59,

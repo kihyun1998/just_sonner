@@ -9,6 +9,7 @@ ships a default look that a builder can replace whole.
 
 - `toast.show` returns an id; `update`, `dismiss`, `dismissAll` and `promise` take it from there
 - A deck that fans out on hover, with a cap, a scrollbar, and controls to dismiss or hide it all
+- A backdrop that softens what is behind the deck as it fans out, if you ask for one
 - Swipe to dismiss, a close button, and an action slot you fill
 - Each toast's time left, drawn as a border, a bar or a ring
 - No dependency beyond Flutter
@@ -289,6 +290,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `stowControl` | `DeckStowControl()` | Null draws none |
 | `stowMotion` | `DeckStowMotion()` | A slide; not nullable |
 | `stowHandle` | null | Nothing left at the edge |
+| `deckBackdrop` | null | Nothing behind the fanned-out deck |
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.
@@ -334,6 +336,34 @@ toast.config = toast.config.copyWith(
   ),
 );
 ```
+
+## Behind the fanned-out deck
+
+`config.deckBackdrop` is null by default and draws nothing. With one, the deck softens what is
+behind it as it fans out under the pointer, and fades it back as it collapses.
+
+```dart
+toast.config = toast.config.copyWith(
+  deckBackdrop: () => const DeckBackdrop(),           // blur 4, nothing else
+);
+
+toast.config = toast.config.copyWith(
+  deckBackdrop: () => const DeckBackdrop(
+    blur: 12,                                          // the filter's sigma
+    dim: 0.2,                                          // a cover over the blur
+    color: null,                                       // null: colorScheme.scrim
+    padding: EdgeInsets.all(20),                       // how far past the deck
+    radius: 20,                                        // its corners
+  ),
+);
+```
+
+**It blurs what your app painted, not the desktop behind your window.** A Flutter `BackdropFilter` reaches the content under it inside the window; getting the wallpaper needs a transparent native window, which is the app's own decision and not this package's.
+
+It is drawn to the deck's own box and reaches `padding` further. **A click in that padding still
+reaches your app** — what the backdrop draws over claims no pointer the deck did not already claim.
+`blur: 0` draws no filter and `dim: 0` no cover, so the default softens what is behind the deck
+without darkening it.
 
 ## Hiding the deck
 
