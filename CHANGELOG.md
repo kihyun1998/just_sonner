@@ -1,5 +1,14 @@
 ## 0.3.0
 
+- **The fanned-out deck can blur what is behind it** (#78). `config.deckBackdrop` is null by
+  default and draws nothing, so nothing changes until you ask for it. With a `DeckBackdrop` the
+  deck softens what is behind it as it fans out under the pointer, and fades it back as it
+  collapses: `blur` is the filter's sigma, `dim` and `color` a cover over it (`color` null follows
+  the theme's `colorScheme.scrim`), `padding` how far past the deck it reaches, `radius` its
+  corners, and `speed` how fast it arrives against the deck's own 400 ms. **A click in the
+  `padding` it reaches into still reaches your app** — what it draws over claims no pointer the
+  deck did not already claim. It blurs **what your app painted**, not the desktop behind your
+  window.
 - **Breaking: `offset` is an `EdgeInsets`** (#74). Each screen edge takes its own distance, so a deck
   can clear a title bar at the top and still sit close to the right edge. Write
   `offset: EdgeInsets.all(24)` where you wrote `offset: 24`. The edges are physical. A centered

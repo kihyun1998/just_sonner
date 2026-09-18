@@ -9,6 +9,15 @@ The place at a toast's trailing edge that the caller fills with its own widget. 
 handed the toast, so it decides for itself whether acting on it also dismisses it.
 _Avoid_: action button, primary action
 
+**Backdrop**:
+What is drawn behind the **deck** while it is fanned out, as `config.deckBackdrop` gives it: a blur
+of what the app painted, and a cover over it at `dim`'s share of `color`. It follows the expansion,
+so a collapsed deck has none. It is drawn **under** the toasts — never over them, which is what
+**covered** means — and outside the deck's cut, and it takes no pointer: the deck's own box claims
+the clicks in its gaps, and a click in the `padding` the backdrop reaches into goes to the app.
+_Avoid_: scrim (that is the theme role it defaults to, not this), overlay, dim (for the whole
+thing — that is one of its fields), blur (for the whole thing)
+
 **Cap**:
 How far the expanded deck reaches from its edge before its toasts scroll, as `config.deckCap`
 gives it, and never short of the newest toast. Nothing is drawn past it; a scrollbar beside the

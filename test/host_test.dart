@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -8,6 +9,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show timersPaused, toastsOf;
+import 'package:just_sonner/src/deck_backdrop.dart' show DeckBackdropBox;
+import 'package:just_sonner/src/host.dart' show DeckHitBox;
 import 'package:just_sonner/src/deck_layout.dart' show ToastHeight;
 import 'package:just_sonner/src/deck_stow.dart';
 import 'package:just_sonner/src/deck_dismiss_all.dart';
@@ -4072,6 +4075,232 @@ void main() {
         expect(toastsOf(controller), isEmpty);
       });
     });
+
+    group('the backdrop', () {
+      /// A controller whose deck draws [backdrop] behind it.
+      SonnerController withBackdrop(DeckBackdrop? backdrop) {
+        final controller = SonnerController(
+          config: SonnerConfig(duration: Duration.zero, deckBackdrop: backdrop),
+        );
+        addTearDown(controller.dispose);
+        return controller;
+      }
+
+      /// Whether the hard black/white edge behind the deck is smeared at each
+      /// of [ys], read from [key]'s layer. A blur softens it; anywhere the
+      /// backdrop does not reach it stays a step.
+      Future<List<bool>> rowsBlurred(
+        WidgetTester tester,
+        GlobalKey key,
+        List<double> ys,
+      ) async {
+        final boundary =
+            key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+        final out = <bool>[];
+        await tester.runAsync(() async {
+          final image = await boundary.toImage();
+          final data = await image.toByteData(
+            format: ui.ImageByteFormat.rawRgba,
+          );
+          for (final y in ys) {
+            final row = y.round().clamp(0, image.height - 1);
+            var between = 0;
+
+            for (var x = 0; x < image.width; x++) {
+              final v = data!.getUint8((row * image.width + x) * 4);
+              if (v > 24 && v < 231) between++;
+            }
+            // Hard stripes give at most a pixel or two of anti-aliasing per
+            // edge; a blur of sigma 4 smears them into a wide grey band.
+            out.add(between > 40);
+          }
+          image.dispose();
+        });
+        return out;
+      }
+
+      final blur = find.byType(BackdropFilter);
+      final scrim = find.descendant(
+        of: find.byType(DeckBackdropBox),
+        matching: find.byType(ColoredBox),
+      );
+
+      testWidgets('no config draws none of it, hovered or not', (tester) async {
+        final controller = withBackdrop(null);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing);
+
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing);
+        expect(scrim, findsNothing);
+      });
+
+      testWidgets('a collapsed deck draws none of it; hovering brings it, and '
+          'leaving takes it away again', (tester) async {
+        final controller = withBackdrop(const DeckBackdrop(dim: 0.2));
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing, reason: 'collapsed');
+        expect(scrim, findsNothing, reason: 'collapsed');
+
+        final mouse = await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+        expect(blur, findsOneWidget, reason: 'hovered');
+        expect(scrim, findsOneWidget, reason: 'hovered');
+
+        await mouse.moveTo(away);
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing, reason: 'the pointer left');
+        expect(scrim, findsNothing, reason: 'the pointer left');
+      });
+
+      testWidgets('a blur of 0 draws no filter and a dim of 0 no scrim, so the '
+          'default draws the blur alone', (tester) async {
+        final controller = withBackdrop(const DeckBackdrop());
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+        // The default is blur 4, dim 0.
+        expect(blur, findsOneWidget);
+        expect(scrim, findsNothing);
+
+        controller.config = controller.config.copyWith(
+          deckBackdrop: () => const DeckBackdrop(blur: 0, dim: 0.2),
+        );
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing);
+        expect(scrim, findsOneWidget);
+      });
+
+      testWidgets('what it draws reaches past the deck by its padding', (
+        tester,
+      ) async {
+        const pad = EdgeInsets.fromLTRB(10, 20, 30, 40);
+        final key = GlobalKey();
+        final controller = withBackdrop(const DeckBackdrop(padding: pad));
+        // A hard black/white edge behind the deck: the blur smears it where it
+        // reaches and leaves it alone where it does not. What is drawn is a
+        // clip inside a render object rather than a box in the tree, so this
+        // reads the pixels rather than a rect.
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: key,
+            child: MaterialApp(
+              builder: (context, child) =>
+                  SonnerHost(controller: controller, child: child!),
+              home: const CustomPaint(
+                painter: _HardEdge(),
+                child: SizedBox.expand(),
+              ),
+            ),
+          ),
+        );
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+
+        final hit = tester.getRect(find.byType(DeckHitBox));
+        // The top edge only: the deck sits at the bottom, so "past the bottom
+        // padding" is off the layer and says nothing.
+        final rows = await rowsBlurred(tester, key, [
+          hit.top + 4,
+          hit.top - pad.top / 2,
+          hit.top - pad.top * 3,
+        ]);
+        expect(rows[0], isTrue, reason: 'inside the deck');
+        expect(rows[1], isTrue, reason: 'in the padding past the top edge');
+        expect(rows[2], isFalse, reason: 'well past the padding');
+      });
+
+      testWidgets('a click in the padding it reaches into still reaches the '
+          'app', (tester) async {
+        const pad = EdgeInsets.all(20);
+        final taps = <int>[];
+        final controller = withBackdrop(const DeckBackdrop(padding: pad));
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => taps.add(1),
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+
+        // Half a padding to the **side** of the toast: inside what the
+        // backdrop draws over and outside the deck. Sideways rather than
+        // above, because the deck's box reaches up past the toasts to take
+        // in the stow control (§6) and a point above the toast lands on that.
+        //
+        // Measured from the toast, never from the backdrop's own box: that
+        // box's size is the thing that could be wrong, so a ring derived from
+        // it would move with the defect and never leave it.
+        final toast = boxOf(tester, 'Only');
+        final ring = Offset(toast.left - pad.left / 2, toast.center.dy);
+        final hit = tester.getRect(find.byType(DeckHitBox));
+        // The window this test needs: a point the backdrop draws over that
+        // the deck does not claim. A deck grown to the drawn box would make
+        // this fire, rather than let the tap below pass for the wrong reason.
+        expect(hit.contains(ring), isFalse, reason: 'outside the deck');
+
+        await tester.tapAt(ring, kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        expect(taps, hasLength(1), reason: 'the app takes it');
+
+        await tester.tapAt(toast.center, kind: PointerDeviceKind.mouse);
+        await tester.pump();
+        expect(taps, hasLength(1), reason: 'the deck takes its own');
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('stowing takes it away with the deck', (tester) async {
+        final controller = withBackdrop(const DeckBackdrop(dim: 0.2));
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        await tester.pumpAndSettle();
+        expect(blur, findsOneWidget, reason: 'hovered');
+
+        // Stowing collapses the deck, which takes the backdrop with it rather
+        // than leaving it drawn over the app. Over-determined: the stow both
+        // lets go of the pointer (`host.dart`) and carries the deck out from
+        // under it, so no mutation found reddens this alone — it is a guard
+        // against the backdrop ever being drawn outside the deck's own
+        // transform, not an independent proof.
+        controller.stow();
+        await tester.pumpAndSettle();
+        expect(blur, findsNothing, reason: 'stowed');
+        expect(scrim, findsNothing, reason: 'stowed');
+      });
+
+      testWidgets('speed carries it ahead of the deck', (tester) async {
+        final controller = withBackdrop(const DeckBackdrop(dim: 0.5, speed: 4));
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+
+        // A quarter of the 400 ms expansion: at speed 4 the backdrop is
+        // already at full while the deck is still fanning out.
+        await tester.pump(const Duration(milliseconds: 100));
+        final at = tester.widget<ColoredBox>(scrim).color.a;
+        expect(at, greaterThan(0.4), reason: 'ahead of the deck');
+      });
+    });
   });
 
   group('action slot and close button', () {
@@ -7438,4 +7667,28 @@ class _Recording implements Canvas {
 
   @override
   void noSuchMethod(Invocation invocation) {}
+}
+
+/// Hard black/white stripes across the layer, for reading whether a blur
+/// reached a given row: stripes rather than one edge, so a row crosses several
+/// wherever the deck happens to sit. A `Row` of `ColoredBox`es does not paint
+/// here; a painter does.
+class _HardEdge extends CustomPainter {
+  const _HardEdge();
+
+  static const _width = 24.0;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint();
+    for (var x = 0.0; x < size.width; x += _width) {
+      paint.color = (x ~/ _width).isEven
+          ? const Color(0xFF000000)
+          : const Color(0xFFFFFFFF);
+      canvas.drawRect(Rect.fromLTWH(x, 0, _width, size.height), paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_HardEdge oldDelegate) => false;
 }

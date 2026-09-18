@@ -4,6 +4,7 @@ library;
 
 export 'src/config.dart'
     show
+        DeckBackdrop,
         DeckCap,
         DeckDismissAll,
         DeckDismissAllLook,
