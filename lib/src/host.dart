@@ -769,7 +769,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             child: IgnorePointer(
               ignoring: !_stowShown,
               child: Padding(
-                padding: EdgeInsets.all(config.offset),
+                padding: config.cornerOffset,
                 child: Align(
                   alignment: DeckStowMotionBox.cornerOf(config.position),
                   child: DeckStowHandleButton(
@@ -837,7 +837,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                 deck: DeckCutBox(
                   cut: _cut,
                   fromTop: isTop,
-                  margin: config.offset,
+                  margin: config.farOffset,
                   fades: (config.deckCap?.fade ?? 0) > 0,
                   child: Scrollable(
                     controller: _scroll,

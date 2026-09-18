@@ -169,14 +169,14 @@ class ToastTimeLeft {
 /// end. A cap that reaches further than the layer allows changes nothing.
 @immutable
 class DeckCap {
-  /// The deck's own height, from `offset` to its far end.
+  /// The deck's own height, from the edge's `offset` to its far end.
   const DeckCap.pixels(double this.pixels, {this.fade = 24})
     : share = null,
       toasts = null,
       assert(pixels > 0, 'A cap must have a height.'),
       assert(fade >= 0, 'A fade cannot be negative.');
 
-  /// A share of the layer's height, `offset` included.
+  /// A share of the layer's height, the far edge's `offset` included.
   const DeckCap.share(double this.share, {this.fade = 24})
     : pixels = null,
       toasts = null,
@@ -494,7 +494,7 @@ class SonnerConfig {
     this.position = SonnerPosition.bottomRight,
     this.width = 356,
     this.gap = 14,
-    this.offset = 24,
+    this.offset = const EdgeInsets.all(24),
     this.visibleToasts = 3,
     this.duration = const Duration(seconds: 4),
     this.expandByDefault = false,
@@ -520,8 +520,12 @@ class SonnerConfig {
   /// The space between two toasts.
   final double gap;
 
-  /// The distance from the screen edges to the toasts.
-  final double offset;
+  /// The distance from each screen edge to the toasts.
+  ///
+  /// The edge the position names holds the deck off it, and the opposite one
+  /// is where the expanded deck stops. Left and right place the deck on a
+  /// left or right position; a centered one reads neither.
+  final EdgeInsets offset;
 
   /// How many toasts the deck draws while the pointer is away from it. The
   /// rest are kept, undrawn, until the ones in front leave or the pointer
@@ -611,7 +615,7 @@ class SonnerConfig {
     SonnerPosition? position,
     double? width,
     double? gap,
-    double? offset,
+    EdgeInsets? offset,
     int? visibleToasts,
     Duration? duration,
     bool? expandByDefault,

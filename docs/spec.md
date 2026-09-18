@@ -223,7 +223,7 @@ class ToastTimeLeft {
 /// of these, or null to reach as far as the layer.
 class DeckCap {
   const DeckCap.pixels(double pixels, {double fade = 24}); // the deck's own height
-  const DeckCap.share(double share, {double fade = 24});   // of the layer's height, offset included
+  const DeckCap.share(double share, {double fade = 24});   // of the layer's height, the far edge's offset included
   const DeckCap.toasts(int toasts, {double fade = 24});    // the newest N, as drawn expanded
 }
 
@@ -328,7 +328,9 @@ same methods as `toast`. There is no static facade.
 
 `SonnerHost({SonnerController? controller, required Widget child})` (mount mode 2) draws
 `controller`, or `toast` when omitted. `SonnerConfig` carry: `position` (`bottomRight`), `width` (356), `gap` (14),
-`offset` (24), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
+`offset` (`EdgeInsets.all(24)`, physical: the edge the position names holds the deck off it, the opposite
+one is where the expanded deck stops, and left or right places it on a left or right position — a centered
+one reads neither side), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false), `timeLeft` (`ToastTimeLeft()`), `deckCap` (`DeckCap.pixels(400)`),
@@ -587,10 +589,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   a toast does not scroll (it swipes, §8). Scrolling away from the edge moves the newest toasts off
   it; the wheel toward the edge brings them back.
   - **The cap** is `config.deckCap`: the deck's own height in pixels, a share of the layer's
-    height with `offset` included, or the far end of the newest N toasts as they are drawn
+    height with the far edge's `offset` included, or the far end of the newest N toasts as they are drawn
     expanded, counting those beyond the window, which leave the deck with the pointer while they
     are still fanned out. It is never short of the newest toast's far end, so a toast taller than the cap is
-    read whole; and a cap reaching past `offset` from the far side, or none, reaches that far, as
+    read whole; and a cap reaching past the far edge's `offset`, or none, reaches that far, as
     the whole layer did before there was a cap.
   - **Nothing is drawn past a cap nearer than that.** The toasts fade out over `fade` before the
     cut, never into the newest toast, and a `fade` of 0 cuts them hard. The cut follows where
@@ -600,9 +602,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     with no pointer on it is cut at the cap too, and does not scroll. The promise holds however the
     deck is transformed around the cut — by the stow motion (§6 Stowed) or by the app — and a fading
     cut keeps it as a hard one does, toasts laid out beyond the layer included.
-  - **A click past the cap and `offset`** reaches the app, not a toast laid out there.
+  - **A click past the cap and the far edge's `offset`** reaches the app, not a toast laid out there.
   - **The scrollbar** is `config.scrollbar`, drawn while the pointer holds a deck that scrolls: a
-    thumb over the track from `offset` to the cap, as long as the share of the reach in view and
+    thumb over the track from the edge's `offset` to the cap, as long as the share of the reach in view and
     never shorter than 24 px where the track allows, at the edge's end with nothing scrolled. It
     sits 8 px outside the deck's right edge, or 6 px inside it over the toasts, and takes the
     pointer 4 px either side of itself. Always shown, it shows all the while the deck can scroll;
@@ -647,7 +649,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   **Whatever is drawn, a stowed deck takes no pointer**: its hover region is empty and nothing in
   it can be pressed.
 - **The handle** is `config.stowHandle`, null by default. With one, a stowed deck leaves a button
-  reading `countLabel(count)` at `offset` from the edges, in the corner the position names, which
+  reading `countLabel(count)` at `offset` from the corner's two edges (a centered position's, from
+  its edge alone), in the corner the position names, which
   brings the deck back. It fades in with the stow and takes the pointer only while the deck is
   stowed; being over it neither pauses the timers nor fans the deck out.
   - Pressing it leaves fewer than two dismissible toasts, so it goes at once, and the deck may
@@ -662,8 +665,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - An exiting toast keeps the place **on screen** it was dismissed at, so a scroll during its exit
     moves the toasts around it and not it.
 - The hover region is the box around the toasts in the deck — the window, or every toast while the
-  pointer is over it — gaps included and cut to the layer, and from the edge to `offset` past the
-  cap while the toasts do not fit, with a draggable scrollbar's thumb in it, so moving the pointer
+  pointer is over it — gaps included and cut to the layer, and from the edge to the far edge's
+  `offset` past the cap while the toasts do not fit, with a draggable scrollbar's thumb in it, so moving the pointer
   between two
   toasts does not collapse the deck. A toast exiting from the window stays in
   it until it is removed, so dismissing the toast under a resting pointer does not collapse the
@@ -1207,6 +1210,7 @@ outside v0.1 is in §2's non-goals.
 | The cut follows where toasts are drawn, not whether the scroll overflows; the hover region takes in a draggable thumb outside the deck; a drag of the thumb holds the deck as a press does; the thumb's defaults are 4 px thick, at least 24 px long, 8 px outside or 6 px inside the edge, taking the pointer 4 px either side; one not always shown lingers 600 ms and fades over 300 ms | derived | the cut: measured in #62's spike, where a cut keyed on the overflow let the toasts beyond the window show past the cap for the whole 400 ms collapse, since they leave the deck when the pointer does (read from pixels at 50, 100 and 150 ms). The region: a thumb outside the deck's box collapsed the deck as the pointer travelled to it, the same trap #59's control has. The thumb's size and placement are what the maintainer was shown in the spike; the linger and fade are Material's desktop scrollbar (`_kScrollbarTimeToFade`, `_kScrollbarFadeDuration`, `material/scrollbar.dart`), whose 8 px thickness and 48 px minimum were not taken over what was shown |
 | A toast cut at the cap stays in the semantics tree; a drag of the scrollbar carried off the deck lets the timers run, as any press held off the deck does | maintainer | asked before #62 merged. The first matches a toast scrolled out of view and a covered toast, which keep their place in the tree since what the deck hides is the reading, not the announcement (§6 Collapsed). The second keeps §7's one rule — a press that stays put is a pointer over the deck, and only a toast being dragged holds the timers — over adding a clause for the scrollbar |
 | A fading cut clips past the cut line as a hard cut does, and fades inside that clip | derived | #75, spotted by the maintainer in the example app: with many toasts, pressing Hide drew the oldest past the cap for the first half of the stow. The fading cut was a `ShaderMaskLayer` whose mask reached only as far as the box, and a large deck lays its oldest toasts out beyond the layer's far side, so nothing cut them. Only a transform that moved them onto the screen showed it: measured with 20 toasts and a 400 px cap, `slide` and `shrink` drew ~15k and ~7k–12k px past the cap at 50 and 100 ms, while a `fade` of 0 and the `fade` motion drew none. The fix is the clip rather than a mask widened past the layer, which needs its gradient laid over the widened rect and a layer that size. Both measured 0 |
+| `offset` is an `EdgeInsets`, one inset per physical edge, `EdgeInsets.all(24)` by default. The edge the position names holds the deck off it and measures a `DeckCap.pixels`, the scroll track and the scrollbar from it; the opposite one is where the expanded deck stops, a `DeckCap.share` is short of it, and the hover region and the cut's pointer margin run that far past the cap; left and right place a left or right deck, and a centered deck and its handle read neither | maintainer; the edges each place reads are derived | #74, from adopting just_sonner in a desktop app with its own 60 px title bar: it wanted the deck 68 from the top and 16 from the right, and one number held it off every edge alike. The maintainer chose `EdgeInsets` in place of the `double` (breaking, released as 0.3.0) over keeping the `double` beside an `EdgeInsets?` that wins where set, and physical edges over directional ones. Follows sonner, whose `offset` takes a number or `{top, right, bottom, left}` (`assignOffset` in `src/index.tsx` at main) and whose centered toaster reads neither `--offset-left` nor `--offset-right` (`src/styles.css`). Diverges on a missing edge: sonner's object fills it with its 24 px default, while `EdgeInsets.only` leaves it at 0. Which edge each place reads was derived rather than asked: `DeckCap.share(1)` has to equal the layer's far end, and an uncapped deck's hover region has to end at the layer's edge, as both did with one number. The cut's pointer margin is hidden from a click behind the hover region, which takes the same click, so its test asks whether the toast laid out there is hit; the toast that keeps the others in place while the deck scrolls is the first reaching past the near edge's offset, pinned with a toast 40 px into view that the far edge's offset would have passed over |
 | The deck can be **stowed**: it goes out of sight keeping its toasts, which count down as they would on screen, until the next **new** toast brings it back — `stow()` / `unstow()` / `stowed` on the controller, plus three config fields, `stowControl` (`DeckStowControl?`, a `pill` by default, on), `stowMotion` (`DeckStowMotion`, a `slide`, never null) and `stowHandle` (`DeckStowHandle?`, null), each with built-in looks and a builder; in v0.1 | maintainer | #60, split from #39's triage as the half of "hide them" that keeps the toasts (#59 is the half that does not). Chosen from a throwaway spike in the example app with three control looks, three motions and a handle switch, at the top and the bottom. The maintainer asked for every variant to be a config option with a builder each, as #38's time left already is. Defaults were asked and taken: the pill (matching #59's), the slide, and no handle. **stow** was picked because **hidden** already names a toast outside the window (§6, CONTEXT) and reusing it would give one word three meanings. The three config fields are separate rather than one object because an app that stows through the controller with no control configured still needs a motion. sonner (8e4662b) has nothing like it |
 | Only a new toast brings a stowed deck back, not an `update`, a replace or a `promise` state landing on a toast on screen; and the stow ends whenever the last toast leaves | maintainer | a loading toast updating its progress would otherwise pop the deck back every time, which is the case stowing exists for. A new toast is news the user has not seen; changed content on a toast they chose to put away is not. Ending the stow on an empty deck keeps `stowed` from describing a deck with nothing in it, and the next toast draws normally either way |
 | Stowing lets the pointer go: the hover pause is released as it stows, a press is let go of, and a swipe under way is called off and springs back | maintainer, from the agent's reading | a pointer that went down on a toast keeps its route after the deck stops taking the pointer, so a drag left running would keep dragging an invisible toast and could dismiss it on release — measured while reading the code, not in the spike. A press left holding would also fan the deck out again when it came back |

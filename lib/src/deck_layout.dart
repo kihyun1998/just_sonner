@@ -32,17 +32,17 @@ import 'toast_fit.dart' show ClipsOverflow;
 ///
 /// The box around the toasts [inDeck] names, and the gaps between them, cut to
 /// the layer, is reported through [onDeck]; while they do not fit and the deck
-/// [follows] the pointer, it runs from the edge to `offset` past the cap, and
-/// takes in a draggable [scrollbar]. A child with the id [backdrop], if any,
-/// is laid out over that box.
+/// [follows] the pointer, it runs from the edge to [DeckOffsets.farOffset] past
+/// the cap, and takes in a draggable [scrollbar]. A child with the id
+/// [backdrop], if any, is laid out over that box.
 ///
 /// With a [scroll], the toasts [inDeck] names scroll between the edge and the
-/// cap — `offset` from the far side, or nearer where `config.deckCap` says, and
-/// never short of the newest toast's far end — an exiting toast shrinking out
-/// of that reach by its presence, and every toast not pinned to a distance is
-/// drawn that much, plus [unscrolled], closer to the edge. Where any toast is
-/// drawn past a cap nearer than the layer's, the cut is reported through
-/// [onCut]; otherwise null is.
+/// cap — [DeckOffsets.farOffset] from the far side, or nearer where
+/// `config.deckCap` says, and never short of the newest toast's far end — an
+/// exiting toast shrinking out of that reach by its presence, and every toast
+/// not pinned to a distance is drawn that much, plus [unscrolled], closer to
+/// the edge. Where any toast is drawn past a cap nearer than the layer's, the
+/// cut is reported through [onCut]; otherwise null is.
 ///
 /// While [dismissAllSize] gives a size, the dismiss-all control of that size
 /// is placed `gap` past the deck's far end, no further than the cap, on the
@@ -51,10 +51,10 @@ import 'toast_fit.dart' show ClipsOverflow;
 ///
 /// While the deck [follows] the pointer and its toasts scroll, a child with the
 /// id [scrollbar] is laid out as the thumb of `config.scrollbar` beside the
-/// deck's right edge, over the track from `offset` to the cap, and its
-/// geometry is reported through [onScrollbar]; otherwise it is laid out empty,
-/// off the layer, and null is reported. With an [anchor], the scroll first
-/// moves by as much as the anchored toast has moved from the distance it
+/// deck's right edge, over the track from [DeckOffsets.nearOffset] to the cap,
+/// and its geometry is reported through [onScrollbar]; otherwise it is laid
+/// out empty, off the layer, and null is reported. With an [anchor], the scroll
+/// first moves by as much as the anchored toast has moved from the distance it
 /// gives, so the toasts in view stay where they are. The anchor is kept while
 /// it is laid out anew and nothing else has moved the scroll since; otherwise
 /// the first fully present toast reaching into view takes its place. Either is
@@ -148,11 +148,11 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   @override
   void performLayout(Size size) {
     final left = switch (config.position) {
-      SonnerPosition.topLeft || SonnerPosition.bottomLeft => config.offset,
+      SonnerPosition.topLeft || SonnerPosition.bottomLeft => config.offset.left,
       SonnerPosition.topCenter ||
       SonnerPosition.bottomCenter => (size.width - config.width) / 2,
-      SonnerPosition.topRight ||
-      SonnerPosition.bottomRight => size.width - config.offset - config.width,
+      SonnerPosition.topRight || SonnerPosition.bottomRight =>
+        size.width - config.offset.right - config.width,
     };
 
     // How much of the next toast is covered, and the covering toasts' heights
@@ -199,9 +199,9 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
         covers: covers,
         fromEdge:
             distance ??
-            config.offset + config.gap * depth(id) + lift(id) * expansion,
+            config.nearOffset + config.gap * depth(id) + lift(id) * expansion,
         expandedEnd:
-            config.offset +
+            config.nearOffset +
             config.gap * depth(id) +
             lift(id) +
             (natural(id) ?? own),
@@ -216,7 +216,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       covered += weight;
     }
 
-    final layerFar = size.height - config.offset;
+    final layerFar = size.height - config.farOffset;
     final far = _far(size, placed, layerFar);
     final (:pixels, :overflows, :extent) = _scroll(size, placed, far);
     final scrolled = pixels + unscrolled;
@@ -292,7 +292,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       // not slide out from under the pointer resting there. With no pointer on
       // it nothing scrolls, and the margins are the app's.
       if (overflows && follows) {
-        final reach = math.min(size.height, far + config.offset);
+        final reach = math.min(size.height, far + config.farOffset);
         around = config.position.isTop
             ? Rect.fromLTRB(around.left, 0, around.right, reach)
             : Rect.fromLTRB(
@@ -345,8 +345,8 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final cap = config.deckCap;
     if (cap == null) return layerFar;
     final capped = switch (cap) {
-      DeckCap(:final pixels?) => config.offset + pixels,
-      DeckCap(:final share?) => size.height * share - config.offset,
+      DeckCap(:final pixels?) => config.nearOffset + pixels,
+      DeckCap(:final share?) => size.height * share - config.farOffset,
       DeckCap(:final toasts?) => _endOf(placed, toasts) ?? layerFar,
       _ => layerFar,
     };
@@ -406,7 +406,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final id = scrollbar;
     if (id == null || !hasChild(id)) return null;
     final bar = config.scrollbar;
-    final track = far - config.offset;
+    final track = far - config.nearOffset;
     if (bar == null || !overflows || !follows || extent <= 0 || track <= 0) {
       layoutChild(id, BoxConstraints.tight(Size.zero));
       positionChild(id, Offset(size.width, size.height));
@@ -418,7 +418,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       track,
     );
     final along = (pixels / extent).clamp(0.0, 1.0) * (track - length);
-    final fromEdge = config.offset + along;
+    final fromEdge = config.nearOffset + along;
     final width = bar.thickness + 2 * _thumbReach;
     final right = left + config.width;
     final thumbLeft = switch (bar.placement) {
@@ -492,7 +492,9 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     if (kept == null) {
       for (final toast in placed) {
         if (toast.pinned || presence(toast.id) < 1) continue;
-        if (toast.fromEdge + toast.height - pixels <= config.offset) continue;
+        if (toast.fromEdge + toast.height - pixels <= config.nearOffset) {
+          continue;
+        }
         kept = toast;
         break;
       }
@@ -584,4 +586,21 @@ class RenderToastHeight extends RenderProxyBox with ClipsOverflow {
     }
     size = constraints.constrain(Size(child.size.width, height));
   }
+}
+
+/// The two of `offset`'s edges a deck is measured along.
+extension DeckOffsets on SonnerConfig {
+  /// The distance from the edge the position names.
+  double get nearOffset => position.isTop ? offset.top : offset.bottom;
+
+  /// The distance from the edge opposite it, where the expanded deck stops.
+  double get farOffset => position.isTop ? offset.bottom : offset.top;
+
+  /// What holds something in the position's corner off the edges: `offset`,
+  /// with neither side for a centered position.
+  EdgeInsets get cornerOffset => switch (position) {
+    SonnerPosition.topCenter ||
+    SonnerPosition.bottomCenter => offset.copyWith(left: 0, right: 0),
+    _ => offset,
+  };
 }

@@ -1,5 +1,10 @@
-## 0.2.1
+## 0.3.0
 
+- **Breaking: `offset` is an `EdgeInsets`** (#74). Each screen edge takes its own distance, so a deck
+  can clear a title bar at the top and still sit close to the right edge. Write
+  `offset: EdgeInsets.all(24)` where you wrote `offset: 24`. The edges are physical. A centered
+  position ignores left and right. The edge the position names holds the deck off it; the
+  opposite one is where the expanded deck stops.
 - **Nothing is drawn past the deck's cap while it stows** (#75). With many toasts and a cap that
   fades (the default), pressing Hide drew the oldest toasts past the cap for the first half of a
   `slide` or `shrink` stow. The fading cut now keeps them out, as a hard cut already did.

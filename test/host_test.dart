@@ -195,7 +195,7 @@ void main() {
       final controller = SonnerController(
         config: const SonnerConfig(
           width: 300,
-          offset: 40,
+          offset: EdgeInsets.all(40),
           duration: Duration.zero,
         ),
       );
@@ -208,6 +208,39 @@ void main() {
       final rect = toastRect(tester, 'Saved');
       expect((rect.width, rect.right, rect.bottom), (300.0, 760.0, 560.0));
     });
+
+    for (final position in SonnerPosition.values) {
+      testWidgets('each edge’s offset holds the toast off that edge alone, and '
+          'a centered one reads neither side, $position', (tester) async {
+        final controller = SonnerController(
+          config: SonnerConfig(
+            position: position,
+            offset: const EdgeInsets.fromLTRB(19, 11, 13, 17),
+            duration: Duration.zero,
+          ),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+
+        controller.show('Saved');
+        await tester.pumpAndSettle();
+
+        final rect = toastRect(tester, 'Saved');
+        switch (position) {
+          case SonnerPosition.topLeft || SonnerPosition.bottomLeft:
+            expect(rect.left, 19);
+          case SonnerPosition.topRight || SonnerPosition.bottomRight:
+            expect(rect.right, 800 - 13);
+          case SonnerPosition.topCenter || SonnerPosition.bottomCenter:
+            expect(rect.center.dx, 400);
+        }
+        if (position.isTop) {
+          expect(rect.top, 11);
+        } else {
+          expect(rect.bottom, 600 - 17);
+        }
+      });
+    }
   });
 
   group('leading slot', () {
@@ -2687,6 +2720,53 @@ void main() {
         expect(boxOf(tester, 'Toast 6'), rectMoreOrLessEquals(read));
       }
 
+      testWidgets('the toast reaching past the edge’s own offset into view '
+          'keeps its place as it grows, however far the far edge’s is', (
+        tester,
+      ) async {
+        controller.config = controller.config.copyWith(
+          offset: const EdgeInsets.only(bottom: 10, top: 60, right: 24),
+          deckCap: () => null,
+        );
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -12));
+        await tester.pumpAndSettle();
+        // Past the near edge's offset, not the far edge's.
+        final front = boxOf(tester, 'Toast 11');
+        expect(600 - front.top, inExclusiveRange(10, 60));
+
+        controller.update(
+          toastsOf(
+            controller,
+          ).firstWhere((toast) => toast.state.title == 'Toast 11').id,
+          description: 'One\nTwo\nThree',
+        );
+        await tester.pump();
+        for (var elapsed = 0; elapsed <= 500; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(
+            // The old content lies over the new while it fades.
+            tester
+                .getRect(
+                  find
+                      .ancestor(
+                        of: find.text('Toast 11'),
+                        matching: find.byType(SlideTransition),
+                      )
+                      .first,
+                )
+                .bottom,
+            moreOrLessEquals(front.bottom, epsilon: 0.5),
+            reason: 'at $elapsed ms',
+          );
+        }
+        await tester.pumpAndSettle();
+      });
+
       testWidgets('a toast shown while scrolled keeps the toasts being read in '
           'place', (tester) async {
         await expectReadInPlace(
@@ -2935,11 +3015,13 @@ void main() {
         DeckScrollbar? scrollbar,
         SonnerPosition position = SonnerPosition.bottomRight,
         bool expandByDefault = false,
+        EdgeInsets offset = const EdgeInsets.all(edge),
       }) {
         final controller = SonnerController(
           config: SonnerConfig(
             duration: Duration.zero,
             position: position,
+            offset: offset,
             deckCap: cap,
             scrollbar: scrollbar,
             expandByDefault: expandByDefault,
@@ -3283,6 +3365,114 @@ void main() {
         },
       );
 
+      // The edge the deck sits at, and the one it reaches toward, apart.
+      const unequal = EdgeInsets.only(left: 24, right: 24, bottom: 30, top: 50);
+
+      for (final (cap, far) in const [
+        // From the edge's own offset.
+        (DeckCap.pixels(200, fade: 0), 30.0 + 200),
+        // Half the layer, short of the far edge's offset.
+        (DeckCap.share(0.5, fade: 0), 300.0 - 50),
+      ]) {
+        testWidgets('a cap reaches as far from the edge as its own edge’s '
+            'offsets say, $cap', (tester) async {
+          final key = GlobalKey();
+          final controller = capped(cap: cap, offset: unequal);
+          await tester.pumpWidget(shotApp(controller, key));
+          await showToasts(tester, controller, 12);
+          final x = boxOf(tester, 'Toast 11').center.dx;
+          await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+          await tester.pumpAndSettle();
+
+          final column = await alphas(tester, key, x);
+          expect(band(column, 30, far), contains(255), reason: 'kept');
+          expect(band(column, far + 1, 600), everyElement(0), reason: 'cut');
+        });
+      }
+
+      testWidgets('with no cap the oldest toast scrolls to the far edge’s '
+          'offset', (tester) async {
+        final controller = capped(cap: null, offset: unequal);
+        await tester.pumpWidget(app(controller: controller));
+        await showToasts(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await scrollToOldest(tester, SonnerPosition.bottomRight, at);
+        expect(boxOf(tester, 'Toast 0').top, moreOrLessEquals(50));
+      });
+
+      testWidgets('the pointer holds the deck up to the far edge’s offset past '
+          'the cap', (tester) async {
+        final controller = capped(offset: unequal);
+        await tester.pumpWidget(app(controller: controller));
+        await showToasts(tester, controller, 12);
+        final x = boxOf(tester, 'Toast 11').center.dx;
+        final mouse = await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+        await tester.pumpAndSettle();
+
+        // Past the near edge's offset, inside the far edge's.
+        await mouse.moveTo(Offset(x, 600 - (30 + 200 + 40)));
+        await tester.pumpAndSettle();
+        expect(find.text('Toast 0'), findsOneWidget, reason: 'still held');
+
+        await mouse.moveTo(Offset(x, 600 - (30 + 200 + 56)));
+        await tester.pumpAndSettle();
+        expect(find.text('Toast 0'), findsNothing, reason: 'left');
+      });
+
+      testWidgets('a toast laid out up to the far edge’s offset past the cap '
+          'takes the pointer', (tester) async {
+        final controller = capped(offset: unequal);
+        await tester.pumpWidget(app(controller: controller));
+        await showToasts(tester, controller, 12);
+        final x = boxOf(tester, 'Toast 11').center.dx;
+        await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+        await tester.pumpAndSettle();
+
+        // Past the near edge's offset, inside the far edge's.
+        final at = Offset(x, 600 - (30 + 200 + 40));
+        final title = [
+          for (var n = 0; n < 12; n++) 'Toast $n',
+        ].firstWhere((title) => boxOf(tester, title).contains(at));
+        final toast = tester.renderObject(
+          find
+              .ancestor(of: find.text(title), matching: find.byType(Material))
+              .first,
+        );
+        final path = tester.hitTestOnBinding(at).path;
+        expect(path.map((entry) => entry.target), contains(toast));
+      });
+
+      testWidgets('a click is the deck’s up to the far edge’s offset past the '
+          'cap, and the app’s past that', (tester) async {
+        final key = GlobalKey();
+        final taps = <int>[];
+        final controller = capped(offset: unequal);
+        await tester.pumpWidget(shotApp(controller, key, taps: taps));
+        await showToasts(tester, controller, 12);
+        final x = boxOf(tester, 'Toast 11').center.dx;
+        await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+        await tester.pumpAndSettle();
+
+        // Past the near edge's offset, inside the far edge's.
+        await tester.tapAt(
+          Offset(x, 600 - (30 + 200 + 40)),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        expect(taps, isEmpty, reason: 'inside the margin');
+
+        await tester.tapAt(
+          Offset(x, 600 - (30 + 200 + 56)),
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        expect(taps, hasLength(1), reason: 'past it');
+        await tester.pumpAndSettle();
+      });
+
       testWidgets('the pointer holds the deck up to the cap’s margin, and '
           'leaves it past that', (tester) async {
         final controller = capped();
@@ -3324,11 +3514,13 @@ void main() {
       SonnerController barred({
         DeckScrollbar scrollbar = const DeckScrollbar(),
         SonnerPosition position = SonnerPosition.bottomRight,
+        EdgeInsets offset = const EdgeInsets.all(edge),
       }) {
         final controller = SonnerController(
           config: SonnerConfig(
             duration: Duration.zero,
             position: position,
+            offset: offset,
             deckCap: const DeckCap.pixels(200, fade: 0),
             scrollbar: scrollbar,
           ),
@@ -3424,6 +3616,45 @@ void main() {
           expect(
             fromEdge(position.isTop ? thumb.bottom : thumb.top),
             moreOrLessEquals(edge + 200),
+            reason: 'at the cap',
+          );
+        });
+      }
+
+      for (final position in [
+        SonnerPosition.bottomRight,
+        SonnerPosition.topRight,
+      ]) {
+        testWidgets('its track starts at the offset of the edge the deck sits '
+            'at, $position', (tester) async {
+          final controller = barred(
+            position: position,
+            offset: const EdgeInsets.only(top: 37, bottom: 29, right: 24),
+          );
+          await tester.pumpWidget(app(controller: controller));
+          await showToasts(tester, controller, 12);
+          await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+          await tester.pumpAndSettle();
+
+          final near = position.isTop ? 37.0 : 29.0;
+          double fromEdge(double y) => position.isTop ? y : 600 - y;
+          var thumb = thumbRect(tester);
+          expect(
+            fromEdge(position.isTop ? thumb.top : thumb.bottom),
+            moreOrLessEquals(near),
+            reason: 'at the edge',
+          );
+
+          await wheel(
+            tester,
+            boxOf(tester, 'Toast 11').center,
+            position.isTop ? 5000 : -5000,
+          );
+          await tester.pumpAndSettle();
+          thumb = thumbRect(tester);
+          expect(
+            fromEdge(position.isTop ? thumb.bottom : thumb.top),
+            moreOrLessEquals(near + 200),
             reason: 'at the cap',
           );
         });
@@ -4403,7 +4634,9 @@ void main() {
       controller.show('Follows');
       await tester.pumpAndSettle();
 
-      controller.config = controller.config.copyWith(offset: 80);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(80),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.text('A Follows'), findsOneWidget, reason: 'one layer');
@@ -5111,7 +5344,9 @@ void main() {
       expect(boxOf(tester, 'Front').bottom, 576);
       expect(boxOf(tester, 'Behind').bottom, 562);
 
-      controller.config = controller.config.copyWith(offset: 80);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(80),
+      );
       await tester.pump();
       expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
 
@@ -5138,7 +5373,9 @@ void main() {
       await tester.pumpWidget(app(controller: controller));
       await tester.pumpAndSettle();
 
-      controller.config = controller.config.copyWith(offset: 80);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(80),
+      );
       await tester.pump();
       expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
       await tester.pumpAndSettle();
@@ -5157,13 +5394,15 @@ void main() {
 
       await tester.pumpWidget(app(controller: other));
       await tester.pump(const Duration(milliseconds: 50));
-      other.config = other.config.copyWith(offset: 80);
+      other.config = other.config.copyWith(offset: const EdgeInsets.all(80));
       await tester.pump();
       await tester.pumpWidget(app(controller: controller));
       await tester.pumpAndSettle();
       expect(boxOf(tester, 'Kept').bottom, 576);
 
-      controller.config = controller.config.copyWith(offset: 80);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(80),
+      );
       await tester.pumpAndSettle();
       expect(boxOf(tester, 'Kept').bottom, 520);
     });
@@ -5288,7 +5527,9 @@ void main() {
       await tester.pumpWidget(app(controller: controller));
       controller.show('Front');
       await tester.pumpAndSettle();
-      controller.config = controller.config.copyWith(offset: 200);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(200),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       final at = boxOf(tester, 'Front');
@@ -5306,13 +5547,17 @@ void main() {
       await tester.pumpWidget(app(controller: controller));
       controller.show('Front');
       await tester.pumpAndSettle();
-      controller.config = controller.config.copyWith(offset: 200);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(200),
+      );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 200));
       final at = boxOf(tester, 'Front').bottom;
       expect(at, allOf(lessThan(575), greaterThan(401)));
 
-      controller.config = controller.config.copyWith(offset: 24);
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(24),
+      );
       await tester.pump();
       expect(boxOf(tester, 'Front').bottom, moreOrLessEquals(at));
       await tester.pump(const Duration(milliseconds: 16));
@@ -5330,7 +5575,9 @@ void main() {
         'they were', (tester) async {
       await tester.pumpWidget(
         rebuildingApp(
-          () => controller.config = controller.config.copyWith(offset: 80),
+          () => controller.config = controller.config.copyWith(
+            offset: const EdgeInsets.all(80),
+          ),
         ),
       );
       controller.show('Front');
@@ -5363,7 +5610,9 @@ void main() {
           builder: (context, setState) {
             rebuildAbove = setState;
             if (++builds == 2) {
-              controller.config = controller.config.copyWith(offset: 80);
+              controller.config = controller.config.copyWith(
+                offset: const EdgeInsets.all(80),
+              );
             }
             return app(controller: controller);
           },
@@ -6994,6 +7243,38 @@ void main() {
       await mouse.moveTo(away);
       await settle(tester);
     });
+
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.topLeft,
+      SonnerPosition.topCenter,
+    ]) {
+      testWidgets('a handle sits in the position’s corner, held off its two '
+          'edges by their offsets, $position', (tester) async {
+        final controller = deckWith(
+          handle: const DeckStowHandle(),
+          position: position,
+        );
+        controller.config = controller.config.copyWith(
+          offset: const EdgeInsets.fromLTRB(90, 11, 13, 17),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 2);
+        await settle(tester);
+        controller.stow();
+        await settle(tester);
+
+        final rect = tester.getRect(find.byType(DeckStowHandleButton));
+        switch (position) {
+          case SonnerPosition.bottomRight:
+            expect((rect.right, rect.bottom), (800.0 - 13, 600.0 - 17));
+          case SonnerPosition.topLeft:
+            expect((rect.left, rect.top), (90.0, 11.0));
+          default:
+            expect((rect.center.dx, rect.top), (400.0, 11.0));
+        }
+      });
+    }
 
     testWidgets('a handle reads its own count label, and a builder draws it '
         'instead', (tester) async {

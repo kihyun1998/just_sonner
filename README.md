@@ -273,7 +273,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `position` | `bottomRight` | One of six: top or bottom, left, center or right |
 | `width` | 356 | The width of every toast |
 | `gap` | 14 | The space between two toasts |
-| `offset` | 24 | The distance from the screen edges |
+| `offset` | `EdgeInsets.all(24)` | The distance from each screen edge. A centered position ignores left and right |
 | `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it, 1 to 20 |
 | `duration` | 4 s | How long a toast stays; `Duration.zero` keeps it |
 | `expandByDefault` | false | Fan the deck out with no pointer |
