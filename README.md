@@ -354,7 +354,6 @@ toast.config = toast.config.copyWith(
     color: null,                                       // null: colorScheme.scrim
     padding: EdgeInsets.all(20),                       // how far past the deck
     radius: 20,                                        // its corners
-    speed: 2,                                          // there before the deck is
   ),
 );
 ```

@@ -245,13 +245,11 @@ class DeckBackdrop {
   const DeckBackdrop({
     this.blur = 4,
     this.dim = 0,
-    this.speed = 1,
     this.padding = const EdgeInsets.all(12),
     this.radius = 16,
     this.color,
   }) : assert(blur >= 0, 'A blur cannot be negative.'),
        assert(dim >= 0 && dim <= 1, 'A dim is a fraction.'),
-       assert(speed > 0, 'A speed is above 0.'),
        assert(radius >= 0, 'A radius cannot be negative.');
 
   /// The filter's sigma at full expansion. 0 draws no blur.
@@ -264,11 +262,6 @@ class DeckBackdrop {
 
   /// How much of [color] is laid over the blur at full expansion, 0 to 1.
   final double dim;
-
-  /// How fast it reaches full against the deck's own expansion: 1 follows it,
-  /// above 1 is there before the deck is, below 1 lags behind it. The
-  /// expansion is eased, so this is not a plain division of its 400 ms.
-  final double speed;
 
   /// How far past the deck's own box it reaches, per edge. The deck's box is
   /// the toasts and the gaps between them, so with no padding the blur stops
@@ -292,14 +285,12 @@ class DeckBackdrop {
   DeckBackdrop copyWith({
     double? blur,
     double? dim,
-    double? speed,
     EdgeInsets? padding,
     double? radius,
     ValueGetter<Color?>? color,
   }) => DeckBackdrop(
     blur: blur ?? this.blur,
     dim: dim ?? this.dim,
-    speed: speed ?? this.speed,
     padding: padding ?? this.padding,
     radius: radius ?? this.radius,
     color: color == null ? this.color : color(),
@@ -310,18 +301,17 @@ class DeckBackdrop {
       other is DeckBackdrop &&
       other.blur == blur &&
       other.dim == dim &&
-      other.speed == speed &&
       other.padding == padding &&
       other.radius == radius &&
       other.color == color;
 
   @override
-  int get hashCode => Object.hash(blur, dim, speed, padding, radius, color);
+  int get hashCode => Object.hash(blur, dim, padding, radius, color);
 
   @override
   String toString() =>
-      'DeckBackdrop(blur: $blur, dim: $dim, speed: $speed, '
-      'padding: $padding, radius: $radius, color: $color)';
+      'DeckBackdrop(blur: $blur, dim: $dim, padding: $padding, '
+      'radius: $radius, color: $color)';
 }
 
 /// The scrollbar drawn beside the expanded deck while its toasts scroll.

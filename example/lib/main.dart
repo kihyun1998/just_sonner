@@ -242,17 +242,6 @@ class _PanelState extends State<_Panel> {
                 value == 0 ? 'a hard rectangle' : value.round().toString(),
             onChanged: (value) => set(backdrop.copyWith(radius: value)),
           ),
-          _Dropdown<double>(
-            label: 'speed',
-            value: backdrop.speed,
-            values: {0.5, 1.0, 2.0, 4.0, backdrop.speed}.toList()..sort(),
-            nameOf: (value) => switch (value) {
-              1.0 => 'with the deck (400 ms)',
-              _ when value > 1 => '${value}x — there before the deck is',
-              _ => '${value}x — lags the deck',
-            },
-            onChanged: (value) => set(backdrop.copyWith(speed: value)),
-          ),
         ],
         _Button('Show three to hover', () {
           for (final line in [

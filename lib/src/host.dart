@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/gestures.dart'
     show
         DragStartBehavior,
@@ -858,7 +857,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                           fades: false,
                           child: DeckBackdropBox(
                             at: _deckAt,
-                            expansion: _expand,
+                            expansion: expansion,
                             backdrop: backdrop,
                           ),
                         ),
@@ -1373,7 +1372,7 @@ class _Sprung extends ChangeNotifier {
 }
 
 /// A value eased, `ease`, from wherever it is toward where it is headed.
-class _Eased extends ChangeNotifier implements ValueListenable<double> {
+class _Eased extends ChangeNotifier {
   _Eased(TickerProvider vsync, double value)
     : _from = value,
       _to = value,
@@ -1386,7 +1385,6 @@ class _Eased extends ChangeNotifier implements ValueListenable<double> {
   double _from;
   double _to;
 
-  @override
   double get value =>
       _from + (_to - _from) * Curves.ease.transform(_progress.value);
 

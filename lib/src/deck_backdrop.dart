@@ -36,42 +36,41 @@ class DeckBackdropBox extends StatelessWidget {
   /// layout.
   final ValueListenable<Rect?> at;
 
-  /// The deck's collapse-to-expand value, 0 collapsed and 1 fanned out.
-  final ValueListenable<double> expansion;
+  /// The deck's collapse-to-expand value, 0 collapsed and 1 fanned out. A
+  /// plain value: the host rebuilds the whole layer on its own expansion
+  /// already, so following it a second time here would buy nothing.
+  final double expansion;
 
   final DeckBackdrop backdrop;
 
   @override
-  Widget build(BuildContext context) => IgnorePointer(
-    child: ValueListenableBuilder<double>(
-      valueListenable: expansion,
-      builder: (context, expansion, _) {
-        final at = (expansion * backdrop.speed).clamp(0.0, 1.0);
-        if (at == 0) return const SizedBox.shrink();
-        final sigma = backdrop.blur * at;
-        return _BackdropClip(
-          at: this.at,
-          padding: backdrop.padding,
-          radius: backdrop.radius,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (sigma > 0)
-                BackdropFilter(
-                  filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                  child: const SizedBox.expand(),
-                ),
-              if (backdrop.dim > 0)
-                ColoredBox(
-                  color: (backdrop.color ?? Theme.of(context).colorScheme.scrim)
-                      .withValues(alpha: backdrop.dim * at),
-                ),
-            ],
-          ),
-        );
-      },
-    ),
-  );
+  Widget build(BuildContext context) {
+    final reach = expansion.clamp(0.0, 1.0);
+    if (reach == 0) return const SizedBox.shrink();
+    final sigma = backdrop.blur * reach;
+    return IgnorePointer(
+      child: _BackdropClip(
+        at: at,
+        padding: backdrop.padding,
+        radius: backdrop.radius,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (sigma > 0)
+              BackdropFilter(
+                filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                child: const SizedBox.expand(),
+              ),
+            if (backdrop.dim > 0)
+              ColoredBox(
+                color: (backdrop.color ?? Theme.of(context).colorScheme.scrim)
+                    .withValues(alpha: backdrop.dim * reach),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// Fills the layer and draws [child] only inside the deck's box, [padding]

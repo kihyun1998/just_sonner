@@ -4,8 +4,8 @@
   default and draws nothing, so nothing changes until you ask for it. With a `DeckBackdrop` the
   deck softens what is behind it as it fans out under the pointer, and fades it back as it
   collapses: `blur` is the filter's sigma, `dim` and `color` a cover over it (`color` null follows
-  the theme's `colorScheme.scrim`), `padding` how far past the deck it reaches, `radius` its
-  corners, and `speed` how fast it arrives against the deck's own 400 ms. **A click in the
+  the theme's `colorScheme.scrim`), `padding` how far past the deck it reaches, and `radius` its
+  corners. **A click in the
   `padding` it reaches into still reaches your app** — what it draws over claims no pointer the
   deck did not already claim. It blurs **what your app painted**, not the desktop behind your
   window.

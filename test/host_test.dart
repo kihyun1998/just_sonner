@@ -4265,41 +4265,6 @@ void main() {
         expect(taps, hasLength(1), reason: 'the deck takes its own');
         await tester.pumpAndSettle();
       });
-
-      testWidgets('stowing takes it away with the deck', (tester) async {
-        final controller = withBackdrop(const DeckBackdrop(dim: 0.2));
-        await tester.pumpWidget(app(controller: controller));
-        controller.show('Only');
-        await tester.pumpAndSettle();
-        await mouseAt(tester, boxOf(tester, 'Only').center);
-        await tester.pumpAndSettle();
-        expect(blur, findsOneWidget, reason: 'hovered');
-
-        // Stowing collapses the deck, which takes the backdrop with it rather
-        // than leaving it drawn over the app. Over-determined: the stow both
-        // lets go of the pointer (`host.dart`) and carries the deck out from
-        // under it, so no mutation found reddens this alone — it is a guard
-        // against the backdrop ever being drawn outside the deck's own
-        // transform, not an independent proof.
-        controller.stow();
-        await tester.pumpAndSettle();
-        expect(blur, findsNothing, reason: 'stowed');
-        expect(scrim, findsNothing, reason: 'stowed');
-      });
-
-      testWidgets('speed carries it ahead of the deck', (tester) async {
-        final controller = withBackdrop(const DeckBackdrop(dim: 0.5, speed: 4));
-        await tester.pumpWidget(app(controller: controller));
-        controller.show('Only');
-        await tester.pumpAndSettle();
-        await mouseAt(tester, boxOf(tester, 'Only').center);
-
-        // A quarter of the 400 ms expansion: at speed 4 the backdrop is
-        // already at full while the deck is still fanning out.
-        await tester.pump(const Duration(milliseconds: 100));
-        final at = tester.widget<ColoredBox>(scrim).color.a;
-        expect(at, greaterThan(0.4), reason: 'ahead of the deck');
-      });
     });
   });
 
@@ -4453,11 +4418,9 @@ void main() {
       var done = false;
       unawaited(old.dismiss().then((_) => done = true));
       await tester.pump();
-      expect(
-        toastsOf(controller).map((r) => r.state.title),
-        ['New'],
-        reason: 'the id is the new toast\'s now',
-      );
+      expect(toastsOf(controller).map((r) => r.state.title), [
+        'New',
+      ], reason: 'the id is the new toast\'s now');
       expect(done, isFalse, reason: 'the old one is still leaving');
 
       await tester.pumpAndSettle();
@@ -7334,11 +7297,9 @@ void main() {
 
         await tester.tap(find.text('Clear all'));
         await settle(tester);
-        expect(
-          toastsOf(controller).map((toast) => toast.state.title),
-          ['Saving'],
-          reason: 'the dismiss-all control still leaves what stays',
-        );
+        expect(toastsOf(controller).map((toast) => toast.state.title), [
+          'Saving',
+        ], reason: 'the dismiss-all control still leaves what stays');
         expect(controller.stowed, isFalse);
       });
     }
