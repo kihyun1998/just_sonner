@@ -285,12 +285,12 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `builder` | null | The default look |
 | `timeLeft` | `ToastTimeLeft()` | A border; null draws none |
 | `deckCap` | `DeckCap.pixels(400)` | Null lets the deck reach the whole window |
+| `deckBackdrop` | null | What is drawn behind the fanned-out deck; null draws nothing |
 | `scrollbar` | `DeckScrollbar()` | Null draws none |
 | `dismissAll` | `DeckDismissAll()` | Null draws none |
 | `stowControl` | `DeckStowControl()` | Null draws none |
 | `stowMotion` | `DeckStowMotion()` | A slide; not nullable |
 | `stowHandle` | null | Nothing left at the edge |
-| `deckBackdrop` | null | Nothing behind the fanned-out deck |
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.
@@ -358,7 +358,9 @@ toast.config = toast.config.copyWith(
 );
 ```
 
-**It blurs what your app painted, not the desktop behind your window.** A Flutter `BackdropFilter` reaches the content under it inside the window; getting the wallpaper needs a transparent native window, which is the app's own decision and not this package's.
+**It blurs what your app painted, not the desktop behind your window.** A `BackdropFilter` reaches
+the content under it inside the window; the wallpaper needs a transparent native window, which is
+the app's own decision and not this package's.
 
 It is drawn to the deck's own box and reaches `padding` further. **A click in that padding still
 reaches your app** — what the backdrop draws over claims no pointer the deck did not already claim.
