@@ -67,6 +67,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   deck, and nothing shows past the cut, not even while the deck folds up as the pointer leaves.
   Every `DeckCap` and `DeckScrollbar` field is on a control below the buttons, with a switch to
   take each away.
+- **Offset per edge** (#74) — turn on the title bar the app draws and put five up at
+  topRight: with 24 on every edge they sit under it. "Clear a title bar" holds the deck 68 from the
+  top and still 16 from the right. "Wide left" moves a deck at a left position and leaves a
+  centered one in the middle.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

@@ -27,6 +27,10 @@ class _ExampleAppState extends State<ExampleApp> {
   late final SonnerController _controller = SonnerController()
     ..attach(_navigatorKey);
 
+  /// Whether the app draws its own title bar over everything, as a desktop app
+  /// that hides the system one does.
+  bool _titleBar = false;
+
   /// Assigned to the one controller, so the toasts on screen stay and follow.
   void _setConfig(SonnerConfig config) =>
       setState(() => _controller.config = config);
@@ -52,14 +56,55 @@ class _ExampleAppState extends State<ExampleApp> {
         brightness: Brightness.dark,
       ),
     ),
+    builder: (context, child) =>
+        Stack(children: [child!, if (_titleBar) const _TitleBar()]),
     home: _Panel(
       controller: _controller,
       config: _controller.config,
       onConfig: _setConfig,
       themeMode: _themeMode,
       onThemeMode: (mode) => setState(() => _themeMode = mode),
+      titleBar: _titleBar,
+      onTitleBar: (value) => setState(() => _titleBar = value),
     ),
   );
+}
+
+/// A 60 px title bar with window buttons in its top-right corner, drawn over
+/// the toasts as an app's own chrome is.
+class _TitleBar extends StatelessWidget {
+  const _TitleBar();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Positioned(
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 60,
+      child: IgnorePointer(
+        child: Material(
+          color: scheme.inverseSurface.withValues(alpha: 0.92),
+          child: Row(
+            children: [
+              const SizedBox(width: 16),
+              Text(
+                'The app’s own title bar, 60 px',
+                style: TextStyle(color: scheme.onInverseSurface),
+              ),
+              const Spacer(),
+              for (final icon in [Icons.remove, Icons.crop_square, Icons.close])
+                SizedBox(
+                  width: 35,
+                  child: Icon(icon, size: 16, color: scheme.onInverseSurface),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Panel extends StatefulWidget {
@@ -69,6 +114,8 @@ class _Panel extends StatefulWidget {
     required this.onConfig,
     required this.themeMode,
     required this.onThemeMode,
+    required this.titleBar,
+    required this.onTitleBar,
   });
 
   final SonnerController controller;
@@ -76,6 +123,8 @@ class _Panel extends StatefulWidget {
   final ValueChanged<SonnerConfig> onConfig;
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeMode;
+  final bool titleBar;
+  final ValueChanged<bool> onTitleBar;
 
   @override
   State<_Panel> createState() => _PanelState();
@@ -98,6 +147,14 @@ class _PanelState extends State<_Panel> {
   int _promises = 0;
 
   SonnerController get _toast => widget.controller;
+
+  /// The offsets the "Offset per edge" section offers, by name.
+  static final _offsets = {
+    const EdgeInsets.all(24): 'all 24 (the default)',
+    const EdgeInsets.fromLTRB(24, 68, 16, 24):
+        'clear a title bar: top 68, right 16',
+    const EdgeInsets.fromLTRB(160, 24, 8, 24): 'wide left: left 160, right 8',
+  };
 
   @override
   void didUpdateWidget(_Panel old) {
@@ -1406,6 +1463,36 @@ class _PanelState extends State<_Panel> {
         _Button(
           'Open a dialog, toast after 1 s',
           () => _openDialog(toastAfter: true),
+        ),
+      ],
+    ),
+    _Section(
+      title: 'Offset per edge',
+      issue: 74,
+      note:
+          'Turn the title bar on and put a few up at topRight: with 24 all '
+          'round they sit under it. "Clear a title bar" holds them 68 from '
+          'the top and still 16 from the right. "Wide left" moves a left '
+          'deck and not a centered one.',
+      children: [
+        _Button('Five that stay, at topRight', () {
+          widget.onConfig(config.copyWith(position: SonnerPosition.topRight));
+          for (var i = 5; i >= 1; i--) {
+            _show('Offset $i of 5', duration: Duration.zero);
+          }
+        }),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('A 60 px title bar the app draws'),
+          value: widget.titleBar,
+          onChanged: widget.onTitleBar,
+        ),
+        _Dropdown<EdgeInsets>(
+          label: 'offset',
+          value: config.offset,
+          values: _offsets.keys.toList(),
+          nameOf: (value) => _offsets[value]!,
+          onChanged: (value) => widget.onConfig(config.copyWith(offset: value)),
         ),
       ],
     ),
