@@ -6,7 +6,12 @@ repository: https://github.com/kihyun1998/just_sonner
 
 environment:
   sdk: ^3.11.5
-  flutter: ">=1.17.0"
+  flutter: ">=3.41.7"
+
+platforms:
+  windows:
+  macos:
+  linux:
 
 dependencies:
   flutter:
