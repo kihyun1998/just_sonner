@@ -887,6 +887,16 @@ class _PanelState extends State<_Panel> {
     ];
   }
 
+  /// The deck's ways out in words, and whose words they are.
+  String _waysOut(SonnerConfig config) {
+    final ways = config.swipeDirectionsNow.isEmpty
+        ? 'nothing'
+        : config.swipeDirectionsNow.map((it) => it.name).join(' and ');
+    return config.swipeDirections == null
+        ? '${config.position.name} allows $ways'
+        : 'swipeDirections allows $ways';
+  }
+
   List<Widget> _sections(SonnerConfig config) => [
     _Section(
       title: 'Show and dismiss',
@@ -1453,10 +1463,9 @@ class _PanelState extends State<_Panel> {
       issue: 26,
       note:
           'Drag a toast off and it goes; a drag that is short and slow springs '
-          'it back. The way out comes from the position’s own words — '
-          '${config.position.name} allows '
-          '${config.swipeDirectionsNow.map((it) => it.name).join(' and ')} — '
-          'and a drag the other way is damped rather than blocked, so the '
+          'it back. The way out comes from the position’s own words unless '
+          '“swipeDirections” names its own — ${_waysOut(config)} — '
+          'and a drag any other way is damped rather than blocked, so the '
           'toast answers the hand without going anywhere. Past 45 px, or '
           'faster than 0.11 px/ms, it leaves the way it was pushed. Change '
           '“position” and “swipeDirections” below to try the rest.',

@@ -85,8 +85,8 @@ other state)
 
 **Swipe**:
 Dragging a toast off the screen to dismiss it. The ways out come from the position's own words
-unless `config.swipeDirections` names them; a drag the other way is damped rather than blocked, and
-one let go short of the threshold springs back. What **Dismissible** governs, along with the close
+unless `config.swipeDirections` names them; a drag any other way, on either axis, is damped rather
+than blocked, and one let go short of the threshold springs back. What **Dismissible** governs, along with the close
 button and the **dismiss-all control**.
 _Avoid_: drag (for this), fling, pan, swipe-to-dismiss
 

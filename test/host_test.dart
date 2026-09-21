@@ -5511,6 +5511,95 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('a drag along an axis with no way out is damped as well', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      // `topCenter` names up alone, so nothing leaves sideways.
+      controller.config = controller.config.copyWith(
+        position: SonnerPosition.topCenter,
+      );
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      final gesture = await dragBy(tester, 'Saved', const Offset(60, 0));
+
+      expect(
+        toastRect(tester, 'Saved').left - at.left,
+        closeTo(13.33, 0.05),
+        reason: '60 px damped by 1 / (1.5 + 60 / 20)',
+      );
+
+      await gesture.up();
+      await tester.pump();
+      expect(toastsOf(controller), hasLength(1));
+      await tester.pumpAndSettle();
+      expect(toastRect(tester, 'Saved'), at);
+    });
+
+    testWidgets('a fast flick along that axis is damped and still stays', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.config = controller.config.copyWith(
+        position: SonnerPosition.topCenter,
+      );
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      // The damped 13.33 px in 100 ms is 0.133 px/ms, past the speed.
+      final gesture = await dragBy(
+        tester,
+        'Saved',
+        const Offset(60, 0),
+        taking: const Duration(milliseconds: 100),
+      );
+      expect(toastRect(tester, 'Saved').left - at.left, closeTo(13.33, 0.05));
+
+      await gesture.up();
+      await tester.pump();
+      expect(toastsOf(controller), hasLength(1));
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('with no way out at all, every drag is damped and none '
+        'dismisses', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.config = controller.config.copyWith(
+        swipeDirections: () => const {},
+      );
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      // Each over 100 ms: the damped 13.33 px is past the speed, so only the
+      // direction refuses it.
+      for (final (way, by, moved) in [
+        ('up', const Offset(0, -60), const Offset(0, -13.33)),
+        ('down', const Offset(0, 60), const Offset(0, 13.33)),
+        ('left', const Offset(-60, 0), const Offset(-13.33, 0)),
+        ('right', const Offset(60, 0), const Offset(13.33, 0)),
+      ]) {
+        final gesture = await dragBy(
+          tester,
+          'Saved',
+          by,
+          taking: const Duration(milliseconds: 100),
+        );
+        final went = toastRect(tester, 'Saved').topLeft - at.topLeft;
+        expect(went.dx, closeTo(moved.dx, 0.05), reason: way);
+        expect(went.dy, closeTo(moved.dy, 0.05), reason: way);
+
+        await gesture.up();
+        await tester.pump();
+        expect(toastsOf(controller), hasLength(1), reason: way);
+        await tester.pumpAndSettle();
+        expect(toastRect(tester, 'Saved'), at, reason: way);
+      }
+    });
+
     /// A controller whose toasts have no timer, configured by [config].
     SonnerController controllerWith(SonnerConfig config) {
       final made = SonnerController(config: config);

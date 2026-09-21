@@ -649,8 +649,9 @@ class SonnerConfig {
   /// The directions a swipe may take a toast in, or null for the ones
   /// [position]'s own words name. Read through [swipeDirectionsNow].
   ///
-  /// An empty set takes the swipe away and leaves the close button, which is
-  /// `dismissible`'s to govern rather than this.
+  /// An empty set lets no swipe dismiss: a drag still moves the toast a
+  /// little, damped, and springs it back. Taking the drag away altogether is
+  /// `dismissible`'s to govern, as the close button is.
   final Set<SwipeDirection>? swipeDirections;
 
   /// The directions a swipe may take a toast in now: [swipeDirections], or
