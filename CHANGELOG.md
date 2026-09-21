@@ -1,12 +1,18 @@
-## Unreleased
+## 0.4.0
 
+- **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast on a
+  centered deck used not to move at all when dragged sideways, since neither left nor right is a
+  way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
+  the toast will not leave on is now damped that way, whichever axis it takes. **`swipeDirections:
+  {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
+  a drag still moves the toast and springs it back. To take the drag away altogether, make the
+  toast not `dismissible`.
 - **An app can fan the deck out** (#88). `expand()` / `collapse()` / `expanded` on the controller
   draw the deck as the pointer does — every toast, the ones beyond `visibleToasts` included, and the
   controls past its far end — without pausing the timers. Nothing but `collapse()` and the last
   toast leaving ends it; a stowed deck comes back expanded, so `unstow(); expand();` brings a deck
   back fanned out. **`held`** says whether the pointer holds the deck and notifies when it changes,
   so the app decides when to fold up. `expandByDefault` is unchanged.
-
 - **A scrolled deck no longer draws over the `offset` band** (#86). The deck is now cut at its
   **near** end as well as its far one. Scrolling a deck that overflows used to push toasts past the
   edge's own `offset` and go on painting them there — over the band an app keeps clear for its own
@@ -14,13 +20,6 @@
   inward from it, and cuts hard where there is no fade; **it does not need a `deckCap` at all**, so
   a deck taller than the layer is cut there too. An exiting toast and the backdrop are cut with it.
   **Clicks are unchanged**: the near cut is paint only.
-- **A drag a toast will not leave on moves it a little on either axis** (#87). A toast on a
-  centered deck used not to move at all when dragged sideways, since neither left nor right is a
-  way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
-  the toast will not leave on is now damped that way, whichever axis it takes. **`swipeDirections:
-  {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
-  a drag still moves the toast and springs it back. To take the drag away altogether, make the
-  toast not `dismissible`.
 
 ## 0.3.1
 
