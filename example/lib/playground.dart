@@ -40,6 +40,29 @@ enum _Action { none, undo, retry }
 
 enum _Look { none, own, flashBar }
 
+/// A page of its own for [_Playground], opened from the panel's app bar.
+class _PlaygroundPage extends StatelessWidget {
+  const _PlaygroundPage({required this.controller, required this.onShown});
+
+  final SonnerController controller;
+  final ValueChanged<ToastId> onShown;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Playground')),
+    body: SingleChildScrollView(
+      padding: const EdgeInsets.all(24),
+      child: Align(
+        alignment: Alignment.topLeft,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 480),
+          child: _Playground(controller: controller, onShown: onShown),
+        ),
+      ),
+    ),
+  );
+}
+
 /// Every argument of `show` on a control, and the three calls that take them:
 /// a new toast, a replace at the last id, and an update of it.
 class _Playground extends StatefulWidget {

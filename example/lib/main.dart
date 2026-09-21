@@ -462,6 +462,16 @@ class _PanelState extends State<_Panel> {
       title: const Text('just_sonner'),
       actions: [
         IconButton(
+          tooltip: 'Playground',
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (context) =>
+                  _PlaygroundPage(controller: _toast, onShown: _shown.add),
+            ),
+          ),
+          icon: const Icon(Icons.tune),
+        ),
+        IconButton(
           tooltip: widget.themeMode == ThemeMode.dark ? 'Light' : 'Dark',
           onPressed: () => widget.onThemeMode(
             widget.themeMode == ThemeMode.dark
@@ -1660,7 +1670,6 @@ class _PanelState extends State<_Panel> {
         ),
       ],
     ),
-    _Playground(controller: _toast, onShown: _shown.add),
     _Section(
       title: 'Config',
       issue: 28,

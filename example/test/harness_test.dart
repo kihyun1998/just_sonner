@@ -226,8 +226,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     }
 
-    await tester.ensureVisible(title);
-    await tester.pump();
+    expect(title, findsNothing, reason: 'a page of its own, not on the panel');
+    await tester.tap(find.byTooltip('Playground'));
+    await tester.pumpAndSettle();
     await tester.enterText(title, 'Composed');
     await tester.enterText(description, 'A second line');
     await press('Show');

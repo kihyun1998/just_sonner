@@ -83,8 +83,9 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   keeps its place on screen while it leaves. `width`, `gap`, `leadingSize`, `loadingIndicator`
   and `closeButton` are on controls too; the hourglass is an indicator that settles, where a
   spinner never does.
-- **Playground** (#29) — every argument of `show` on a control. Show puts up a new toast,
-  "Replace the last" shows at its id and "Update the last" updates it. An empty description, an
+- **Playground** (#29) — its own page, behind the tune button in the app bar: every argument
+  of `show` on a control. Show puts up a new toast, "Replace the last" shows at its id and
+  "Update the last" updates it. An empty description, an
   unset `dismissible` or `closeButton` and `configDuration` all reach `update` as "keep what it
   has", so a description or a leading widget goes only by a replace.
 - **Light and dark** — the toggle in the app bar. The default look takes its colours from the
