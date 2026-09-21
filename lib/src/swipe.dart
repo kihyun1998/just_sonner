@@ -6,9 +6,10 @@ import 'config.dart';
 /// the deck put it, and whether letting go there dismisses it.
 ///
 /// The swipe locks to one axis on its first move and follows the pointer along
-/// it, in a direction [directions] allows. A drag the other way is **damped,
-/// not blocked** — it moves a little and never dismisses — so the toast
-/// answers the hand without going anywhere.
+/// it, in a direction [directions] allows. Any other drag is **damped, not
+/// blocked** — on either axis, and with [directions] empty — so it moves a
+/// little and never dismisses, and the toast answers the hand without going
+/// anywhere.
 class SwipeDrag {
   SwipeDrag({required this.directions, required Duration at})
     : _startedAt = at,
@@ -83,7 +84,6 @@ class SwipeDrag {
   /// [delta] along an axis whose two directions are [back] and [forth], as far
   /// as the toast follows it.
   double _along(double delta, SwipeDirection back, SwipeDirection forth) {
-    if (!directions.contains(back) && !directions.contains(forth)) return 0;
     if (directions.contains(delta < 0 ? back : forth)) return delta;
     final damped = delta / (1.5 + delta.abs() / 20);
     // Never further than the pointer itself went, so taking up the damping

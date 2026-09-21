@@ -154,8 +154,10 @@ does not pause them.
 pause the timers.
 
 **Swipe** a toast to dismiss it, in the directions its position names: `bottomRight` takes down and
-right, `topCenter` up only. `config.swipeDirections` gives your own set, and an empty set turns the
-swipe off. A two-finger trackpad pan scrolls the deck rather than swiping a toast.
+right, `topCenter` up only. A drag any other way moves the toast a little and springs it back.
+`config.swipeDirections` gives your own set, and an empty set lets no swipe dismiss; to take the
+drag away altogether, make the toast not `dismissible`. A two-finger trackpad pan scrolls the deck
+rather than swiping a toast.
 
 ## Slots, the close button and dismissible
 
