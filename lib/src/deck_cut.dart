@@ -4,13 +4,14 @@ import 'package:flutter/widgets.dart';
 
 import 'deck_layout.dart';
 
-/// Draws [child] only up to the [cut] its layout last reported, fading it out
-/// toward it, and passes the pointer to [child] only up to [margin] past it.
+/// Draws [child] only within the band the [cut] its layout last reported
+/// leaves, fading it out toward each end, and passes the pointer to [child]
+/// only up to [margin] past that cut's **far** end.
 ///
 /// Distances are from the edge: the top of the layer when [fromTop], the
-/// bottom otherwise. With no cut, [child] is drawn and takes the pointer as
-/// usual. A cut that fades needs its own layer, so [fades] says whether any
-/// cut reported can.
+/// bottom otherwise. Either end may be absent, and with no cut at all [child]
+/// is drawn and takes the pointer as usual. A cut that fades needs its own
+/// layer, so [fades] says whether any cut reported can.
 class DeckCutBox extends SingleChildRenderObjectWidget {
   const DeckCutBox({
     super.key,
@@ -107,11 +108,15 @@ class RenderDeckCut extends RenderProxyBox {
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    final cut = _cut.value;
-    if (cut != null) {
+    // The far end alone. The pointer nearer than the near end is already the
+    // deck's: a deck that can scroll and is held by the pointer stretches its
+    // box to the layer's edge so it cannot slide out from under a resting
+    // pointer, and the near cut is a paint cut only.
+    final far = _cut.value?.far;
+    if (far != null) {
       final past = fromTop
-          ? position.dy > _down(cut.at + margin)
-          : position.dy < _down(cut.at + margin);
+          ? position.dy > _down(far.at + margin)
+          : position.dy < _down(far.at + margin);
       if (past) return false;
     }
     return super.hitTest(result, position: position);
@@ -126,11 +131,19 @@ class RenderDeckCut extends RenderProxyBox {
       super.paint(context, offset);
       return;
     }
-    final cutAt = _down(cut.at);
-    final shown = fromTop
-        ? Rect.fromLTRB(-_unbounded, -_unbounded, _unbounded, cutAt)
-        : Rect.fromLTRB(-_unbounded, cutAt, _unbounded, _unbounded);
-    if (!_fades || cut.fadeFrom >= cut.at) {
+    final near = cut.near;
+    final far = cut.far;
+    final nearAt = near == null ? null : _down(near.at);
+    final farAt = far == null ? null : _down(far.at);
+    final shown = Rect.fromLTRB(
+      -_unbounded,
+      (fromTop ? nearAt : farAt) ?? -_unbounded,
+      _unbounded,
+      (fromTop ? farAt : nearAt) ?? _unbounded,
+    );
+    final nearFades = _fades && near != null && near.fadeFrom > near.at;
+    final farFades = _fades && far != null && far.fadeFrom < far.at;
+    if (!nearFades && !farFades) {
       _mask.layer = null;
       _clip.layer = context.pushClipRect(
         needsCompositing,
@@ -142,17 +155,29 @@ class RenderDeckCut extends RenderProxyBox {
       return;
     }
     final height = size.height;
-    final at = (cutAt / height).clamp(0.0, 1.0);
-    final from = (_down(cut.fadeFrom) / height).clamp(0.0, 1.0);
     const kept = Color(0xFFFFFFFF);
     const gone = Color(0x00FFFFFF);
+    // Marks down the gradient by distance from the deck's own edge, which the
+    // box spans from 0 to its height, and reversed for a deck at the bottom.
+    final marks = <(double, Color)>[(0, nearFades ? gone : kept)];
+    if (near != null && nearFades) {
+      marks.add((near.at, gone));
+      marks.add((near.fadeFrom, kept));
+    }
+    if (far != null && farFades) {
+      marks.add((far.fadeFrom, kept));
+      marks.add((far.at, gone));
+    }
+    marks.add((height, farFades ? gone : kept));
+    final stops = [
+      for (final mark in marks) (_down(mark.$1) / height).clamp(0.0, 1.0),
+    ];
+    final colors = [for (final mark in marks) mark.$2];
     final gradient = LinearGradient(
       begin: Alignment.topCenter,
       end: Alignment.bottomCenter,
-      colors: fromTop
-          ? const [kept, kept, gone, gone]
-          : const [gone, gone, kept, kept],
-      stops: fromTop ? [0, from, at, 1] : [0, at, from, 1],
+      colors: fromTop ? colors : colors.reversed.toList(),
+      stops: fromTop ? stops : stops.reversed.toList(),
     );
     _mask.layer = (_mask.layer ?? ShaderMaskLayer())
       ..shader = gradient.createShader(Offset.zero & size)

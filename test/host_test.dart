@@ -3509,6 +3509,350 @@ void main() {
         expect(band(column, edge, far), contains(255));
         expect(band(column, far + 1, 600), everyElement(0));
       });
+
+      group('the near end', () {
+        /// The rows from [from] to [to] from [position]'s own edge.
+        List<int> nearBand(
+          List<int> column,
+          SonnerPosition position,
+          double from,
+          double to,
+        ) => position.isTop
+            ? column.sublist(from.round(), to.round())
+            : column.sublist(600 - to.round(), 600 - from.round());
+
+        /// How far from [position]'s edge [rect] starts.
+        double startsAt(SonnerPosition position, Rect rect) =>
+            position.isTop ? rect.top : 600 - rect.bottom;
+
+        /// The toast whose card straddles the edge's offset and covers [over]
+        /// past it: the one the near cut has to cut, and the one whose column
+        /// can be read for what survives just inside the edge. That there is
+        /// one at all is what says the deck really does overrun the edge.
+        String straddling(
+          WidgetTester tester,
+          SonnerPosition position,
+          double over,
+        ) => [for (var n = 0; n < 12; n++) 'Toast $n'].firstWhere((title) {
+          final box = boxOf(tester, title);
+          final near = startsAt(position, box);
+          return near < edge && near + box.height > edge + over;
+        }, orElse: () => throw StateError('no toast overruns the edge'));
+
+        /// How many pixels of [key]'s layer, across its whole width, are drawn
+        /// nearer than [near] to the edge of [position].
+        Future<int> drawnNearer(
+          WidgetTester tester,
+          GlobalKey key,
+          SonnerPosition position,
+          double near,
+        ) async {
+          final boundary =
+              key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+          final image = (await tester.runAsync(() => boundary.toImage()))!;
+          final bytes = (await tester.runAsync(image.toByteData))!;
+          final rows = position.isTop
+              ? [for (var y = 0; y < near.round(); y++) y]
+              : [
+                  for (
+                    var y = image.height - near.round();
+                    y < image.height;
+                    y++
+                  )
+                    y,
+                ];
+          var drawn = 0;
+          for (final y in rows) {
+            for (var x = 0; x < image.width; x++) {
+              if (bytes.getUint8((y * image.width + x) * 4 + 3) > 0) drawn++;
+            }
+          }
+          image.dispose();
+          return drawn;
+        }
+
+        /// Fans [controller]'s deck out and turns the wheel at it by [pixels]
+        /// away from the edge. Far enough that a toast is pushed past the
+        /// edge's offset, short enough that the one behind it straddles the
+        /// edge rather than a gap landing on it.
+        Future<void> scrolled(
+          WidgetTester tester,
+          SonnerController controller,
+          SonnerPosition position, {
+          double pixels = 72,
+        }) async {
+          await showToasts(tester, controller, 12);
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          final wheel = TestPointer(8, PointerDeviceKind.mouse, 8);
+          await tester.sendEventToBinding(wheel.addPointer(location: at));
+          await tester.sendEventToBinding(
+            wheel.scroll(Offset(0, position.isTop ? pixels : -pixels)),
+          );
+          await tester.pumpAndSettle();
+          await tester.sendEventToBinding(wheel.removePointer());
+        }
+
+        testWidgets('the near cut holds through the collapse, with an exiting '
+            'toast frozen past the edge', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final controller = capped();
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          final ids = [
+            for (var n = 0; n < 12; n++) controller.show('Toast $n'),
+          ];
+          await tester.pumpAndSettle();
+          final at = boxOf(tester, 'Toast 11').center;
+          final mouse = await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          final wheel = TestPointer(9, PointerDeviceKind.mouse, 9);
+          await tester.sendEventToBinding(wheel.addPointer(location: at));
+          await tester.sendEventToBinding(wheel.scroll(const Offset(0, -72)));
+          await tester.pumpAndSettle();
+          await tester.sendEventToBinding(wheel.removePointer());
+          expect(await drawnNearer(tester, key, position, edge), 0);
+
+          // The exit freezes the newest toast past the edge while the pointer
+          // leaving runs the scroll back under it over 400 ms.
+          controller.dismiss(ids.last);
+          await tester.pump();
+          await mouse.moveTo(away);
+          for (var ms = 25; ms <= 400; ms += 25) {
+            await tester.pump(const Duration(milliseconds: 25));
+            expect(
+              await drawnNearer(tester, key, position, edge),
+              0,
+              reason: '$ms ms into the collapse',
+            );
+          }
+          await tester.pumpAndSettle();
+        });
+
+        for (final position in [
+          SonnerPosition.bottomRight,
+          SonnerPosition.topLeft,
+          SonnerPosition.topCenter,
+        ]) {
+          testWidgets('a scrolled deck draws nothing nearer than the edge’s '
+              'offset, and is cut at it rather than past it, $position', (
+            tester,
+          ) async {
+            final key = GlobalKey();
+            final controller = capped(position: position);
+            await tester.pumpWidget(shotApp(controller, key, banner: false));
+            await scrolled(tester, controller, position);
+
+            final over = boxOf(tester, straddling(tester, position, 2));
+            final column = await alphas(tester, key, over.center.dx);
+            expect(
+              nearBand(column, position, 0, edge),
+              everyElement(0),
+              reason: 'the offset band',
+            );
+            expect(
+              nearBand(column, position, edge, edge + 2),
+              everyElement(255),
+              reason: 'cut at the edge, not past it',
+            );
+            expect(
+              await drawnNearer(tester, key, position, edge),
+              0,
+              reason: 'nothing at all in the band, across the layer',
+            );
+          });
+        }
+
+        testWidgets('the near end sits on the position’s own edge when the '
+            'offsets differ, which is where this came from', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          // bottom 30, top 50: the near edge is the bottom one, and reading
+          // the wrong inset would put the cut 20 px out.
+          final controller = capped(offset: unequal);
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await showToasts(tester, controller, 12);
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          final wheel = TestPointer(10, PointerDeviceKind.mouse, 10);
+          await tester.sendEventToBinding(wheel.addPointer(location: at));
+          await tester.sendEventToBinding(wheel.scroll(const Offset(0, -72)));
+          await tester.pumpAndSettle();
+          await tester.sendEventToBinding(wheel.removePointer());
+
+          const near = 30.0;
+          final over = [for (var n = 0; n < 12; n++) 'Toast $n'].firstWhere((
+            t,
+          ) {
+            final box = boxOf(tester, t);
+            return 600 - box.bottom < near && 600 - box.top > near + 2;
+          });
+          final column = await alphas(
+            tester,
+            key,
+            boxOf(tester, over).center.dx,
+          );
+          expect(band(column, 0, near), everyElement(0), reason: 'the band');
+          expect(
+            band(column, near, near + 2),
+            everyElement(255),
+            reason: 'on the bottom inset, not the top one',
+          );
+          expect(await drawnNearer(tester, key, position, near), 0);
+        });
+
+        testWidgets('the near end fades over the cap’s fade, inward from the '
+            'offset edge', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final controller = capped(cap: const DeckCap.pixels(200, fade: 40));
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await scrolled(tester, controller, position);
+
+          final over = boxOf(tester, straddling(tester, position, 40));
+          final column = await alphas(tester, key, over.center.dx);
+          expect(band(column, 0, edge), everyElement(0), reason: 'cut');
+          final fading = band(column, edge, edge + 39);
+          expect(fading.where((a) => a > 0 && a < 255), isNotEmpty);
+          expect(fading, everyElement(lessThan(255)));
+        });
+
+        testWidgets('a deck with no cap at all is cut hard at the near end '
+            'once it scrolls', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final controller = capped(cap: null);
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await scrolled(tester, controller, position);
+
+          final over = boxOf(tester, straddling(tester, position, 2));
+          final column = await alphas(tester, key, over.center.dx);
+          expect(band(column, 0, edge), everyElement(0), reason: 'cut');
+          expect(
+            band(column, edge, edge + 2),
+            everyElement(255),
+            reason: 'hard, since with no cap there is no fade',
+          );
+        });
+
+        testWidgets('a collapsed deck and an expanded one not scrolled report '
+            'no near cut, so the front toast is not faded', (tester) async {
+          final key = GlobalKey();
+          final controller = capped(cap: const DeckCap.pixels(200, fade: 40));
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await showToasts(tester, controller, 12);
+          final x = boxOf(tester, 'Toast 11').center.dx;
+          expect(
+            600 - boxOf(tester, 'Toast 11').bottom,
+            moreOrLessEquals(edge),
+            reason: 'the front toast sits on the offset edge',
+          );
+
+          var column = await alphas(tester, key, x);
+          expect(
+            band(column, edge, edge + 39),
+            everyElement(255),
+            reason: 'collapsed',
+          );
+
+          await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+          await tester.pumpAndSettle();
+          column = await alphas(tester, key, x);
+          expect(
+            band(column, edge, edge + 39),
+            everyElement(255),
+            reason: 'expanded, not scrolled',
+          );
+        });
+
+        testWidgets('an exiting toast pinned on screen is cut at the near end '
+            'as it is at the far one', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final controller = capped();
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          final ids = [
+            for (var n = 0; n < 12; n++) controller.show('Toast $n'),
+          ];
+          await tester.pumpAndSettle();
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          await scrollToOldest(tester, position, at);
+          expect(await drawnNearer(tester, key, position, edge), 0);
+
+          // The newest is the one furthest past the near edge, and its exit
+          // freezes it there.
+          controller.dismiss(ids.last);
+          await tester.pump();
+          for (var ms = 25; ms <= 175; ms += 25) {
+            await tester.pump(const Duration(milliseconds: 25));
+            expect(
+              await drawnNearer(tester, key, position, edge),
+              0,
+              reason: '$ms ms into the exit',
+            );
+            expect(
+              await drawnNearer(tester, key, position, 600),
+              greaterThan(0),
+              reason: 'the deck is still on screen at $ms ms',
+            );
+          }
+          await tester.pumpAndSettle();
+        });
+
+        testWidgets('the backdrop is cut at the near end too, hard', (
+          tester,
+        ) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final controller = capped();
+          controller.config = controller.config.copyWith(
+            // Opaque, so the backdrop alone shows in the layer's alpha.
+            deckBackdrop: () =>
+                const DeckBackdrop(blur: 0, dim: 1, color: Color(0xFF000000)),
+          );
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await scrolled(tester, controller, position);
+
+          final over = boxOf(tester, straddling(tester, position, 2));
+          final column = await alphas(tester, key, over.center.dx);
+          expect(band(column, 0, edge), everyElement(0), reason: 'cut');
+          expect(
+            band(column, edge, edge + 2),
+            everyElement(255),
+            reason: 'the backdrop is drawn inside the edge',
+          );
+          expect(await drawnNearer(tester, key, position, edge), 0);
+        });
+
+        testWidgets('hit-testing is unchanged: a click in the offset band is '
+            'the deck’s before and after a scroll', (tester) async {
+          final key = GlobalKey();
+          const position = SonnerPosition.bottomRight;
+          final taps = <int>[];
+          final controller = capped();
+          await tester.pumpWidget(shotApp(controller, key, taps: taps));
+          await showToasts(tester, controller, 12);
+          final x = boxOf(tester, 'Toast 11').center.dx;
+          final inBand = Offset(x, 600 - edge / 2);
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+
+          await tester.tapAt(inBand, kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          expect(taps, isEmpty, reason: 'the deck’s before the scroll');
+
+          await scrollToOldest(tester, position, at);
+          await tester.tapAt(inBand, kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          expect(taps, isEmpty, reason: 'and still the deck’s after it');
+          await tester.pumpAndSettle();
+        });
+      });
     });
 
     group('the deck scrollbar', () {
@@ -4418,9 +4762,11 @@ void main() {
       var done = false;
       unawaited(old.dismiss().then((_) => done = true));
       await tester.pump();
-      expect(toastsOf(controller).map((r) => r.state.title), [
-        'New',
-      ], reason: 'the id is the new toast\'s now');
+      expect(
+        toastsOf(controller).map((r) => r.state.title),
+        ['New'],
+        reason: 'the id is the new toast\'s now',
+      );
       expect(done, isFalse, reason: 'the old one is still leaving');
 
       await tester.pumpAndSettle();
@@ -7297,9 +7643,11 @@ void main() {
 
         await tester.tap(find.text('Clear all'));
         await settle(tester);
-        expect(toastsOf(controller).map((toast) => toast.state.title), [
-          'Saving',
-        ], reason: 'the dismiss-all control still leaves what stays');
+        expect(
+          toastsOf(controller).map((toast) => toast.state.title),
+          ['Saving'],
+          reason: 'the dismiss-all control still leaves what stays',
+        );
         expect(controller.stowed, isFalse);
       });
     }

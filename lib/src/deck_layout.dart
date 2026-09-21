@@ -41,8 +41,9 @@ import 'toast_fit.dart' show ClipsOverflow;
 /// `config.deckCap` says, and never short of the newest toast's far end — an
 /// exiting toast shrinking out of that reach by its presence, and every toast
 /// not pinned to a distance is drawn that much, plus [unscrolled], closer to
-/// the edge. Where any toast is drawn past a cap nearer than the layer's, the
-/// cut is reported through [onCut]; otherwise null is.
+/// the edge. Where any toast is drawn past a cap nearer than the layer's, or
+/// nearer the edge than [DeckOffsets.nearOffset], that end of the cut is
+/// reported through [onCut]; with neither end cut, null is.
 ///
 /// While [dismissAllSize] gives a size, the dismiss-all control of that size
 /// is placed `gap` past the deck's far end, no further than the cap, on the
@@ -223,6 +224,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
 
     Rect? around;
     var drawnReach = 0.0;
+    var drawnNear = double.infinity;
     for (final toast in placed) {
       final screen = toast.screen;
       if (screen != null) {
@@ -244,6 +246,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       }
 
       drawnReach = math.max(drawnReach, fromEdge + toast.height);
+      drawnNear = math.min(drawnNear, fromEdge);
       final top = config.position.isTop
           ? fromEdge
           : size.height - fromEdge - toast.height;
@@ -257,19 +260,36 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       if (inDeck(toast.id)) around = around?.expandToInclude(drawn) ?? drawn;
     }
 
-    // Keyed on where toasts are drawn rather than on the scroll overflowing:
-    // the toasts beyond the window leave the deck the moment the pointer does,
-    // while they are still fanned out and fading.
+    // Both ends are keyed on where toasts are drawn rather than on the scroll
+    // overflowing: the toasts beyond the window leave the deck the moment the
+    // pointer does, while they are still fanned out and fading.
     final cap = config.deckCap;
+    final fade = cap?.fade ?? 0;
+    DeckCutEnd? farEnd;
     if (cap != null && far < layerFar && drawnReach > far) {
       final newest = _newestEnd(placed);
-      onCut?.call((
+      farEnd = (
         at: far,
-        fadeFrom: math.max(far - cap.fade, math.min(far, newest ?? 0)),
-      ));
-    } else {
-      onCut?.call(null);
+        fadeFrom: math.max(far - fade, math.min(far, newest ?? 0)),
+      );
     }
+    // The near end holds with no cap at all: a deck taller than the layer
+    // scrolls and overruns the edge just the same, and with no cap there is no
+    // `fade` to run, so it cuts hard. Kept short of the far end's own fade, so
+    // the two marks never cross in a window shorter than two fades.
+    DeckCutEnd? nearEnd;
+    if (drawnNear < config.nearOffset) {
+      nearEnd = (
+        at: config.nearOffset,
+        fadeFrom: math.max(
+          config.nearOffset,
+          math.min(config.nearOffset + fade, farEnd?.fadeFrom ?? far),
+        ),
+      );
+    }
+    onCut?.call(
+      nearEnd == null && farEnd == null ? null : (near: nearEnd, far: farEnd),
+    );
 
     final thumb = _layOutScrollbar(
       size,
@@ -507,9 +527,15 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   bool shouldRelayout(ToastDeckDelegate<T> oldDelegate) => true;
 }
 
-/// Where the deck is cut, as distances from its edge: nothing is drawn past
-/// [at], and toasts fade out from [fadeFrom] to it.
-typedef DeckCut = ({double at, double fadeFrom});
+/// One end of the deck's cut, as distances from the edge the position names:
+/// nothing is drawn past [at], and toasts fade out from [fadeFrom] to it. At
+/// the far end [fadeFrom] is nearer the edge than [at]; at the near end it is
+/// further.
+typedef DeckCutEnd = ({double at, double fadeFrom});
+
+/// Where the deck is cut: at its [near] end, its [far] end, or both. Reported
+/// null only when neither end is cut.
+typedef DeckCut = ({DeckCutEnd? near, DeckCutEnd? far});
 
 /// The scrollbar's thumb as last laid out: the length of its [track], its own
 /// length, and how far the deck can scroll.

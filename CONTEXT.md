@@ -20,7 +20,8 @@ thing — that is one of its fields), blur (for the whole thing)
 
 **Cap**:
 How far the expanded deck reaches from its edge before its toasts scroll, as `config.deckCap`
-gives it, and never short of the newest toast. Nothing is drawn past it; a scrollbar beside the
+gives it, and never short of the newest toast. It is the **cut**'s far end, and nothing is drawn
+past it; the near end is the deck's other end and is not the cap's doing. A scrollbar beside the
 deck shows where in the scroll the toasts in view are.
 _Avoid_: max height, limit (for this)
 
@@ -29,6 +30,13 @@ How much of a toast the deck hides: the running product of the presences of the 
 it, 0 for the front and 1 behind one fully present. A covered toast draws no content and its
 controls are not there to be used, while its card stays. The expansion undoes it.
 _Avoid_: hidden (that is a toast outside the window), behind, obscured
+
+**Cut**:
+Where the deck stops being drawn, at **both** ends of it: the far end at the **cap**, the near end
+at the edge's own `offset`, so a scroll that pushes toasts past either stops drawing them there.
+Each end fades over the cap's `fade` or cuts hard, and the near end holds with no cap at all. It is
+a **paint** cut: only the far end is read for the pointer.
+_Avoid_: clip, mask (those are how it is drawn, not what it is)
 
 **Deck**:
 The group of visible toasts, in one of two states: collapsed (front toast in full, the rest peeking out) or expanded (fanned out into a list). It can also be **stowed**, which is neither: out of sight, with its toasts kept.
