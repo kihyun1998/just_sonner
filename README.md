@@ -9,6 +9,7 @@ ships a default look that a builder can replace whole.
 
 - `toast.show` returns an id; `update`, `dismiss`, `dismissAll` and `promise` take it from there
 - A deck that fans out on hover, with a cap, a scrollbar, and controls to dismiss or hide it all
+- `expand()` to fan the deck out from your app, and `held` to know when the pointer holds it
 - A backdrop that softens what is behind the deck as it fans out, if you ask for one
 - Swipe to dismiss, a close button, and an action slot you fill
 - Each toast's time left, drawn as a border, a bar or a ring
@@ -160,18 +161,20 @@ your app has it expanded. **`toast.held`** says whether the pointer holds the de
 when that changes, so your app decides what ends its expansion:
 
 ```dart
-// A notification button that brings the deck back fanned out, and folds it
-// up once the pointer has been on it and left.
+// A notification button that brings the deck back fanned out.
 void showToasts() {
   toast.unstow();
   toast.expand();
 }
 
-var wasHeld = false;
-toast.addListener(() {
-  if (wasHeld && !toast.held) toast.collapse();
-  wasHeld = toast.held;
-});
+// Folds the deck up once the pointer has been on it and left. Call it once.
+void foldUpWhenLeft() {
+  var wasHeld = false;
+  toast.addListener(() {
+    if (wasHeld && !toast.held) toast.collapse();
+    wasHeld = toast.held;
+  });
+}
 ```
 
 **Swipe** a toast to dismiss it, in the directions its position names: `bottomRight` takes down and
@@ -298,7 +301,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `width` | 356 | The width of every toast |
 | `gap` | 14 | The space between two toasts |
 | `offset` | `EdgeInsets.all(24)` | The distance from each screen edge. A centered position ignores left and right |
-| `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it, 1 to 20 |
+| `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it and your app not expanding it, 1 to 20 |
 | `duration` | 4 s | How long a toast stays; `Duration.zero` keeps it |
 | `expandByDefault` | false | Fan the deck out with no pointer |
 | `loadingIndicator` | `CircularProgressIndicator` | What a loading toast's leading slot holds |
@@ -404,8 +407,9 @@ screen. The next **new** toast brings the deck back with whatever is left, as do
 do not. `toast.stowed` says whether it is hidden.
 
 - **`stowControl`**, `DeckStowControl()` by default, is a pill reading "Hide". It shows while the
-  pointer holds the deck or your app has expanded it. Its looks are `pill`, `header` and `icon`, and `builder:` draws your own
-  from a `DeckStowView`. Where either control asks for a header look, the two share one bar.
+  pointer holds the deck or your app has expanded it. Its looks are `pill`, `header` and `icon`,
+  and `builder:` draws your own from a `DeckStowView`. Where either control asks for a header look,
+  the two share one bar.
 - **`stowMotion`**, `DeckStowMotion()` by default, slides the deck past its edge. Its looks are
   `slide`, `fade` and `shrink`, and `builder:` takes the deck out of sight your own way. It is not
   nullable: an app that calls `stow()` needs a motion whether or not a control is drawn.
