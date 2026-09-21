@@ -1,5 +1,12 @@
 ## Unreleased
 
+- **An app can fan the deck out** (#88). `expand()` / `collapse()` / `expanded` on the controller
+  draw the deck as the pointer does — every toast, the ones beyond `visibleToasts` included, and the
+  controls past its far end — without pausing the timers. Nothing but `collapse()` and the last
+  toast leaving ends it; a stowed deck comes back expanded, so `unstow(); expand();` brings a deck
+  back fanned out. **`held`** says whether the pointer holds the deck and notifies when it changes,
+  so the app decides when to fold up. `expandByDefault` is unchanged.
+
 - **A scrolled deck no longer draws over the `offset` band** (#86). The deck is now cut at its
   **near** end as well as its far one. Scrolling a deck that overflows used to push toasts past the
   edge's own `offset` and go on painting them there — over the band an app keeps clear for its own

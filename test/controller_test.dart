@@ -1327,6 +1327,122 @@ void main() {
     });
   });
 
+  group('expand', () {
+    test('expand fans the deck out and notifies; collapse brings it back; '
+        'neither does anything twice, and an empty deck is not expanded', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.addListener(() => notifications++);
+        expect(controller.expanded, isFalse);
+
+        controller.expand();
+        expect(controller.expanded, isFalse, reason: 'nothing to expand');
+        expect(notifications, 0);
+
+        controller.show('Saved', duration: Duration.zero);
+        notifications = 0;
+        controller.expand();
+        expect(controller.expanded, isTrue);
+        expect(notifications, 1);
+        controller.expand();
+        expect(notifications, 1, reason: 'already expanded');
+
+        controller.collapse();
+        expect(controller.expanded, isFalse);
+        expect(notifications, 2);
+        controller.collapse();
+        expect(notifications, 2, reason: 'not expanded');
+        controller.dispose();
+      });
+    });
+
+    test('the expansion ends when the last toast leaves, by dismiss, '
+        'dismissAll or its own timer, and notifies once for it', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final first = controller.show('One', duration: Duration.zero);
+        controller.show('Two', duration: Duration.zero);
+
+        controller.expand();
+        controller.dismiss(first);
+        expect(controller.expanded, isTrue, reason: 'one is left');
+        var notifications = 0;
+        controller.addListener(() => notifications++);
+        controller.dismiss(toastsOf(controller).single.id);
+        expect(controller.expanded, isFalse);
+        expect(notifications, 1);
+
+        controller.show('Three', duration: Duration.zero);
+        controller.expand();
+        controller.dismissAll();
+        expect(controller.expanded, isFalse);
+
+        controller.show('Four', duration: const Duration(seconds: 1));
+        controller.expand();
+        async.elapse(const Duration(milliseconds: 900));
+        expect(controller.expanded, isTrue, reason: 'still counting');
+        async.elapse(const Duration(milliseconds: 300));
+        expect(toastsOf(controller), isEmpty);
+        expect(controller.expanded, isFalse);
+
+        controller.show('Five', duration: Duration.zero);
+        expect(
+          controller.expanded,
+          isFalse,
+          reason: 'the next toast arrives collapsed',
+        );
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test(
+      'stow and expansion are independent: a stowed deck can be '
+      'expanded and comes back expanded, and stowing keeps the expansion',
+      () {
+        fakeAsync((async) {
+          final controller = SonnerController();
+          controller.show('Saved', duration: Duration.zero);
+
+          controller.stow();
+          controller.expand();
+          expect(controller.stowed, isTrue);
+          expect(controller.expanded, isTrue);
+
+          controller.unstow();
+          expect(controller.stowed, isFalse);
+          expect(controller.expanded, isTrue, reason: 'back expanded');
+
+          controller.stow();
+          expect(controller.expanded, isTrue, reason: 'stowing keeps it');
+          controller.collapse();
+          expect(
+            controller.stowed,
+            isTrue,
+            reason: 'collapsing keeps the stow',
+          );
+          controller.dismissAll();
+          controller.dispose();
+        });
+      },
+    );
+
+    test('expanding does not pause the timers', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        controller.show('Counting', duration: const Duration(seconds: 4));
+
+        controller.expand();
+        async.elapse(const Duration(milliseconds: 3900));
+        expect(toastsOf(controller), hasLength(1), reason: 'just short of 4 s');
+        async.elapse(const Duration(milliseconds: 200));
+        expect(toastsOf(controller), isEmpty);
+        controller.dispose();
+      });
+    });
+  });
+
   group('config', () {
     test('assigning a config notifies, and a lowered visibleToasts keeps the '
         'hidden toasts in the list', () {

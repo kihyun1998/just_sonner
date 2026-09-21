@@ -17,6 +17,9 @@ One tick serves every counting toast and stops with the last. A toast with
 dismiss. Resuming skips the partial tick, because a pause released just before a tick
 would otherwise subtract a whole one.
 
+Nothing the app does to the deck pauses: neither `stow()` nor `expand()`. A deck left
+expanded with nobody on it counts down.
+
 `update` changes the fields passed; `show` at a live id **replaces**, taking the
 content whole and keeping only the place. Both count down again. A dismissed toast is
 already off screen for the API's purposes.

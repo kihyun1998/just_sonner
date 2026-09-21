@@ -111,8 +111,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// either holds.
   bool get _interacting => _hovered || _pressed.isNotEmpty;
 
+  /// Whether the app has expanded the deck, while it is drawn: a stowed deck
+  /// keeps the controller's expansion for when it comes back, and draws none.
+  bool get _appExpanded => _controller.expanded && !_stowShown;
+
+  /// Whether every toast is drawn, fanned out and taking taps, with the
+  /// controls past the far end: while the pointer holds the deck, or while
+  /// the app has expanded it.
+  bool get _everyToast => _interacting || _appExpanded;
+
   /// Where the deck is, for hit testing: the toasts in the window, or every
-  /// toast while the pointer is over it, and those exiting, and the gaps
+  /// toast while they are all drawn, and those exiting, and the gaps
   /// between them, as last laid out and cut to the layer.
   Rect _deck = Rect.zero;
 
@@ -120,13 +129,16 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   late final _Eased _expand = _Eased(this, _expandTarget);
 
   double get _expandTarget =>
-      _interacting || _controller.config.expandByDefault ? 1 : 0;
+      _interacting || _controller.expanded || _controller.config.expandByDefault
+      ? 1
+      : 0;
 
   /// How far the toasts beyond the window are drawn, from 0 hidden to 1 in
-  /// full: they are while the pointer is over the deck.
+  /// full: they are while the pointer is over the deck, or the app has
+  /// expanded it.
   late final _Eased _reveal = _Eased(this, _revealTarget);
 
-  double get _revealTarget => _interacting ? 1 : 0;
+  double get _revealTarget => _everyToast ? 1 : 0;
 
   final ScrollController _scroll = ScrollController();
 
@@ -215,6 +227,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       releaseTimers(previous, this);
       holdTimers(_controller, this);
     }
+    releaseDeck(previous, this);
     // Another controller's toasts are another deck, and start at the edge,
     // stowed or drawn as that controller has them rather than easing there.
     _config = _controller.config;
@@ -222,6 +235,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _stow.jump(_stowShown ? 1 : 0);
     _glide.jump(1);
     _resetScroll();
+    _publishHold();
     _retarget();
     _sync();
   }
@@ -231,6 +245,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _controller.removeListener(_onToastsChanged);
     // A region unmounted under the pointer reports no exit.
     if (_hovered) releaseTimers(_controller, this);
+    releaseDeck(_controller, this);
     for (final slot in _slots) {
       slot.dispose();
     }
@@ -309,6 +324,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _pressed.clear();
     _setHovered(_moved.clear);
     if (was && !_interacting) _unscrollDeck();
+    _publishHold();
     _stow.retarget(1, _stowDuration);
   }
 
@@ -373,7 +389,19 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       releaseTimers(_controller, this);
       if (!_interacting) _unscrollDeck();
     }
+    _publishHold();
     _retarget();
+  }
+
+  /// Tells the controller whether the pointer holds this deck, and draws the
+  /// deck again for it.
+  void _publishHold() {
+    if (_interacting) {
+      holdDeck(_controller, this);
+    } else {
+      releaseDeck(_controller, this);
+    }
+    if (mounted) setState(() {});
   }
 
   /// Takes a press on the deck, or lets one go. It holds no timer of its own:
@@ -393,6 +421,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     if (_interacting == was) return;
     if (!_interacting) _unscrollDeck();
+    _publishHold();
     _retarget();
   }
 
@@ -689,6 +718,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final expansion = _expand.value;
     final visible = config.visibleToasts;
     final interacting = _interacting;
+    final everyToast = _everyToast;
     var sum = 0.0;
     var index = 0;
     var lifted = 0.0;
@@ -706,7 +736,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
           // collapses with it drawn.
           ..scale = math.max(0, 1 - 0.05 * slot.depth * (1 - expansion))
           ..drawn = true
-          ..inDeck = index < visible || interacting
+          ..inDeck = index < visible || everyToast
           ..index = index++;
         // Covered content is not drawn, and the expansion brings it back: the
         // deck fanned out draws every toast at its own height, to be read.
@@ -752,10 +782,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final control = farEndControls(
       config: config,
       expansion: _dismissAllExpansion,
-      // A stowed deck is not interacting: stowing let the pointer go.
-      showStow: live >= 1 && interacting,
+      // A stowed deck draws neither: stowing let the pointer go, and the
+      // app's expansion waits for the deck to come back.
+      showStow: live >= 1 && everyToast,
       showDismissAll:
-          dismissAll != null && dismissible.length >= 2 && interacting,
+          dismissAll != null && dismissible.length >= 2 && everyToast,
       stowCount: live,
       dismissCount: dismissible.length,
       onStow: _controller.stow,

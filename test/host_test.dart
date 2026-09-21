@@ -5,6 +5,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
@@ -3008,6 +3009,288 @@ void main() {
           await tester.pumpAndSettle();
         },
       );
+
+      group('expanded by the app', () {
+        testWidgets('expand fans out every toast with no pointer, the ones '
+            'beyond visibleToasts included, and they take taps; collapse '
+            'hides them again', (tester) async {
+          var taps = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) =>
+                  SonnerHost(controller: controller, child: child!),
+              home: GestureDetector(
+                onTap: () => taps++,
+                child: const ColoredBox(color: Color(0xFFFFFFFF)),
+              ),
+            ),
+          );
+          final height = await showMany(tester, controller, 5);
+          expect(drawn('Toast 0'), isFalse);
+
+          controller.expand();
+          await tester.pumpAndSettle();
+          for (var n = 0; n < 5; n++) {
+            expect(
+              boxOf(tester, 'Toast $n').bottom,
+              moreOrLessEquals(576 - (4 - n) * (height + 14)),
+              reason: 'Toast $n',
+            );
+            expect(paintedOpacityOf(tester, 'Toast $n'), 1, reason: 'Toast $n');
+          }
+          await tester.tapAt(boxOf(tester, 'Toast 0').center);
+          expect(taps, 0, reason: 'the toast beyond the window takes the tap');
+
+          controller.collapse();
+          await tester.pumpAndSettle();
+          expect(drawn('Toast 0'), isFalse);
+          expect(drawn('Toast 1'), isFalse);
+          expect(drawn('Toast 2'), isTrue);
+          expect(boxOf(tester, 'Toast 3').bottom, moreOrLessEquals(576 - 14));
+        });
+
+        testWidgets('an expanded deck with no pointer draws the controls past '
+            'its far end; a stowed one draws none, and brings them back '
+            'with it', (tester) async {
+          final controller = SonnerController(
+            config: const SonnerConfig(
+              duration: Duration.zero,
+              dismissAll: DeckDismissAll(),
+            ),
+          );
+          addTearDown(controller.dispose);
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 3);
+          expect(find.text('Clear all'), findsNothing);
+          expect(find.text('Hide'), findsNothing);
+
+          controller.expand();
+          await tester.pumpAndSettle();
+          expect(find.text('Clear all'), findsOneWidget);
+          expect(find.text('Hide'), findsOneWidget);
+
+          controller.stow();
+          await tester.pumpAndSettle();
+          expect(find.text('Clear all'), findsNothing);
+          expect(find.text('Hide'), findsNothing);
+          expect(controller.expanded, isTrue);
+
+          controller.unstow();
+          await tester.pumpAndSettle();
+          expect(find.text('Clear all'), findsOneWidget);
+          expect(drawn('Toast 0'), isTrue, reason: 'back expanded');
+        });
+
+        testWidgets('collapse leaves the deck fanned out while the pointer '
+            'holds it, and a host handed another controller draws that '
+            "controller's expansion", (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 5);
+          controller.expand();
+          await tester.pumpAndSettle();
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 4').center);
+          await tester.pumpAndSettle();
+
+          controller.collapse();
+          await tester.pumpAndSettle();
+          expect(drawn('Toast 0'), isTrue, reason: 'the pointer holds it');
+          await mouse.moveTo(away);
+          await tester.pumpAndSettle();
+          expect(drawn('Toast 0'), isFalse);
+
+          final other = SonnerController(
+            config: const SonnerConfig(duration: Duration.zero),
+          );
+          addTearDown(other.dispose);
+          for (var n = 0; n < 5; n++) {
+            other.show('Other $n');
+          }
+          other.expand();
+          await tester.pumpWidget(app(controller: other));
+          await tester.pumpAndSettle();
+          expect(drawn('Other 0'), isTrue, reason: 'drawn as it has it');
+        });
+
+        testWidgets('held is set by a pointer that moves onto the deck, not by '
+            'one the deck appears under, and each change notifies', (
+          tester,
+        ) async {
+          await tester.pumpWidget(app(controller: controller));
+          final heard = <bool>[];
+          var last = controller.held;
+          controller.addListener(() {
+            if (controller.held == last) return;
+            last = controller.held;
+            heard.add(last);
+          });
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: const Offset(600, 560));
+          addTearDown(mouse.removePointer);
+          controller.show('Toast 0');
+          await tester.pumpAndSettle();
+          expect(
+            boxOf(tester, 'Toast 0').contains(const Offset(600, 560)),
+            isTrue,
+          );
+          expect(controller.held, isFalse, reason: 'the pointer did not move');
+
+          await mouse.moveTo(const Offset(601, 560));
+          await tester.pump();
+          expect(controller.held, isTrue);
+
+          await mouse.moveTo(away);
+          await tester.pump();
+          expect(controller.held, isFalse);
+          expect(heard, [true, false]);
+          await tester.pumpAndSettle();
+        });
+
+        testWidgets('held lasts through a press carried off the deck, and '
+            'ends with it', (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 2);
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 1').center);
+          await mouse.down(boxOf(tester, 'Toast 1').center);
+          await mouse.moveTo(const Offset(400, 100));
+          await tester.pump();
+          expect(controller.held, isTrue, reason: 'the press is still down');
+
+          await mouse.up();
+          await tester.pumpAndSettle();
+          expect(controller.held, isFalse);
+        });
+
+        testWidgets('stowing lets go of held, a hover or a press', (
+          tester,
+        ) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 2);
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 1').center);
+          expect(controller.held, isTrue);
+
+          controller.stow();
+          await tester.pumpAndSettle();
+          expect(controller.held, isFalse, reason: 'a hover');
+
+          controller.unstow();
+          await tester.pumpAndSettle();
+          await mouse.down(boxOf(tester, 'Toast 1').center);
+          await tester.pump();
+          await mouse.moveTo(const Offset(400, 100));
+          await tester.pump();
+          expect(controller.held, isTrue);
+          controller.stow();
+          await tester.pumpAndSettle();
+          expect(controller.held, isFalse, reason: 'a press carried off');
+          await mouse.up();
+          await tester.pumpAndSettle();
+        });
+
+        testWidgets('an app collapsing its expansion once held falls folds the '
+            'deck up when the pointer leaves', (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 5);
+          var wasHeld = false;
+          controller.addListener(() {
+            if (wasHeld && !controller.held) controller.collapse();
+            wasHeld = controller.held;
+          });
+          controller.expand();
+          await tester.pumpAndSettle();
+          expect(drawn('Toast 0'), isTrue);
+
+          final mouse = await mouseAt(tester, boxOf(tester, 'Toast 4').center);
+          await tester.pumpAndSettle();
+          expect(controller.expanded, isTrue, reason: 'the pointer came');
+
+          await mouse.moveTo(away);
+          await tester.pumpAndSettle();
+          expect(controller.expanded, isFalse);
+          expect(drawn('Toast 0'), isFalse);
+        });
+
+        testWidgets('a host taken away under the pointer lets go of held '
+            'after the frame, and a host handed another controller moves the '
+            'hold to it', (tester) async {
+          final other = SonnerController(
+            config: const SonnerConfig(duration: Duration.zero),
+          );
+          addTearDown(other.dispose);
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 1);
+          other.show('Other');
+          await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+          expect(controller.held, isTrue);
+
+          var otherNotified = 0;
+          other.addListener(() => otherNotified++);
+          await tester.pumpWidget(app(controller: other));
+          expect(controller.held, isFalse);
+          expect(other.held, isTrue, reason: 'the pointer still holds a deck');
+          expect(otherNotified, greaterThan(0));
+
+          var notified = 0;
+          other.addListener(() {
+            notified++;
+            expect(
+              SchedulerBinding.instance.schedulerPhase,
+              isNot(SchedulerPhase.persistentCallbacks),
+              reason: 'a listener may rebuild, so it is not told mid-frame',
+            );
+          });
+          await tester.pumpWidget(const SizedBox());
+          expect(other.held, isFalse);
+          expect(notified, 1);
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('a controller disposed in the frame its host goes, under '
+            'the pointer, is not told of held afterwards', (tester) async {
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) => _OwnsController(child: child!),
+              home: const SizedBox.expand(),
+            ),
+          );
+          final owned = tester
+              .state<_OwnsControllerState>(find.byType(_OwnsController))
+              .controller;
+          owned.show('Owned');
+          await tester.pumpAndSettle();
+          await mouseAt(tester, boxOf(tester, 'Owned').center);
+          expect(owned.held, isTrue);
+
+          await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+          expect(tester.takeException(), isNull);
+        });
+
+        testWidgets('an expanded deck counts down with no pointer, and the '
+            'pointer moved onto it pauses it as ever', (tester) async {
+          final controller = SonnerController(
+            config: const SonnerConfig(duration: Duration(seconds: 1)),
+          );
+          addTearDown(controller.dispose);
+          await tester.pumpWidget(app(controller: controller));
+          controller.show('Counting');
+          await tester.pump();
+          controller.expand();
+          await tester.pump(const Duration(milliseconds: 1200));
+          await tester.pumpAndSettle();
+          expect(toastsOf(controller), isEmpty, reason: 'it counted down');
+
+          controller.show('Held');
+          await tester.pump();
+          controller.expand();
+          await tester.pump(const Duration(milliseconds: 400));
+          await mouseAt(tester, boxOf(tester, 'Held').center);
+          await tester.pump(const Duration(seconds: 3));
+          expect(toastsOf(controller), hasLength(1), reason: 'the pointer');
+          controller.dismissAll();
+          await tester.pumpAndSettle();
+        });
+      });
     });
 
     group('the deck cap', () {
@@ -3494,6 +3777,26 @@ void main() {
         expect(find.text('Toast 0'), findsNothing, reason: 'left');
       });
 
+      testWidgets('a deck the app expanded with no pointer on it is cut at the '
+          'cap', (tester) async {
+        final key = GlobalKey();
+        final controller = capped(cap: const DeckCap.pixels(80, fade: 0));
+        await tester.pumpWidget(shotApp(controller, key));
+        await showToasts(tester, controller, 3);
+        controller.expand();
+        await tester.pumpAndSettle();
+        final newest = boxOf(tester, 'Toast 2');
+        expect(
+          boxOf(tester, 'Toast 0').top,
+          lessThan(600 - edge - 80),
+          reason: 'the deck is fanned out past the cap',
+        );
+        final column = await alphas(tester, key, newest.center.dx);
+        final far = edge + math.max(80, newest.height);
+        expect(band(column, edge, far), contains(255));
+        expect(band(column, far + 1, 600), everyElement(0));
+      });
+
       testWidgets('an expandByDefault deck with no pointer on it is cut at the '
           'cap', (tester) async {
         final key = GlobalKey();
@@ -3939,6 +4242,22 @@ void main() {
           await tester.pumpWidget(app(controller: controller));
           await showToasts(tester, controller, 12);
           expect(thumbShown(tester), isFalse);
+        });
+
+        testWidgets('shows nowhere on a deck the app expanded with no '
+            'pointer on it, until the pointer moves on, $position', (
+          tester,
+        ) async {
+          final controller = barred(position: position);
+          await tester.pumpWidget(app(controller: controller));
+          await showToasts(tester, controller, 12);
+          controller.expand();
+          await tester.pumpAndSettle();
+          expect(thumbShown(tester), isFalse);
+
+          await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+          await tester.pumpAndSettle();
+          expect(thumbShown(tester), isTrue);
         });
 
         testWidgets('its thumb runs from the edge’s margin to the cap as the '
@@ -8089,4 +8408,31 @@ class _HardEdge extends CustomPainter {
 
   @override
   bool shouldRepaint(_HardEdge oldDelegate) => false;
+}
+
+/// Owns a controller and a host drawing it, and disposes the controller with
+/// itself, after the host.
+class _OwnsController extends StatefulWidget {
+  const _OwnsController({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_OwnsController> createState() => _OwnsControllerState();
+}
+
+class _OwnsControllerState extends State<_OwnsController> {
+  final controller = SonnerController(
+    config: const SonnerConfig(duration: Duration.zero),
+  );
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      SonnerHost(controller: controller, child: widget.child);
 }

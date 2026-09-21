@@ -387,8 +387,8 @@ enum DeckDismissAllLook {
 }
 
 /// The control at the expanded deck's far end that dismisses every toast the
-/// user may dismiss. It shows while the pointer holds the deck and at least
-/// two such toasts are on screen.
+/// user may dismiss. It shows while the pointer holds the deck or the app has
+/// expanded it, and at least two such toasts are on screen.
 @immutable
 class DeckDismissAll {
   const DeckDismissAll({
@@ -451,8 +451,8 @@ enum DeckStowLook {
 }
 
 /// The control at the expanded deck's far end that stows the deck. It shows
-/// while the pointer holds the deck and at least one toast is on screen,
-/// whether or not the user may dismiss it.
+/// while the pointer holds the deck or the app has expanded it, and at least
+/// one toast is on screen, whether or not the user may dismiss it.
 @immutable
 class DeckStowControl {
   const DeckStowControl({
@@ -617,10 +617,10 @@ class SonnerConfig {
   /// left or right position; a centered one reads neither.
   final EdgeInsets offset;
 
-  /// How many toasts the deck draws while the pointer is away from it. The
-  /// rest are kept, undrawn, until the ones in front leave or the pointer
-  /// comes over the deck, which draws every toast; they count down all the
-  /// while the pointer is away.
+  /// How many toasts the deck draws while the pointer is away from it and the
+  /// app has not expanded it. The rest are kept, undrawn, until the ones in
+  /// front leave, the pointer comes over the deck or the app expands it, each
+  /// of which draws every toast; they count down all the while.
   final int visibleToasts;
 
   /// How long a toast shown without a `duration` stays. [Duration.zero] keeps
