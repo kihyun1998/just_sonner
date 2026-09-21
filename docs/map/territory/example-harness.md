@@ -22,8 +22,8 @@ the package it demonstrates and can be broken without any gate here noticing.
 
 ## Code
 
-**None.** The harness is `example/lib/main.dart` and its adapter; nothing under `lib/`
-belongs to this territory, and the symbol check stands down.
+**None.** The harness is `example/lib/main.dart`, its playground part and its adapter;
+nothing under `lib/` belongs to this territory, and the symbol check stands down.
 
 ## Reference behaviour
 
@@ -39,6 +39,11 @@ a website, and the values it shows were not chosen for this package.
 - Every territory — a behaviour change is expected to change the section that presses it.
 
 ## Known holes / open
+- **A widget is not a value to compare.** A control that offers widgets, such as the
+  `loadingIndicator` one, cannot find the config's default by writing the same `const`
+  constructor again: debug builds track where each widget was created, so the two are
+  different objects and a dropdown asserts that none of its items match. It reads the
+  default off `const SonnerConfig()` instead.
 - The harness's own suite is **not run by the repository's `flutter test`**: it is a
   separate package, so a change that breaks it is invisible to the root gate.
 - **#29 is open** and stays open until the last section lands and §9 is settled. Its

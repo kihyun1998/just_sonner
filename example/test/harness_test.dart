@@ -206,4 +206,50 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('the playground shows what its controls compose, and an update '
+      'keeps what a replace drops', (tester) async {
+    await pumpHarness(tester);
+
+    // A `Text`, so the field the words were typed into is not counted.
+    Finder toast(String text) =>
+        find.byWidgetPredicate((it) => it is Text && it.data == text);
+    final title = find.widgetWithText(TextField, 'title');
+    final description = find.widgetWithText(TextField, 'description');
+    Future<void> press(String label) async {
+      final button = find.widgetWithText(OutlinedButton, label);
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pump();
+      // Past the content's crossfade, by hand: the toast counts down.
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    await tester.ensureVisible(title);
+    await tester.pump();
+    await tester.enterText(title, 'Composed');
+    await tester.enterText(description, 'A second line');
+    await press('Show');
+    expect(toast('Composed'), findsOneWidget);
+    expect(toast('A second line'), findsOneWidget);
+
+    // An empty description is null, which an update reads as "keep".
+    await tester.enterText(title, 'Updated');
+    await tester.enterText(description, '');
+    await press('Update the last');
+    expect(toast('Composed'), findsNothing);
+    expect(toast('Updated'), findsOneWidget);
+    expect(toast('A second line'), findsOneWidget);
+
+    // A replace takes the content whole, so the description goes.
+    await tester.enterText(title, 'Replaced');
+    await press('Replace the last');
+    expect(toast('Updated'), findsNothing);
+    expect(toast('Replaced'), findsOneWidget);
+    expect(toast('A second line'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
 }

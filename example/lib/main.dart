@@ -6,6 +6,8 @@ import 'package:just_sonner/just_sonner.dart';
 
 import 'flash_adapter.dart';
 
+part 'playground.dart';
+
 void main() => runApp(const ExampleApp());
 
 /// A desktop harness for just_sonner: one button per behaviour that exists, so
@@ -284,6 +286,17 @@ class _PanelState extends State<_Panel> {
     const EdgeInsets.fromLTRB(24, 68, 16, 24):
         'clear a title bar: top 68, right 16',
     const EdgeInsets.fromLTRB(160, 24, 8, 24): 'wide left: left 160, right 8',
+  };
+
+  /// The loading indicators the "Config" section offers, by name, the default
+  /// read off the config.
+  static final _indicators = <String, Widget>{
+    'a thin spinner (the default)': const SonnerConfig().loadingIndicator,
+    'a thick red spinner': const CircularProgressIndicator(
+      strokeWidth: 4,
+      color: Color(0xFFC62828),
+    ),
+    'an hourglass, which settles': const Icon(Icons.hourglass_top),
   };
 
   @override
@@ -1647,6 +1660,7 @@ class _PanelState extends State<_Panel> {
         ),
       ],
     ),
+    _Playground(controller: _toast, onShown: _shown.add),
     _Section(
       title: 'Config',
       issue: 28,
@@ -1712,6 +1726,49 @@ class _PanelState extends State<_Panel> {
           },
           onChanged: (value) =>
               widget.onConfig(config.copyWith(swipeDirections: () => value)),
+        ),
+        _Dropdown<double>(
+          label: 'width',
+          value: config.width,
+          values: const [280, 356, 440],
+          nameOf: (value) =>
+              value == 356 ? '356 (the default)' : '${value.round()}',
+          onChanged: (value) => widget.onConfig(config.copyWith(width: value)),
+        ),
+        _Dropdown<double>(
+          label: 'gap',
+          value: config.gap,
+          values: const [0, 6, 14, 28],
+          nameOf: (value) =>
+              value == 14 ? '14 (the default)' : '${value.round()}',
+          onChanged: (value) => widget.onConfig(config.copyWith(gap: value)),
+        ),
+        _Dropdown<double>(
+          label: 'leadingSize',
+          value: config.leadingSize,
+          values: const [16, 20, 28],
+          nameOf: (value) =>
+              value == 20 ? '20 (the default)' : '${value.round()}',
+          onChanged: (value) =>
+              widget.onConfig(config.copyWith(leadingSize: value)),
+        ),
+        _Dropdown<String>(
+          label: 'loadingIndicator',
+          value: _indicators.keys.firstWhere(
+            (name) => identical(_indicators[name], config.loadingIndicator),
+          ),
+          values: _indicators.keys.toList(),
+          nameOf: (value) => value,
+          onChanged: (value) => widget.onConfig(
+            config.copyWith(loadingIndicator: _indicators[value]),
+          ),
+        ),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('closeButton'),
+          value: config.closeButton,
+          onChanged: (value) =>
+              widget.onConfig(config.copyWith(closeButton: value)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
