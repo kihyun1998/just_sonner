@@ -1,8 +1,8 @@
 ## 0.4.0
 
-- **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast on a
-  centered deck used not to move at all when dragged sideways, since neither left nor right is a
-  way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
+- **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast
+  on a centered deck used not to move at all when dragged sideways, since neither left nor right is
+  a way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
   the toast will not leave on is now damped that way, whichever axis it takes. **`swipeDirections:
   {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
   a drag still moves the toast and springs it back. To take the drag away altogether, make the
