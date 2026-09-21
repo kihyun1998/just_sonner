@@ -298,7 +298,7 @@ draws, or which you `attach` yourself.
 ## A long deck: cap, scrollbar, dismiss all
 
 **The cap.** The expanded deck reaches no further than `config.deckCap` from its edge, and fades out
-over 24 px there. Past it the toasts scroll. The newest toast is never cut.
+over 24 px there. Past it the toasts scroll. The cap never cuts the newest toast short.
 
 ```dart
 toast.config = toast.config.copyWith(
@@ -309,6 +309,11 @@ toast.config = toast.config.copyWith(
 A cap is `DeckCap.pixels(400)`, a share of the window with `DeckCap.share`, or a number of toasts
 with `DeckCap.toasts`. Each takes `fade:`, and `fade: 0` cuts hard. `deckCap: () => null` lets
 the deck reach the whole window.
+
+**Both ends are cut.** Scrolling a deck that overflows pushes toasts past the edge's own `offset`
+too, and they stop being drawn there — so the band you keep clear with `offset` stays clear, title
+bar and all. That end fades over the same `fade`, inward from the `offset` edge, and needs no cap:
+a deck taller than the window is cut there whether you set one or not. Clicks are unaffected.
 
 **The scrollbar.** `DeckScrollbar()` is a draggable thumb outside the deck's right edge, shown all
 the while the deck can scroll. `placement: DeckScrollbarPlacement.inside` puts it over the toasts,

@@ -71,6 +71,10 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   topRight: with 24 on every edge they sit under it. "Clear a title bar" holds the deck 68 from the
   top and still 16 from the right. "Wide left" moves a deck at a left position and leaves a
   centered one in the middle.
+- **The near end of the cut** (#86) — with the title bar on and "Clear a title bar" held, put
+  twenty up and turn the wheel at the deck. The toasts pushed past the top `offset` stop being
+  drawn rather than crossing the title bar; with the cap's `fade` they go out over it, and with
+  `fade: 0`, or no cap at all, they stop hard. Clicks in that band behave as they did before.
 - **Over a dialog** (#20) — mount mode 1 puts the toasts in the root navigator's overlay, so they
   sit above a dialog and its barrier, whether they were shown before it opened or while it is open.
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one

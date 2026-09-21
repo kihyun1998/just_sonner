@@ -165,8 +165,11 @@ class ToastTimeLeft {
 /// How far the expanded deck reaches from its edge before its toasts scroll,
 /// measured in one of three ways.
 ///
-/// The newest toast is never cut: a cap shorter than it reaches to its far
-/// end. A cap that reaches further than the layer allows changes nothing.
+/// The newest toast is never cut short **by the cap**: one shorter than it
+/// reaches to its far end. A cap that reaches further than the layer allows
+/// changes nothing. The deck is also cut at its near end, at the edge's own
+/// `offset`, which is not the cap's doing and happens with no cap at all — a
+/// toast scrolled past that edge is cut there whichever toast it is.
 @immutable
 class DeckCap {
   /// The deck's own height, from the edge's `offset` to its far end.
@@ -200,7 +203,10 @@ class DeckCap {
   /// Set when the cap is given as a number of toasts.
   final int? toasts;
 
-  /// How far before the cut the toasts fade out; 0 cuts them hard.
+  /// How far before each end of the cut the toasts fade out; 0 cuts them
+  /// hard. At the far end it runs inward from the cap; at the near end, inward
+  /// from the edge's own `offset`. With no cap there is no fade, and the near
+  /// end cuts hard.
   final double fade;
 
   @override

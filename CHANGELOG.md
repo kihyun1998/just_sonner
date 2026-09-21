@@ -1,3 +1,13 @@
+## Unreleased
+
+- **A scrolled deck no longer draws over the `offset` band** (#86). The deck is now cut at its
+  **near** end as well as its far one. Scrolling a deck that overflows used to push toasts past the
+  edge's own `offset` and go on painting them there — over the band an app keeps clear for its own
+  title bar, and off the layer. The near end sits at that `offset`, fades over `DeckCap.fade`
+  inward from it, and cuts hard where there is no fade; **it does not need a `deckCap` at all**, so
+  a deck taller than the layer is cut there too. An exiting toast and the backdrop are cut with it.
+  **Clicks are unchanged**: the near cut is paint only.
+
 ## 0.3.1
 
 - **The fanned-out deck can blur what is behind it** (#78). `config.deckBackdrop` is null by
