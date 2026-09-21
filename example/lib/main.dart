@@ -148,6 +148,23 @@ class _PanelState extends State<_Panel> {
 
   SonnerController get _toast => widget.controller;
 
+  /// Whether this panel collapses the app's expansion once the pointer has
+  /// held the deck and let go, and whether it held it at the last change.
+  bool _foldOnLeave = false;
+  bool _wasHeld = false;
+
+  void _foldUpWhenLeft() {
+    final held = _toast.held;
+    if (_foldOnLeave && _wasHeld && !held) _toast.collapse();
+    _wasHeld = held;
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _toast.addListener(_foldUpWhenLeft);
+  }
+
   /// What is drawn behind the deck once it fans out, and every field of
   /// `SonnerConfig.deckBackdrop` that draws it.
   Widget _backdropSection(SonnerConfig config) {
@@ -280,12 +297,16 @@ class _PanelState extends State<_Panel> {
     if (!identical(old.controller, widget.controller)) {
       _stopProgress();
       _shown.clear();
+      old.controller.removeListener(_foldUpWhenLeft);
+      widget.controller.addListener(_foldUpWhenLeft);
+      _wasHeld = false;
     }
   }
 
   @override
   void dispose() {
     _progress?.cancel();
+    _toast.removeListener(_foldUpWhenLeft);
     super.dispose();
   }
 
@@ -1139,6 +1160,49 @@ class _PanelState extends State<_Panel> {
           ),
         ),
         ..._stowControls(config),
+      ],
+    ),
+    _Section(
+      title: 'The app expands the deck',
+      issue: 88,
+      note:
+          'Put five toasts up and press expand(): the deck fans out with no '
+          'pointer, every toast drawn and the controls past its far end, and '
+          'keeps counting down. Only collapse() or the last toast leaving '
+          'ends it. With the switch on, the deck folds up once the pointer '
+          'has been on it and left — the app composing its own rule over '
+          'held.',
+      children: [
+        _Button('Five toasts, 10 s each', () {
+          for (var n = 1; n <= 5; n++) {
+            _show('Toast $n of 5', duration: const Duration(seconds: 10));
+          }
+        }),
+        _Button('The app: expand()', _toast.expand),
+        _Button('The app: collapse()', _toast.collapse),
+        _Button('A notification button: unstow(); expand()', () {
+          _toast.unstow();
+          _toast.expand();
+        }),
+        SwitchListTile(
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Fold up once the pointer has left'),
+          value: _foldOnLeave,
+          onChanged: (on) => setState(() {
+            _foldOnLeave = on;
+            _wasHeld = _toast.held;
+          }),
+        ),
+        ListenableBuilder(
+          listenable: _toast,
+          builder: (context, _) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Text(
+              'expanded: ${_toast.expanded} · held: ${_toast.held}',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
+          ),
+        ),
       ],
     ),
     _Section(

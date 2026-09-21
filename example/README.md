@@ -33,6 +33,11 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   when one is configured. The controls below switch the control between a pill, a header shared
   with Clear all and a chevron, the motion between a slide, a fade and a shrink, and each of the
   three to the app's own builder.
+- **The app expands the deck** (#88) — put five toasts up and press `expand()`: the deck fans out
+  with no pointer, every toast drawn and the controls past its far end, and keeps counting down.
+  Only `collapse()` or the last toast leaving ends it. "unstow(); expand()" is a notification
+  button bringing a stowed deck back fanned out. With the switch on, the deck folds up once the
+  pointer has been on it and left; the line below reads `expanded` and `held` as they change.
 - **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
   that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
   mouse, press or turn the wheel there and it fans out and stops.
