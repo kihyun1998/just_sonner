@@ -1,13 +1,14 @@
 # Deck controls
 
 ## What it is
-The controls the deck carries past its far end — dismiss-all and stow — and the handle
-a stowed deck leaves at the edge. Owns where they sit, when they show, and the bar they
+The controls the deck carries past its far end — dismiss-all and hide — and the motion
+a hidden zone's deck goes by. Owns where they sit, when they show, and the bar they
 share when both ask for one.
 
 ## Governing decisions
 - [spec §12](../../spec.md#12-decision-record) — the dismiss-all control and its look
-  or builder; what it leaves alone; the stow, its motion and its handle.
+  or builder; what it leaves alone; the stow, its motion and its handle, renamed `hide*`
+  by #97, which removed the handle; Hide on an empty open zone.
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -21,20 +22,22 @@ Dismiss-all leaves toasts that are loading or not dismissible, and counts the on
 beyond the window, because **Dismissible** governs what the *user* may dismiss and this
 is the user's control.
 
-Stowing keeps the toasts and their countdowns until the next new toast brings them back.
+Hiding keeps the toasts and their countdowns; what a hidden zone draws is
+[Zone](zone.md)'s.
 
-Both show while the pointer holds the deck **or the app has expanded it**, and neither on
-a stowed deck, which keeps the app's expansion for when it comes back.
+Both show while the pointer holds the deck **or the zone is open**, and neither on a
+hidden deck. The hide control also shows on an open zone with **no** toast, past the
+empty card, so an empty zone can be put away without the app.
 
 ## Code
 `look/deck_dismiss_all.dart` — DeckDismissAllButton, DeckLayers, DeckLayerSlot, RenderDeckLayers
-`look/deck_stow.dart` — DeckStowMotionBox, DeckStowButton, DeckFarEndBar, DeckBarButton, DeckStowHandleButton
+`look/deck_hide.dart` — DeckHideMotionBox, DeckHideButton, DeckFarEndBar, DeckBarButton, farEndControls
 `dismiss_all_view.dart` — DeckDismissAllView, DeckDismissAllBuilder
-`stow_view.dart` — DeckStowView, DeckStowMotionView, DeckStowHandleView
+`hide_view.dart` — DeckHideView, DeckHideMotionView
 
 ## Reference behaviour
 
-**None.** sonner has no clear-all control and no stow —
+**None.** sonner has no clear-all control and no hide —
 [the store](https://github.com/kihyun1998/just_sonner/blob/research/sonner-values/research/sonner-values.md)
 records the absence. Every value here was settled from spikes in the example app.
 
@@ -48,9 +51,10 @@ records the absence. Every value here was settled from spikes in the example app
 - [Pointer hold](pointer-hold.md) — the region must reach them.
 - [Deck layout](deck-layout.md) — the box they are placed against is what it drew.
 - [Configuration](configuration.md) — every look and builder is a config field.
+- [Zone](zone.md) — the hide control's condition reads the zone's state.
 
 ## Known holes / open
 - **Not covered**: a widget test cannot tell that the control was laid out before the
   deck rather than after, since the layer lays out twice in the frame the pointer arrives.
-- The three stow types (`DeckStowControl`, `DeckStowHandle`, `DeckStowMotion`) are named
-  in one §12 row and are the subject of none — they grep as covered.
+- The hide types (`DeckHideControl`, `DeckHideMotion`) are named in one §12 row and are
+  the subject of none — they grep as covered.

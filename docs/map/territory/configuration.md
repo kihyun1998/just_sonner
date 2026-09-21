@@ -24,7 +24,7 @@ the opposite one is where the expanded deck stops. A centered position reads nei
 left nor right.
 
 ## Code
-`config.dart` — SonnerConfig, DeckCap, DeckScrollbar, DeckBackdrop, DeckDismissAll, DeckStowControl, DeckStowMotion, DeckStowHandle, ToastTimeLeft, SonnerPosition
+`config.dart` — SonnerConfig, DeckCap, DeckScrollbar, DeckBackdrop, DeckDismissAll, DeckHideControl, DeckHideMotion, ZoneEmpty, ToastTimeLeft, SonnerPosition
 
 ## Reference behaviour
 sonner's `offset` takes a number or an object of `top`/`right`/`bottom`/`left`, and its
@@ -44,6 +44,6 @@ sonner fills it with its 24 px default, while `EdgeInsets.only` leaves it at 0.
 - [Publishing](publishing.md) — a change to a field's shape is a breaking release.
 
 ## Known holes / open
-- `DeckScrollbarPlacement`, `DeckDismissAllLook`, `DeckStowLook`, `DeckStowMotionLook`
+- `DeckScrollbarPlacement`, `DeckDismissAllLook`, `DeckHideLook`, `DeckHideMotionLook`
   and the four builder typedefs appear in **no** decision row — 15 of the 35 exported
   names are ungoverned, and most of them are here.

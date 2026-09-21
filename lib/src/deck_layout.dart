@@ -68,6 +68,10 @@ import 'toast_fit.dart' show ClipsOverflow;
 /// in that box, and counts toward neither the deck's box nor the scroll's
 /// reach. Where each toast is drawn is reported through [onDrawn].
 ///
+/// A child with the id [empty], if any, is laid out at `config.width` where
+/// the front toast would be collapsed, and taken into the box around the
+/// deck.
+///
 /// It lays out again whenever it is rebuilt, since what moves the toasts is
 /// read from [depth], [lift] and [presence] rather than held by the delegate,
 /// and whenever [scroll] changes.
@@ -95,6 +99,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     this.anchor,
     this.onAnchor,
     this.backdrop,
+    this.empty,
     this.scrollbar,
     this.onCut,
     this.onScrollbar,
@@ -133,6 +138,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   final ({T? id, double distance, double pixels})? Function()? anchor;
   final void Function(T? id, double distance, double pixels)? onAnchor;
   final Object? backdrop;
+  final Object? empty;
   final Object? scrollbar;
   final ValueChanged<DeckCut?>? onCut;
   final ValueChanged<DeckScrollbarGeometry?>? onScrollbar;
@@ -258,6 +264,20 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       onDrawn?.call(toast.id, drawn);
 
       if (inDeck(toast.id)) around = around?.expandToInclude(drawn) ?? drawn;
+    }
+
+    final empty = this.empty;
+    if (empty != null && hasChild(empty)) {
+      final card = layoutChild(
+        empty,
+        BoxConstraints.tightFor(width: config.width),
+      );
+      final top = config.position.isTop
+          ? config.nearOffset
+          : size.height - config.nearOffset - card.height;
+      final drawn = Rect.fromLTWH(left, top, config.width, card.height);
+      positionChild(empty, drawn.topLeft);
+      around = around?.expandToInclude(drawn) ?? drawn;
     }
 
     // Both ends are keyed on where toasts are drawn rather than on the scroll

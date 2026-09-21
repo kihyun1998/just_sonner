@@ -13,7 +13,7 @@ own routes, dialogs and overlays. Two modes, and the z-order rule that follows.
 **Wrapped**: `SonnerHost` in `MaterialApp.builder` sits above the app's `Navigator` for
 the life of the app. **Attached**: the controller is given a navigator key and the
 toasts are drawn in the root navigator's overlay, above its dialogs and pages, from the
-first toast shown.
+first toast shown or the zone first opened.
 
 The difference is not cosmetic and it reaches the caller's widgets: wrapped, a widget in
 a slot finds no `Navigator` and no `Overlay`, so a `Tooltip` throws. `attach` may be
@@ -41,6 +41,7 @@ stop at the boundary where the layer is created.
   territory's failure, and the controller's behaviour there is that one's.
 - [Deck layout](deck-layout.md) — the layer's size is what every distance is measured in.
 - [Example harness](example-harness.md) — the harness presses both modes.
+- [Zone](zone.md) — an open zone with no toast is drawn, so `open()` inserts the host too.
 
 ## Known holes / open
 - **Not covered**: a mode-2 host that is itself first mounted while the app is hidden —

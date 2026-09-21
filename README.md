@@ -9,7 +9,8 @@ ships a default look that a builder can replace whole.
 
 - `toast.show` returns an id; `update`, `dismiss`, `dismissAll` and `promise` take it from there
 - A deck that fans out on hover, with a cap, a scrollbar, and controls to dismiss or hide it all
-- `expand()` to fan the deck out from your app, and `held` to know when the pointer holds it
+- A zone your app opens and closes, toast or no toast, with `held` to know when the pointer holds
+  the deck
 - A backdrop that softens what is behind the deck as it fans out, if you ask for one
 - Swipe to dismiss, a close button, and an action slot you fill
 - Each toast's time left, drawn as a border, a bar or a ring
@@ -162,28 +163,43 @@ does not pause them.
 **`expandByDefault`** fans the deck out with no pointer. It draws only `visibleToasts` and does not
 pause the timers.
 
-**`toast.expand()`** fans the deck out from your app, drawn as the pointer draws it — every toast,
-the ones beyond `visibleToasts` included, with the controls past its far end. It does not pause the
-timers, and only `toast.collapse()` or the last toast leaving ends it. `toast.expanded` says whether
-your app has it expanded. **`toast.held`** says whether the pointer holds the deck, and notifies
-when that changes, so your app decides what ends its expansion:
+**`toast.zone`** is the layer the deck lives in, and it is your app's to open and close. It exists
+whether or not any toast is up, and it is in one of three states, `toast.zone.state`:
+
+- **shown**, to begin with: the deck as above.
+- **open**: every toast fanned out with no pointer, the ones beyond `visibleToasts` included, with
+  the controls past the far end. With no toast it draws a card reading "No notifications". It does
+  not pause the timers, and nothing but `close()` or `hide()` ends it — not the last toast leaving.
+- **hidden**: no deck in its corner. The toasts stay and keep counting down. A new toast shows the
+  deck as a banner, the older toasts in it, until it has gone and the pointer has left.
+
+`toast.zone.open()` opens it and `close()` returns it to where `open()` was called from, so a zone
+opened from hidden hides again. `hide()` and `reveal()` hide it and bring it back.
+**`toast.zone.held`** says whether the pointer holds the deck, and the controller notifies when it
+changes, so your app decides what closes the zone:
 
 ```dart
-// A notification button that brings the deck back fanned out.
-void showToasts() {
-  toast.unstow();
-  toast.expand();
+// A notification button: open the zone, or close it again.
+void toggleToasts() {
+  if (toast.zone.state == ZoneState.open) {
+    toast.zone.close();
+  } else {
+    toast.zone.open();
+  }
 }
 
-// Folds the deck up once the pointer has been on it and left. Call it once.
-void foldUpWhenLeft() {
+// Closes the zone once the pointer has been on it and left. Call it once.
+void closeWhenLeft() {
   var wasHeld = false;
   toast.addListener(() {
-    if (wasHeld && !toast.held) toast.collapse();
-    wasHeld = toast.held;
+    if (wasHeld && !toast.zone.held) toast.zone.close();
+    wasHeld = toast.zone.held;
   });
 }
 ```
+
+The zone holds toasts that are still up, never ones that have gone: it is not a notification
+history.
 
 **Swipe** a toast to dismiss it, in the directions its position names: `bottomRight` takes down and
 right, `topCenter` up only. A drag any other way moves the toast a little and springs it back.
@@ -322,9 +338,9 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `deckBackdrop` | null | What is drawn behind the fanned-out deck; null draws nothing |
 | `scrollbar` | `DeckScrollbar()` | Null draws none |
 | `dismissAll` | `DeckDismissAll()` | Null draws none |
-| `stowControl` | `DeckStowControl()` | Null draws none |
-| `stowMotion` | `DeckStowMotion()` | A slide; not nullable |
-| `stowHandle` | null | Nothing left at the edge |
+| `hideControl` | `DeckHideControl()` | Null draws none |
+| `hideMotion` | `DeckHideMotion()` | A slide; not nullable |
+| `zoneEmpty` | `ZoneEmpty()` | What an open zone with no toast draws; null draws nothing |
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.
@@ -355,7 +371,7 @@ the while the deck can scroll. `placement: DeckScrollbarPlacement.inside` puts i
 pointer.
 
 **Dismiss all.** `DeckDismissAll()` draws a pill reading "Clear all" past the deck's far end. It
-shows while the pointer holds the deck or your app has expanded it, and at least two toasts the
+shows while the pointer holds the deck or the zone is open, and at least two toasts the
 user may dismiss are up.
 
 - Pressing it leaves loading toasts and `dismissible: false` ones. `toast.dismissAll()` still
@@ -407,29 +423,29 @@ reaches your app** — what the backdrop draws over claims no pointer the deck d
 `blur: 0` draws no filter and `dim: 0` no cover, so the default softens what is behind the deck
 without darkening it.
 
-## Hiding the deck
+## Hiding the zone
 
-`toast.stow()` puts the deck out of sight, keeping its toasts. They count down as they would on
-screen. The next **new** toast brings the deck back with whatever is left, as does
-`toast.unstow()`. An update, a replace, and a `promise` state landing on a toast already on screen
-do not. `toast.stowed` says whether it is hidden.
+`toast.zone.hide()` takes the deck out of sight, keeping its toasts. They count down as they would
+on screen. A **new** toast shows the deck as a banner until it has gone and the pointer has left;
+an update, a replace, and a `promise` state landing on a toast already up do not.
+`toast.zone.reveal()` or `open()` brings the deck back.
 
-- **`stowControl`**, `DeckStowControl()` by default, is a pill reading "Hide". It shows while the
-  pointer holds the deck or your app has expanded it. Its looks are `pill`, `header` and `icon`,
-  and `builder:` draws your own from a `DeckStowView`. Where either control asks for a header look,
-  the two share one bar.
-- **`stowMotion`**, `DeckStowMotion()` by default, slides the deck past its edge. Its looks are
+- **`hideControl`**, `DeckHideControl()` by default, is a pill reading "Hide". It shows while the
+  pointer holds a deck with a toast on it, and whenever the zone is open, toast or no toast. On a
+  banner it takes the banner down. Its looks are `pill`, `header` and `icon`, and `builder:` draws
+  your own from a `DeckHideView`. Where either control asks for a header look, the two share one
+  bar.
+- **`hideMotion`**, `DeckHideMotion()` by default, slides the deck past its edge. Its looks are
   `slide`, `fade` and `shrink`, and `builder:` takes the deck out of sight your own way. It is not
-  nullable: an app that calls `stow()` needs a motion whether or not a control is drawn.
-- **`stowHandle`** is null by default. `DeckStowHandle()` leaves a button at the edge reading how
-  many toasts are hidden, which brings them back. `countLabel:` words it, and `builder:` draws your
-  own from a `DeckStowHandleView`.
+  nullable: an app that calls `hide()` needs a motion whether or not a control is drawn.
+- **`zoneEmpty`**, `ZoneEmpty()` by default, is the card an open zone with no toast draws, reading
+  `label:`. `builder:` draws your own from a `ZoneEmptyView`, and null draws nothing.
 
 ```dart
 toast.config = toast.config.copyWith(
-  stowControl: () => const DeckStowControl(look: DeckStowLook.icon),
-  stowMotion: const DeckStowMotion(look: DeckStowMotionLook.fade),
-  stowHandle: () => const DeckStowHandle(),
+  hideControl: () => const DeckHideControl(look: DeckHideLook.icon),
+  hideMotion: const DeckHideMotion(look: DeckHideMotionLook.fade),
+  zoneEmpty: () => const ZoneEmpty(label: 'All caught up'),
 );
 ```
 
@@ -492,7 +508,7 @@ dismissed. Pump by hand, as above.
 an indefinite `CircularProgressIndicator`, which never stops scheduling frames, like any spinner in
 a Flutter test. Pump by hand, or pass an indicator that ends.
 
-**The deck's controls are on by default.** `deckCap`, `dismissAll` and `stowControl` change where a
+**The deck's controls are on by default.** `deckCap`, `dismissAll` and `hideControl` change where a
 hovered deck takes the pointer and what it draws. A test that relies on the deck taking a click
 anywhere down the window's side, or pins the deck's own geometry, sets them to null.
 

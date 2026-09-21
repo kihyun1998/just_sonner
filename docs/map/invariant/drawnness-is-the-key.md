@@ -14,14 +14,15 @@ because every other proxy — the scroll overflowing, the window index, the expa
 — is already false while the toast is still visible.
 
 **The two sites do not call each other.** The cut reads the drawn reach and the drawn
-near edge inside the layout delegate; the frame gate reads `_Slot.hidden` and the stow
-in the host. Neither knows the other exists, which is why no territory-to-territory edge
+near edge inside the layout delegate; the frame gate reads `_Slot.hidden` and the hidden
+zone in the host. Neither knows the other exists, which is why no territory-to-territory edge
 could have carried this fact.
 
 ## Territories it holds in
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — both ends of the cut are reported from drawn positions.
 - [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn.
 - [Default look](../territory/default-look.md) — the time left stands still while nothing draws it, and comes back on the number.
+- [Zone](../territory/zone.md) — a hidden zone draws no deck unless a banner is up, and the frame gate reads that.
 
 ## What a violation looks like
 Something keyed on the proxy is right while the deck is still and wrong for the length

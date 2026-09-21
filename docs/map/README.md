@@ -32,7 +32,8 @@ call each other, and #86 reused it rather than finding it a third time.
 
 - **35 exported names. 15 of them appear in no decision row at all** — not in a title,
   not in a body. Most are in [Configuration](territory/configuration.md).
-- **`DeckStowControl`, `DeckStowHandle` and `DeckStowMotion` are named in one row and
+- **`DeckStowControl`, `DeckStowHandle` and `DeckStowMotion`** (since #97 `DeckHideControl`
+  and `DeckHideMotion`, the handle removed) **are named in one row and
   are the subject of none.** They grep as covered.
 - **`host.dart` is 25.5% of `lib/src` and imports 16 of its 21 files.** It is not one
   territory; it is several that the file tree cannot name, which is why these notes are
@@ -69,7 +70,7 @@ call each other, and #86 reused it rather than finding it a third time.
 ## Coverage, and what an absent note means
 
 This pass covers the whole repository: twelve territories and four invariants, written
-together. It is not a pilot.
+together, and [Zone](territory/zone.md) added by #97. It is not a pilot.
 
 **An absent note is a gap, not a correct state** — with one exception. Where an area
 exists only as a plan, its roster is the tracker and no note is owed; that is the case
@@ -91,6 +92,7 @@ Territories: [Toast lifetime](territory/toast-lifetime.md) ·
 [Deck controls](territory/deck-controls.md) ·
 [Backdrop](territory/backdrop.md) ·
 [Swipe](territory/swipe.md) ·
+[Zone](territory/zone.md) ·
 [Mounting](territory/mounting.md) ·
 [Default look](territory/default-look.md) ·
 [Configuration](territory/configuration.md) ·

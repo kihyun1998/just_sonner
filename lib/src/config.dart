@@ -2,7 +2,8 @@ import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import 'dismiss_all_view.dart';
-import 'stow_view.dart';
+import 'hide_view.dart';
+import 'zone_view.dart';
 import 'toast_view.dart' show ToastBuilder;
 
 /// Where on the screen the toasts sit.
@@ -387,8 +388,8 @@ enum DeckDismissAllLook {
 }
 
 /// The control at the expanded deck's far end that dismisses every toast the
-/// user may dismiss. It shows while the pointer holds the deck or the app has
-/// expanded it, and at least two such toasts are on screen.
+/// user may dismiss. It shows while the pointer holds the deck or the zone is
+/// open, and at least two such toasts are on screen.
 @immutable
 class DeckDismissAll {
   const DeckDismissAll({
@@ -436,8 +437,8 @@ class DeckDismissAll {
   int get hashCode => Object.hash(look, label, countLabel, builder);
 }
 
-/// The built-in looks of the [DeckStowControl].
-enum DeckStowLook {
+/// The built-in looks of the [DeckHideControl].
+enum DeckHideLook {
   /// A small rounded button reading its label.
   pill,
 
@@ -450,38 +451,39 @@ enum DeckStowLook {
   icon,
 }
 
-/// The control at the expanded deck's far end that stows the deck. It shows
-/// while the pointer holds the deck or the app has expanded it, and at least
-/// one toast is on screen, whether or not the user may dismiss it.
+/// The control at the expanded deck's far end that hides the zone. It shows
+/// while the pointer holds the deck with at least one toast on screen, whether
+/// or not the user may dismiss it, and whenever the zone is open, toast or no
+/// toast.
 @immutable
-class DeckStowControl {
-  const DeckStowControl({
-    this.look = DeckStowLook.pill,
+class DeckHideControl {
+  const DeckHideControl({
+    this.look = DeckHideLook.pill,
     this.label = 'Hide',
     this.countLabel,
     this.builder,
   });
 
-  final DeckStowLook look;
+  final DeckHideLook look;
 
   /// What the button reads, and what an icon is labelled for semantics.
   final String label;
 
-  /// What a [DeckStowLook.header] reads for the count. Null reads
+  /// What a [DeckHideLook.header] reads for the count. Null reads
   /// `'$count notifications'`.
   final String Function(int count)? countLabel;
 
   /// Draws the control in place of [look].
-  final DeckStowBuilder? builder;
+  final DeckHideBuilder? builder;
 
   /// A copy with the fields given changed. [countLabel] and [builder] are
   /// given as functions, since null is a value each can take.
-  DeckStowControl copyWith({
-    DeckStowLook? look,
+  DeckHideControl copyWith({
+    DeckHideLook? look,
     String? label,
     ValueGetter<String Function(int count)?>? countLabel,
-    ValueGetter<DeckStowBuilder?>? builder,
-  }) => DeckStowControl(
+    ValueGetter<DeckHideBuilder?>? builder,
+  }) => DeckHideControl(
     look: look ?? this.look,
     label: label ?? this.label,
     countLabel: countLabel == null ? this.countLabel : countLabel(),
@@ -490,7 +492,7 @@ class DeckStowControl {
 
   @override
   bool operator ==(Object other) =>
-      other is DeckStowControl &&
+      other is DeckHideControl &&
       other.look == look &&
       other.label == label &&
       other.countLabel == countLabel &&
@@ -501,7 +503,7 @@ class DeckStowControl {
 }
 
 /// The built-in motions a deck goes out of sight by.
-enum DeckStowMotionLook {
+enum DeckHideMotionLook {
   /// Past the edge it sits at, fading.
   slide,
 
@@ -512,68 +514,65 @@ enum DeckStowMotionLook {
   shrink,
 }
 
-/// How the deck goes out of sight, and comes back the same way reversed. It
-/// is not nullable: an app calling `stow()` needs a motion whether or not a
-/// [DeckStowControl] is configured.
+/// How the deck goes out of sight as the zone is hidden, and comes back the
+/// same way reversed. It is not nullable: an app calling `zone.hide()` needs a
+/// motion whether or not a [DeckHideControl] is configured.
 @immutable
-class DeckStowMotion {
-  const DeckStowMotion({this.look = DeckStowMotionLook.slide, this.builder});
+class DeckHideMotion {
+  const DeckHideMotion({this.look = DeckHideMotionLook.slide, this.builder});
 
-  final DeckStowMotionLook look;
+  final DeckHideMotionLook look;
 
-  /// Takes the deck out of sight in place of [look]. A stowed deck takes no
+  /// Takes the deck out of sight in place of [look]. A hidden deck takes no
   /// pointer whatever a builder draws.
-  final DeckStowMotionBuilder? builder;
+  final DeckHideMotionBuilder? builder;
 
   /// A copy with the fields given changed. [builder] is given as a function,
   /// since null is a value it can take.
-  DeckStowMotion copyWith({
-    DeckStowMotionLook? look,
-    ValueGetter<DeckStowMotionBuilder?>? builder,
-  }) => DeckStowMotion(
+  DeckHideMotion copyWith({
+    DeckHideMotionLook? look,
+    ValueGetter<DeckHideMotionBuilder?>? builder,
+  }) => DeckHideMotion(
     look: look ?? this.look,
     builder: builder == null ? this.builder : builder(),
   );
 
   @override
   bool operator ==(Object other) =>
-      other is DeckStowMotion && other.look == look && other.builder == builder;
+      other is DeckHideMotion && other.look == look && other.builder == builder;
 
   @override
   int get hashCode => Object.hash(look, builder);
 }
 
-/// What a stowed deck leaves at its edge: a button reading how many toasts it
-/// is keeping, which brings them back. It takes the pointer only while the
-/// deck is stowed.
+/// What an open zone draws while no toast is alive: a card reading [label],
+/// where the front toast would be.
 @immutable
-class DeckStowHandle {
-  const DeckStowHandle({this.countLabel, this.builder});
+class ZoneEmpty {
+  const ZoneEmpty({this.label = 'No notifications', this.builder});
 
-  /// What the button reads. Null reads `'$count hidden'`.
-  final String Function(int count)? countLabel;
+  /// What the card reads.
+  final String label;
 
-  /// Draws the handle in place of the built-in look.
-  final DeckStowHandleBuilder? builder;
+  /// Draws the card in place of the built-in one.
+  final ZoneEmptyBuilder? builder;
 
-  /// A copy with the fields given changed. Both are given as functions, since
-  /// null is a value each can take.
-  DeckStowHandle copyWith({
-    ValueGetter<String Function(int count)?>? countLabel,
-    ValueGetter<DeckStowHandleBuilder?>? builder,
-  }) => DeckStowHandle(
-    countLabel: countLabel == null ? this.countLabel : countLabel(),
+  /// A copy with the fields given changed. [builder] is given as a function,
+  /// since null is a value it can take.
+  ZoneEmpty copyWith({
+    String? label,
+    ValueGetter<ZoneEmptyBuilder?>? builder,
+  }) => ZoneEmpty(
+    label: label ?? this.label,
     builder: builder == null ? this.builder : builder(),
   );
 
   @override
   bool operator ==(Object other) =>
-      other is DeckStowHandle &&
-      other.countLabel == countLabel &&
-      other.builder == builder;
+      other is ZoneEmpty && other.label == label && other.builder == builder;
 
   @override
-  int get hashCode => Object.hash(countLabel, builder);
+  int get hashCode => Object.hash(label, builder);
 }
 
 /// The value of [SonnerConfig.configDuration].
@@ -622,9 +621,9 @@ class SonnerConfig {
     this.deckBackdrop,
     this.scrollbar = const DeckScrollbar(),
     this.dismissAll = const DeckDismissAll(),
-    this.stowControl = const DeckStowControl(),
-    this.stowMotion = const DeckStowMotion(),
-    this.stowHandle,
+    this.hideControl = const DeckHideControl(),
+    this.hideMotion = const DeckHideMotion(),
+    this.zoneEmpty = const ZoneEmpty(),
   });
 
   final SonnerPosition position;
@@ -643,9 +642,9 @@ class SonnerConfig {
   final EdgeInsets offset;
 
   /// How many toasts the deck draws while the pointer is away from it and the
-  /// app has not expanded it. The rest are kept, undrawn, until the ones in
-  /// front leave, the pointer comes over the deck or the app expands it, each
-  /// of which draws every toast; they count down all the while.
+  /// zone is not open. The rest are kept, undrawn, until the ones in front
+  /// leave, the pointer comes over the deck or the app opens the zone, each of
+  /// which draws every toast; they count down all the while.
   final int visibleToasts;
 
   /// How long a toast shown without a `duration` stays: every such toast is a
@@ -715,15 +714,15 @@ class SonnerConfig {
   /// expanded deck's far end. Null draws none.
   final DeckDismissAll? dismissAll;
 
-  /// The control that stows the deck, or null for none. The app can stow
-  /// through the controller either way.
-  final DeckStowControl? stowControl;
+  /// The control that hides the zone, or null for none. The app can hide it
+  /// through `zone.hide()` either way.
+  final DeckHideControl? hideControl;
 
   /// How the deck goes out of sight and comes back.
-  final DeckStowMotion stowMotion;
+  final DeckHideMotion hideMotion;
 
-  /// What a stowed deck leaves at its edge, or null for nothing.
-  final DeckStowHandle? stowHandle;
+  /// What an open zone draws while no toast is alive, or null for nothing.
+  final ZoneEmpty? zoneEmpty;
 
   /// A copy with the fields given changed.
   ///
@@ -751,9 +750,9 @@ class SonnerConfig {
     ValueGetter<DeckBackdrop?>? deckBackdrop,
     ValueGetter<DeckScrollbar?>? scrollbar,
     ValueGetter<DeckDismissAll?>? dismissAll,
-    ValueGetter<DeckStowControl?>? stowControl,
-    DeckStowMotion? stowMotion,
-    ValueGetter<DeckStowHandle?>? stowHandle,
+    ValueGetter<DeckHideControl?>? hideControl,
+    DeckHideMotion? hideMotion,
+    ValueGetter<ZoneEmpty?>? zoneEmpty,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -774,9 +773,9 @@ class SonnerConfig {
     deckBackdrop: deckBackdrop == null ? this.deckBackdrop : deckBackdrop(),
     scrollbar: scrollbar == null ? this.scrollbar : scrollbar(),
     dismissAll: dismissAll == null ? this.dismissAll : dismissAll(),
-    stowControl: stowControl == null ? this.stowControl : stowControl(),
-    stowMotion: stowMotion ?? this.stowMotion,
-    stowHandle: stowHandle == null ? this.stowHandle : stowHandle(),
+    hideControl: hideControl == null ? this.hideControl : hideControl(),
+    hideMotion: hideMotion ?? this.hideMotion,
+    zoneEmpty: zoneEmpty == null ? this.zoneEmpty : zoneEmpty(),
   );
 
   @override
@@ -799,9 +798,9 @@ class SonnerConfig {
       other.deckBackdrop == deckBackdrop &&
       other.scrollbar == scrollbar &&
       other.dismissAll == dismissAll &&
-      other.stowControl == stowControl &&
-      other.stowMotion == stowMotion &&
-      other.stowHandle == stowHandle;
+      other.hideControl == hideControl &&
+      other.hideMotion == hideMotion &&
+      other.zoneEmpty == zoneEmpty;
 
   @override
   int get hashCode => Object.hash(
@@ -822,8 +821,8 @@ class SonnerConfig {
     deckBackdrop,
     scrollbar,
     dismissAll,
-    stowControl,
-    stowMotion,
-    stowHandle,
+    hideControl,
+    hideMotion,
+    zoneEmpty,
   );
 }

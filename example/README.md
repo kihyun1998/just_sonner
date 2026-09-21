@@ -27,17 +27,12 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
   end dismisses every toast you may dismiss; a loading toast stays. With twenty up it waits at the
   cap while they scroll. The controls below switch it to a header, a Korean label and count, or
   the app's own builder.
-- **Stow the deck** (#60) — put toasts up, rest the pointer on the deck and press Hide: the deck
-  goes, and its toasts stay and keep counting down. Only a new toast brings it back — the
-  "Loading, done in 5 s" button shows an update leaving it away — or `unstow()`, or the handle
-  when one is configured. The controls below switch the control between a pill, a header shared
-  with Clear all and a chevron, the motion between a slide, a fade and a shrink, and each of the
-  three to the app's own builder.
-- **The app expands the deck** (#88) — put five toasts up and press `expand()`: the deck fans out
-  with no pointer, every toast drawn and the controls past its far end, and keeps counting down.
-  Only `collapse()` or the last toast leaving ends it. "unstow(); expand()" is a notification
-  button bringing a stowed deck back fanned out. With the switch on, the deck folds up once the
-  pointer has been on it and left; the line below reads `expanded` and `held` as they change.
+- **The zone** (#97) — `open()` fans every toast out with no pointer, and with none draws the
+  empty card; `close()` goes back to where `open()` came from. Press Hide, or `hide()`, and the deck
+  goes with its toasts kept and counting; "In 3 s: a new toast" then shows as a banner until it has
+  gone and the pointer has left, while "Loading, done in 5 s" shows an update putting up none. With
+  the switch on, an open zone closes once the pointer has been on it and left. The controls below
+  pick the hide control, the motion and the empty card, each with a builder.
 - **A still pointer** (#39) — press a button and leave the mouse where toasts appear. A toast
   that lands under a pointer nobody moves counts down and goes with the deck collapsed; move the
   mouse, press or turn the wheel there and it fans out and stops.

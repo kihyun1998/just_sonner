@@ -38,7 +38,7 @@ abstract interface class ToastView {
   /// for it, so a widget test pumps by hand rather than with `pumpAndSettle`,
   /// which would run the toast's timer out.
   ///
-  /// It stands still while nothing draws it — a stowed deck, or every counting
+  /// It stands still while nothing draws it — a hidden deck, or every counting
   /// toast beyond `visibleToasts` — and comes back on the countdown's own
   /// number rather than where it stood, since the countdown ran on without it.
   Animation<double>? get timeLeft;

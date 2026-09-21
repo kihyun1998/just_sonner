@@ -25,7 +25,7 @@ theme role. `config.dart` is the one exception and stays out: it imports `materi
 a default widget (`CircularProgressIndicator`) and draws nothing itself, so putting it
 under a directory named for drawing would make the name lie.
 
-Still undecided, and deliberately left so: whether the fifteen engine files split
+Still undecided, and deliberately left so: whether the sixteen engine files split
 further, how `test/` is laid out now that one file is three quarters of the suite, and
 whether this repo wants CI.
 

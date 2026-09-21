@@ -20,12 +20,28 @@
   {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
   a drag still moves the toast and springs it back. To take the drag away altogether, make the
   toast not `dismissible`.
-- **An app can fan the deck out** (#88). `expand()` / `collapse()` / `expanded` on the controller
-  draw the deck as the pointer does — every toast, the ones beyond `visibleToasts` included, and the
-  controls past its far end — without pausing the timers. Nothing but `collapse()` and the last
-  toast leaving ends it; a stowed deck comes back expanded, so `unstow(); expand();` brings a deck
-  back fanned out. **`held`** says whether the pointer holds the deck and notifies when it changes,
-  so the app decides when to fold up. `expandByDefault` is unchanged.
+- **Breaking: the zone replaces stowing** (#97). `toast.zone` is the layer the deck lives in, your
+  app's to open and close, and it exists with no toast up. Its state is **shown**, **open** or
+  **hidden**:
+  - `zone.open()` fans every toast out with no pointer, the ones beyond `visibleToasts` included,
+    with the controls past the far end, and pauses nothing. With no toast it draws a card reading
+    "No notifications" (`config.zoneEmpty`, null for none, or a builder of your own). The last toast
+    leaving does not close it. `zone.close()` returns to the state `open()` was called from, so a
+    zone opened from hidden hides again — a title-bar notification button needs no other code.
+  - `zone.hide()` takes the deck out of sight with its toasts kept and counting down, as `stow()`
+    did — but a new toast no longer brings the deck back: it shows the deck as a **banner**, the
+    older toasts in it, until it has gone and the pointer has left, and the zone stays hidden. An
+    empty zone stays hidden too. `zone.reveal()` brings it back.
+  - `zone.held` says whether the pointer holds the deck, and the controller notifies when it
+    changes, so your app decides what closes the zone.
+
+  Removed: `stow()`, `unstow()` and `stowed`, and the edge handle — `stowHandle`, `DeckStowHandle`,
+  `DeckStowHandleView` and `DeckStowHandleBuilder`; the entrance to a hidden zone is your app's own
+  control. Renamed: `stowControl` → `hideControl` and `stowMotion` → `hideMotion`, with
+  `DeckStowControl`, `DeckStowLook`, `DeckStowView`, `DeckStowBuilder`, `DeckStowMotion`,
+  `DeckStowMotionLook`, `DeckStowMotionView` and `DeckStowMotionBuilder` → `DeckHide…`; a view's
+  `stow` is `hide`, and a motion view's `stowed` is `hidden`. The Hide control now also shows on an
+  open zone with no toast, and on a banner it takes the banner down.
 - **A scrolled deck no longer draws over the `offset` band** (#86). The deck is now cut at its
   **near** end as well as its far one. Scrolling a deck that overflows used to push toasts past the
   edge's own `offset` and go on painting them there — over the band an app keeps clear for its own

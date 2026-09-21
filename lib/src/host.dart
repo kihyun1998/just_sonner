@@ -28,8 +28,9 @@ import 'deck_cut.dart';
 import 'look/deck_dismiss_all.dart';
 import 'deck_layout.dart';
 import 'look/deck_scrollbar.dart';
-import 'look/deck_stow.dart';
-import 'stow_view.dart';
+import 'look/deck_hide.dart';
+import 'look/zone_empty.dart';
+import 'hide_view.dart';
 import 'swipe.dart';
 import 'time_left.dart';
 import 'toast_id.dart';
@@ -111,14 +112,14 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// either holds.
   bool get _interacting => _hovered || _pressed.isNotEmpty;
 
-  /// Whether the app has expanded the deck, while it is drawn: a stowed deck
-  /// keeps the controller's expansion for when it comes back, and draws none.
-  bool get _appExpanded => _controller.expanded && !_stowShown;
+  /// Whether the zone is open, while it is drawn.
+  bool get _zoneOpen =>
+      _controller.zone.state == ZoneState.open && !_hiddenShown;
 
   /// Whether every toast is drawn, fanned out and taking taps, with the
   /// controls past the far end: while the pointer holds the deck, or while
-  /// the app has expanded it.
-  bool get _everyToast => _interacting || _appExpanded;
+  /// the zone is open.
+  bool get _everyToast => _interacting || _zoneOpen;
 
   /// Where the deck is, for hit testing: the toasts in the window, or every
   /// toast while they are all drawn, and those exiting, and the gaps
@@ -129,13 +130,15 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   late final _Eased _expand = _Eased(this, _expandTarget);
 
   double get _expandTarget =>
-      _interacting || _controller.expanded || _controller.config.expandByDefault
+      _interacting ||
+          _controller.zone.state == ZoneState.open ||
+          _controller.config.expandByDefault
       ? 1
       : 0;
 
   /// How far the toasts beyond the window are drawn, from 0 hidden to 1 in
-  /// full: they are while the pointer is over the deck, or the app has
-  /// expanded it.
+  /// full: they are while the pointer is over the deck, or the zone is
+  /// open.
   late final _Eased _reveal = _Eased(this, _revealTarget);
 
   double get _revealTarget => _everyToast ? 1 : 0;
@@ -188,27 +191,34 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// the config assigned last puts them, from 0 to 1.
   late final _Eased _glide = _Eased(this, 1);
 
-  /// How far the deck is out of sight, from 0 drawn to 1 stowed.
-  late final _Eased _stow = _Eased(this, 0);
+  /// How far the deck is out of sight, from 0 drawn to 1 hidden.
+  late final _Eased _hide = _Eased(this, 0);
 
-  /// How far out of sight the deck is drawn, for the motion and the handle.
-  final _stowed = _Driven(0);
+  /// How far out of sight the deck is drawn, for the motion.
+  final _hidden = _Driven(0);
 
-  /// Whether the deck is drawn stowed. It outlasts the controller's stow once
-  /// no toast is left, so the last one timing out does not bring an empty
-  /// deck back into sight.
-  bool _stowShown = false;
+  /// Whether the deck is drawn hidden: the zone is hidden with no banner up.
+  bool _hiddenShown = false;
 
-  /// How far the deck reached from its edge when it was stowed, which the
+  /// How far the deck reached from its edge when it was hidden, which the
   /// slide carries it past.
-  double _stowReach = 0;
+  double _hideReach = 0;
 
-  static const _stowDuration = Duration(milliseconds: 300);
+  static const _hideDuration = Duration(milliseconds: 300);
+
+  /// How far the empty card is drawn, from 0 gone to 1 in full.
+  late final _Eased _empty = _Eased(this, 0);
+
+  /// [_empty] as an animation, for the card.
+  final _emptyShown = _Driven(0);
 
   @override
   void initState() {
     super.initState();
     _config = _controller.config;
+    _hiddenShown = _hiddenNow;
+    _hide.jump(_hiddenShown ? 1 : 0);
+    _empty.jump(_emptyTarget);
     _controller.addListener(_onToastsChanged);
     watchLifecycle(_controller);
     _scroll.addListener(_showScrollbar);
@@ -229,10 +239,12 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     releaseDeck(previous, this);
     // Another controller's toasts are another deck, and start at the edge,
-    // stowed or drawn as that controller has them rather than easing there.
+    // hidden or drawn as that controller's zone has them rather than easing
+    // there.
     _config = _controller.config;
-    _stowShown = _controller.stowed;
-    _stow.jump(_stowShown ? 1 : 0);
+    _hiddenShown = _hiddenNow;
+    _hide.jump(_hiddenShown ? 1 : 0);
+    _empty.jump(_emptyTarget);
     _glide.jump(1);
     _resetScroll();
     _publishHold();
@@ -253,7 +265,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _expand.dispose();
     _reveal.dispose();
     _glide.dispose();
-    _stow.dispose();
+    _hide.dispose();
+    _empty.dispose();
     _unscroll.dispose();
     _scroll
       ..removeListener(_showScrollbar)
@@ -289,30 +302,42 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       }
     }
     _followConfig();
-    _followStow();
+    _followZone();
     // An assigned config can move where the deck is headed.
     _retarget();
     setState(_sync);
   }
 
-  /// Starts the deck on its way out of sight, or back, when the controller
-  /// has stowed it or brought it back.
+  /// Whether the zone draws no deck: hidden, with no banner up.
+  bool get _hiddenNow =>
+      _controller.zone.state == ZoneState.hidden && !zoneBanner(_controller);
+
+  /// 1 while the zone is open with no toast alive and a card to draw.
+  double get _emptyTarget =>
+      _controller.zone.state == ZoneState.open &&
+          _controller.config.zoneEmpty != null &&
+          toastsOf(_controller).isEmpty
+      ? 1
+      : 0;
+
+  /// Starts the deck on its way out of sight, or back, when the zone has been
+  /// hidden, a banner has gone up or down, or the zone has been brought back.
   ///
-  /// Stowing lets go of the pointer: nothing drawn is hovered, so the hold the
+  /// Hiding lets go of the pointer: nothing drawn is hovered, so the hold the
   /// pointer had on the timers goes, and a swipe under way is called off —
   /// its toast is no longer under the hand dragging it.
-  void _followStow() {
-    final live = toastsOf(_controller).isNotEmpty;
-    final stow = _controller.stowed || (_stowShown && !live);
-    if (stow == _stowShown) return;
-    _stowShown = stow;
-    if (!stow) {
-      _stow.retarget(0, _stowDuration);
+  void _followZone() {
+    _empty.retarget(_emptyTarget, _enterDuration);
+    final hide = _hiddenNow;
+    if (hide == _hiddenShown) return;
+    _hiddenShown = hide;
+    if (!hide) {
+      _hide.retarget(0, _hideDuration);
       return;
     }
     final box = context.findRenderObject() as RenderBox?;
     final height = (box?.hasSize ?? false) ? box!.size.height : 0.0;
-    _stowReach = _controller.config.position.isTop
+    _hideReach = _controller.config.position.isTop
         ? _deck.bottom
         : height - _deck.top;
     for (final slot in _slots) {
@@ -325,7 +350,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _setHovered(_moved.clear);
     if (was && !_interacting) _unscrollDeck();
     _publishHold();
-    _stow.retarget(1, _stowDuration);
+    _hide.retarget(1, _hideDuration);
   }
 
   /// Starts the toasts on their way to a config assigned since the last
@@ -580,15 +605,15 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   ///
   /// The countdown is the controller's and runs on a timer of its own, so a
   /// toast nobody can see runs out exactly when it would have on screen; only
-  /// the drawn value needs frames. A stowed deck draws none of its toasts, and
+  /// the drawn value needs frames. A hidden deck draws none of its toasts, and
   /// a deck whose counting toasts are all beyond its window draws none of the
   /// values, so neither is worth a frame.
   ///
   /// Read from what the deck last drew with, not from a second answer to the
-  /// same question: [_Slot.hidden] and [_stowed] are the numbers [_buildDeck]
+  /// same question: [_Slot.hidden] and [_hidden] are the numbers [_buildDeck]
   /// itself lays the toasts out by.
   bool get _timeLeftDrawn {
-    if (_stowShown && _stowed.value >= 1) return false;
+    if (_hiddenShown && _hidden.value >= 1) return false;
     return _slots.any((slot) => _counting(slot) && !slot.hidden);
   }
 
@@ -700,7 +725,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         _reveal,
         _unscroll,
         _glide,
-        _stow,
+        _hide,
+        _empty,
         for (final slot in _slots) ...[slot.animation, slot.resize, slot.swipe],
       ]),
       builder: (context, _) => _buildDeck(context, config),
@@ -772,60 +798,36 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     ];
     final dismissAll = config.dismissAll;
     _dismissAllExpansion.value = expansion;
-    _stowed.value = _stow.value;
+    _hidden.value = _hide.value;
+    _emptyShown.value = _empty.value;
     // With what is drawn decided, take the time left up again where a toast
     // counting down has come back into sight.
     _startTimeLeftIfNeeded();
-    // Every toast on screen is one the stow would put away, whether or not
-    // the user may dismiss it.
+    // Every toast on screen is one hiding would take out of sight, whether or
+    // not the user may dismiss it.
     final live = _slots.where((slot) => !slot.exiting).length;
     final control = farEndControls(
       config: config,
       expansion: _dismissAllExpansion,
-      // A stowed deck draws neither: stowing let the pointer go, and the
-      // app's expansion waits for the deck to come back.
-      showStow: live >= 1 && everyToast,
+      // A hidden deck draws neither: hiding let the pointer go. An open zone
+      // draws the hide control with no toast too, beside its empty card.
+      showHide: everyToast && (live >= 1 || _zoneOpen),
       showDismissAll:
           dismissAll != null && dismissible.length >= 2 && everyToast,
-      stowCount: live,
+      hideCount: live,
       dismissCount: dismissible.length,
-      onStow: _controller.stow,
+      onHide: _controller.zone.hide,
       onDismissAll: () {
         for (final slot in dismissible) {
           _controller.dismiss(slot.id);
         }
       },
     );
-    final handle = config.stowHandle;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        _buildLayer(context, config, isTop, expansion, interacting, control),
-        if (handle != null && _stow.value > 0 && live > 0)
-          Positioned.fill(
-            child: IgnorePointer(
-              ignoring: !_stowShown,
-              child: Padding(
-                padding: config.cornerOffset,
-                child: Align(
-                  alignment: DeckStowMotionBox.cornerOf(config.position),
-                  child: DeckStowHandleButton(
-                    handle: handle,
-                    count: live,
-                    onUnstow: _controller.unstow,
-                    shown: _stowed,
-                    position: config.position,
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+    return _buildLayer(context, config, isTop, expansion, interacting, control);
   }
 
   /// The deck itself, with the controls past its far end, drawn as far out of
-  /// sight as it is stowed and taking no pointer once it is.
+  /// sight as it is hidden and taking no pointer once it is.
   Widget _buildLayer(
     BuildContext context,
     SonnerConfig config,
@@ -843,7 +845,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         if (event is PointerScrollEvent) _scrollFromControl(event);
       },
       child: _DeckRegion(
-        deck: () => _stowShown ? Rect.zero : _deck,
+        deck: () => _hiddenShown ? Rect.zero : _deck,
         onEnter: (event) => _setPointer(event.device, over: true),
         onExit: (event) => _setPointer(event.device, over: false),
         onHover: (event) => _movePointer(event.device),
@@ -859,13 +861,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             _ => false,
           },
           child: IgnorePointer(
-            ignoring: _stowShown,
-            child: DeckStowMotionBox(
-              motion: config.stowMotion,
-              view: DeckStowMotionView(
-                stowed: _stowed,
+            ignoring: _hiddenShown,
+            child: DeckHideMotionBox(
+              motion: config.hideMotion,
+              view: DeckHideMotionView(
+                hidden: _hidden,
                 position: config.position,
-                reach: _stowReach,
+                reach: _hideReach,
               ),
               deck: DeckLayers(
                 at: _dismissAllAt,
@@ -952,6 +954,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                               _anchorPixels = pixels;
                             },
                             backdrop: _backdrop,
+                            empty: _emptyId,
                             scrollbar: _scrollbarId,
                             onCut: (cut) => _cut.value = cut,
                             onScrollbar: (thumb) => _thumb = thumb,
@@ -960,6 +963,15 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                           ),
                           children: [
                             LayoutId(id: _backdrop, child: const DeckHitBox()),
+                            if (config.zoneEmpty case final empty?
+                                when _empty.value > 0)
+                              LayoutId(
+                                id: _emptyId,
+                                child: ZoneEmptyCard(
+                                  empty: empty,
+                                  shown: _emptyShown,
+                                ),
+                              ),
                             // Oldest first: children paint in order, so the newest is on top.
                             for (final slot in _slots.reversed)
                               LayoutId(
@@ -997,6 +1009,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   /// The layout id of the scrollbar's thumb.
   static const _scrollbarId = #scrollbar;
+
+  /// The layout id of the card an open zone with no toast draws.
+  static const _emptyId = #empty;
 
   /// Where the dismiss-all control is placed, as the deck's layout last
   /// reported, and its size as it last laid itself out.
