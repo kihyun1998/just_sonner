@@ -27,8 +27,8 @@ into null, and so into a toast with no timer, with nothing to warn of it. That i
 is public. A duration that is not positive asserts; in release it keeps the toast. Resuming skips the partial tick, because a pause released just before a tick
 would otherwise subtract a whole one.
 
-Nothing the app does to the deck pauses: neither `stow()` nor `expand()`. A deck left
-expanded with nobody on it counts down.
+Nothing the app does to the zone pauses: neither hiding nor opening it. A deck left
+open with nobody on it counts down, and so does a hidden one.
 
 `update` changes the fields passed; `show` at a live id **replaces**, taking the
 content whole and keeping only the place. Both count down again. A dismissed toast is
@@ -56,6 +56,8 @@ states outright, so anything resting on them carries forward as needing confirma
 - [Deck layout](deck-layout.md) — presence drives every placement, and it comes from here.
 - [Default look](default-look.md) — the time left is the countdown's own number filled in.
 - [Configuration](configuration.md) — `duration`, `visibleToasts` and the defaults live there.
+- [Zone](zone.md) — a new toast puts a banner up on a hidden zone, and an update or a
+  replace does not.
 
 ## Known holes / open
 - **Nothing caps the list.** A persistent toast can never leave by the tick, and every

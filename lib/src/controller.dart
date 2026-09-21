@@ -95,88 +95,51 @@ class SonnerController extends ChangeNotifier {
 
   bool get _paused => _appHidden || _holders.isNotEmpty;
 
-  /// Whether the deck is stowed: out of sight and out of the pointer's reach,
-  /// its toasts kept and counting down. A new toast brings it back.
-  bool get stowed => _stowed;
-  bool _stowed = false;
+  /// The layer the deck lives in, which the app opens and closes. It exists
+  /// whether or not any toast is alive.
+  late final SonnerZone zone = SonnerZone._(this);
 
-  /// Puts the deck out of sight, keeping its toasts. They count down as they
-  /// would on screen, and one whose time runs out while stowed is gone when
-  /// the deck comes back.
-  ///
-  /// The next **new** toast brings the deck back with whatever is left of
-  /// them, as does [unstow]. An update, a replace and a `promise` state
-  /// landing on a toast on screen do not. With no toast on screen there is
-  /// nothing to stow, and this does nothing.
-  void stow() {
-    assert(ChangeNotifier.debugAssertNotDisposed(this));
-    if (_stowed || _toasts.isEmpty) return;
-    _stowed = true;
+  ZoneState _zoneState = ZoneState.shown;
+
+  /// The state [SonnerZone.close] returns to.
+  ZoneState _beforeOpen = ZoneState.shown;
+
+  /// The toasts shown since the zone was hidden that are still alive.
+  final Set<ToastRecord> _arrivals = {};
+
+  /// Whether a hidden zone draws its deck for [_arrivals]: from the first of
+  /// them until every one has gone and the pointer has let go of the deck.
+  bool _banner = false;
+
+  void _setZone(ZoneState state) {
+    _zoneState = state;
+    _arrivals.clear();
+    _banner = false;
     notifyListeners();
   }
 
-  /// Brings a stowed deck back with the toasts it kept. Does nothing when the
-  /// deck is not stowed.
-  void unstow() {
-    assert(ChangeNotifier.debugAssertNotDisposed(this));
-    if (!_stowed) return;
-    _stowed = false;
-    notifyListeners();
+  /// Takes the banner down once nothing keeps it up.
+  void _endBannerIfDone() {
+    _arrivals.removeWhere((record) => !_toasts.contains(record));
+    if (_banner && _arrivals.isEmpty && !_held) _banner = false;
   }
 
-  /// Whether the app has expanded the deck with [expand]: fanned out with
-  /// every toast drawn, as the pointer over it draws it. Reports the app's own
-  /// expansion only — not the pointer's, and not `expandByDefault`'s.
-  bool get expanded => _expanded;
-  bool _expanded = false;
-
-  /// Fans the deck out and draws every toast, the ones beyond `visibleToasts`
-  /// included, as the pointer over it does, until [collapse] or until no toast
-  /// is left. It does not pause the timers, and nothing else ends it: an app
-  /// that wants the deck to fold up once the pointer has left it watches
-  /// [held]. With no toast on screen there is nothing to expand, and this does
-  /// nothing.
-  ///
-  /// A stowed deck stays stowed, and comes back expanded on [unstow].
-  void expand() {
-    assert(ChangeNotifier.debugAssertNotDisposed(this));
-    if (_expanded || _toasts.isEmpty) return;
-    _expanded = true;
-    notifyListeners();
-  }
-
-  /// Ends an expansion [expand] began. The deck stays fanned out while the
-  /// pointer still holds it. Does nothing when the app has not expanded it.
-  void collapse() {
-    assert(ChangeNotifier.debugAssertNotDisposed(this));
-    if (!_expanded) return;
-    _expanded = false;
-    notifyListeners();
-  }
-
-  /// Whether the pointer holds the deck: it has moved, pressed or turned the
-  /// wheel over the deck and not left since, or a press that started on the
-  /// deck is still down, wherever it has been carried. The deck is fanned out
-  /// and every timer stops while it holds. False while the deck is stowed,
-  /// since a stowed deck takes no pointer.
-  ///
-  /// Listeners are notified when it changes, so an app can end its own
-  /// [expand] once the pointer has left the deck.
-  bool get held => _deckHolders.isNotEmpty;
+  /// Whether the pointer holds the deck, for [SonnerZone.held].
+  bool get _held => _deckHolders.isNotEmpty;
 
   /// The hosts whose deck the pointer holds.
   final Set<Object> _deckHolders = {};
 
-  /// [held] as listeners were last told it.
+  /// [_held] as listeners were last told it.
   bool _heldNotified = false;
 
   bool _disposed = false;
 
   /// Applies [change] to what holds the deck and tells the listeners when
-  /// [held] has changed, at the end of the frame when it changes during one.
+  /// [_held] has changed, at the end of the frame when it changes during one.
   void _setHeld(VoidCallback change) {
     change();
-    if (held == _heldNotified) return;
+    if (_held == _heldNotified) return;
     if (SchedulerBinding.instance.schedulerPhase !=
         SchedulerPhase.persistentCallbacks) {
       _notifyHeld();
@@ -189,17 +152,10 @@ class SonnerController extends ChangeNotifier {
   }
 
   void _notifyHeld() {
-    if (_disposed || held == _heldNotified) return;
-    _heldNotified = held;
+    if (_disposed || _held == _heldNotified) return;
+    _heldNotified = _held;
+    _endBannerIfDone();
     notifyListeners();
-  }
-
-  /// Ends the stow and the app's expansion once no toast is left, so an empty
-  /// deck is never stowed or expanded.
-  void _unstowIfEmpty() {
-    if (_toasts.isNotEmpty) return;
-    _stowed = false;
-    _expanded = false;
   }
 
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
@@ -293,8 +249,10 @@ class SonnerController extends ChangeNotifier {
     } else {
       final record = ToastRecord(id, state, lifetime);
       _toasts.insert(0, record);
-      // A new toast brings a stowed deck back; a replace, above, does not.
-      _stowed = false;
+      if (_zoneState == ZoneState.hidden) {
+        _arrivals.add(record);
+        _banner = true;
+      }
       _startCountdown(record);
     }
     notifyListeners();
@@ -451,7 +409,7 @@ class SonnerController extends ChangeNotifier {
     final index = _toasts.indexWhere((record) => record.id == id);
     if (index < 0) return;
     _toasts.removeAt(index);
-    _unstowIfEmpty();
+    _endBannerIfDone();
     _stopTickerIfIdle();
     notifyListeners();
   }
@@ -460,7 +418,7 @@ class SonnerController extends ChangeNotifier {
   void dismissAll() {
     if (_toasts.isEmpty) return;
     _toasts.clear();
-    _unstowIfEmpty();
+    _endBannerIfDone();
     _stopTickerIfIdle();
     notifyListeners();
   }
@@ -528,7 +486,7 @@ class SonnerController extends ChangeNotifier {
       return remaining != null && remaining <= Duration.zero;
     });
     if (_toasts.length == before) return;
-    _unstowIfEmpty();
+    _endBannerIfDone();
     _stopTickerIfIdle();
     notifyListeners();
   }
@@ -608,7 +566,7 @@ void holdTimers(SonnerController controller, Object holder) =>
 void releaseTimers(SonnerController controller, Object holder) =>
     controller._setPaused(() => controller._holders.remove(holder));
 
-/// Reports that the pointer holds the deck [holder] draws, for [held].
+/// Reports that the pointer holds the deck [holder] draws, for [SonnerZone.held].
 /// Holding twice with one holder holds once. For the host; not exported.
 void holdDeck(SonnerController controller, Object holder) =>
     controller._setHeld(() => controller._deckHolders.add(holder));
@@ -617,6 +575,11 @@ void holdDeck(SonnerController controller, Object holder) =>
 /// nothing is ignored.
 void releaseDeck(SonnerController controller, Object holder) =>
     controller._setHeld(() => controller._deckHolders.remove(holder));
+
+/// Whether [controller]'s hidden zone draws its deck for the toasts shown
+/// since it was hidden. For the host; not exported.
+bool zoneBanner(SonnerController controller) =>
+    controller._zoneState == ZoneState.hidden && controller._banner;
 
 /// Makes [controller] pause its timers while the app is `hidden`, `paused` or
 /// `detached`. For the host, which has a binding; not exported.
@@ -665,4 +628,102 @@ final class ToastRecord {
   /// Whether the next tick passes this toast by, because it started counting
   /// between two ticks.
   bool skipTick = false;
+}
+
+/// What a [SonnerZone] draws.
+enum ZoneState {
+  /// No deck in its corner. The toasts stay alive and keep counting down, and
+  /// a new one shows as a banner until it has gone.
+  hidden,
+
+  /// The collapsed deck, which the pointer fans out while it holds it. With no
+  /// toast, nothing is drawn.
+  shown,
+
+  /// Every live toast fanned out, whatever the pointer does, until the app
+  /// closes it. With no toast, the empty card is drawn.
+  open,
+}
+
+/// The layer a controller's deck lives in: `toast.zone`. The app opens and
+/// closes it, and it exists whether or not any toast is alive. It holds live
+/// toasts only, never ones that have gone.
+///
+/// Listeners are the controller's: it notifies when [state] or [held]
+/// changes.
+class SonnerZone {
+  SonnerZone._(this._controller);
+
+  final SonnerController _controller;
+
+  /// What the zone draws.
+  ZoneState get state => _controller._zoneState;
+
+  /// Whether the pointer holds the deck: it has moved, pressed or turned the
+  /// wheel over the deck and not left since, or a press that started on the
+  /// deck is still down, wherever it has been carried. The deck is fanned out
+  /// and every timer stops while it holds. False while nothing is drawn.
+  bool get held => _controller._held;
+
+  /// Fans out every live toast, and draws the empty card when there is none,
+  /// until [close], or [hide]. It does not pause the timers. Does nothing when
+  /// already open.
+  ///
+  /// Once attached with no navigator to draw in, it is an error in debug and
+  /// does nothing in release, as a new toast is.
+  void open() {
+    final controller = _controller;
+    assert(ChangeNotifier.debugAssertNotDisposed(controller));
+    if (controller._zoneState == ZoneState.open) return;
+    final mount = controller._mount;
+    final problem = mount?.problem();
+    if (problem != null) {
+      if (kDebugMode) throw StateError(problem);
+      debugPrint('just_sonner: $problem The zone was not opened.');
+      return;
+    }
+    controller._beforeOpen = controller._zoneState;
+    controller._setZone(ZoneState.open);
+    if (mount != null) {
+      controller._watchLifecycle();
+      mount.raise();
+    }
+  }
+
+  /// Returns an open zone to the state [open] was called from: a zone opened
+  /// from hidden folds up and hides again. The deck stays fanned out while the
+  /// pointer still holds it. Does nothing when the zone is not open.
+  void close() {
+    final controller = _controller;
+    assert(ChangeNotifier.debugAssertNotDisposed(controller));
+    if (controller._zoneState != ZoneState.open) return;
+    controller._setZone(controller._beforeOpen);
+  }
+
+  /// Takes the deck out of its corner, keeping its toasts, which count down as
+  /// they would on screen. An open zone goes to hidden, and a banner a hidden
+  /// zone has up is taken down.
+  void hide() {
+    final controller = _controller;
+    assert(ChangeNotifier.debugAssertNotDisposed(controller));
+    if (controller._zoneState == ZoneState.hidden && !controller._banner) {
+      return;
+    }
+    controller._setZone(ZoneState.hidden);
+  }
+
+  /// Brings a hidden zone back to shown. On an open zone it changes nothing on
+  /// screen, and [close] then returns to shown.
+  void reveal() {
+    final controller = _controller;
+    assert(ChangeNotifier.debugAssertNotDisposed(controller));
+    switch (controller._zoneState) {
+      case ZoneState.hidden:
+        controller._setZone(ZoneState.shown);
+      case ZoneState.open:
+        controller._beforeOpen = ZoneState.shown;
+      case ZoneState.shown:
+        break;
+    }
+  }
 }

@@ -11,18 +11,18 @@ toasts off screen entirely — and what keeps them out of sight is the bound, no
 screen. Anything that transforms the deck brings that off-screen content back on.
 
 The sites are unconnected by construction: the bound lives in the cut's render object,
-the transforms live in the stow motion and in whatever the **app** wraps the host in,
+the transforms live in the hide motion and in whatever the **app** wraps the host in,
 and the backdrop's filter sits outside the cut for a different reason and is caught by
 the same fact. None of them calls another; they meet only in the compositor.
 
 ## Territories it holds in
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — the clip is this territory's, at both ends.
-- [Deck controls](../territory/deck-controls.md) — the stow motion transforms the whole deck.
+- [Deck controls](../territory/deck-controls.md) — the hide motion transforms the whole deck.
 - [Backdrop](../territory/backdrop.md) — a save layer between the filter and the app defeats the filter.
 
 ## What a violation looks like
 Nothing at rest, and a flash during a motion: content that is off screen appears for the
-first half of a stow and disappears as the motion settles. Or the inverse — a filter that
+first half of hiding and disappears as the motion settles. Or the inverse — a filter that
 worked on a short deck draws nothing on a long one, because the layer it was put inside
 grew a mask.
 

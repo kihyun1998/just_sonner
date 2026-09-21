@@ -148,14 +148,14 @@ class _PanelState extends State<_Panel> {
 
   SonnerController get _toast => widget.controller;
 
-  /// Whether this panel collapses the app's expansion once the pointer has
-  /// held the deck and let go, and whether it held it at the last change.
+  /// Whether this panel closes the zone once the pointer has held the deck
+  /// and let go, and whether it held it at the last change.
   bool _foldOnLeave = false;
   bool _wasHeld = false;
 
   void _foldUpWhenLeft() {
-    final held = _toast.held;
-    if (_foldOnLeave && _wasHeld && !held) _toast.collapse();
+    final held = _toast.zone.held;
+    if (_foldOnLeave && _wasHeld && !held) _toast.zone.close();
     _wasHeld = held;
   }
 
@@ -548,16 +548,14 @@ class _PanelState extends State<_Panel> {
 
   static String _koreanCount(int count) => '알림 $count개';
 
-  static String _koreanHidden(int count) => '$count개 숨김';
-
-  /// An app's own stow control, handed the count and a way to stow.
-  static Widget _ownStow(BuildContext context, DeckStowView view) =>
+  /// An app's own hide control, handed the count and a way to hide.
+  static Widget _ownHide(BuildContext context, DeckHideView view) =>
       FadeTransition(
         opacity: view.expansion,
         child: Material(
           color: Colors.transparent,
           child: TextButton.icon(
-            onPressed: view.stow,
+            onPressed: view.hide,
             icon: const Icon(Icons.visibility_off_outlined, size: 18),
             label: Text('Put ${view.count} away'),
           ),
@@ -565,14 +563,14 @@ class _PanelState extends State<_Panel> {
       );
 
   /// An app's own motion: the deck spins a quarter turn as it goes.
-  static Widget _ownStowMotion(
+  static Widget _ownHideMotion(
     BuildContext context,
-    DeckStowMotionView view,
+    DeckHideMotionView view,
     Widget deck,
   ) => Opacity(
-    opacity: 1 - view.stowed.value,
+    opacity: 1 - view.hidden.value,
     child: Transform.rotate(
-      angle: view.stowed.value * 0.25,
+      angle: view.hidden.value * 0.25,
       alignment: view.position.isTop
           ? Alignment.topCenter
           : Alignment.bottomCenter,
@@ -580,46 +578,47 @@ class _PanelState extends State<_Panel> {
     ),
   );
 
-  /// An app's own handle, handed the count and a way to bring the deck back.
-  static Widget _ownStowHandle(BuildContext context, DeckStowHandleView view) =>
+  /// An app's own empty card, fading in with the zone.
+  static Widget _ownEmpty(BuildContext context, ZoneEmptyView view) =>
       FadeTransition(
         opacity: view.shown,
-        child: FloatingActionButton.extended(
-          onPressed: view.unstow,
-          icon: const Icon(Icons.inbox_outlined),
-          label: Text('${view.count} waiting'),
+        child: const Card(
+          child: ListTile(
+            leading: Icon(Icons.inbox_outlined),
+            title: Text('All caught up'),
+          ),
         ),
       );
 
-  /// A control for each field of `config.stowControl`, `stowMotion` and
-  /// `stowHandle`, and one to take each of the two nullable ones away.
-  List<Widget> _stowControls(SonnerConfig config) {
-    final control = config.stowControl;
-    final motion = config.stowMotion;
-    final handle = config.stowHandle;
-    void setControl(DeckStowControl? value) =>
-        widget.onConfig(config.copyWith(stowControl: () => value));
-    void setMotion(DeckStowMotion value) =>
-        widget.onConfig(config.copyWith(stowMotion: value));
-    void setHandle(DeckStowHandle? value) =>
-        widget.onConfig(config.copyWith(stowHandle: () => value));
+  /// A control for each field of `config.hideControl`, `hideMotion` and
+  /// `zoneEmpty`, and one to take each of the two nullable ones away.
+  List<Widget> _hideControls(SonnerConfig config) {
+    final control = config.hideControl;
+    final motion = config.hideMotion;
+    final empty = config.zoneEmpty;
+    void setControl(DeckHideControl? value) =>
+        widget.onConfig(config.copyWith(hideControl: () => value));
+    void setMotion(DeckHideMotion value) =>
+        widget.onConfig(config.copyWith(hideMotion: value));
+    void setEmpty(ZoneEmpty? value) =>
+        widget.onConfig(config.copyWith(zoneEmpty: () => value));
     return [
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('stowControl'),
+        title: const Text('hideControl'),
         value: control != null,
-        onChanged: (on) => setControl(on ? const DeckStowControl() : null),
+        onChanged: (on) => setControl(on ? const DeckHideControl() : null),
       ),
       if (control != null) ...[
-        _Dropdown<DeckStowLook>(
-          label: 'look (stowControl)',
+        _Dropdown<DeckHideLook>(
+          label: 'look (hideControl)',
           value: control.look,
-          values: DeckStowLook.values,
+          values: DeckHideLook.values,
           nameOf: (value) => value.name,
           onChanged: (value) => setControl(control.copyWith(look: value)),
         ),
         _Dropdown<String>(
-          label: 'label (stowControl)',
+          label: 'label (hideControl)',
           value: control.label,
           values: {'Hide', '숨기기', control.label}.toList(),
           nameOf: (value) => value,
@@ -638,13 +637,13 @@ class _PanelState extends State<_Panel> {
           title: const Text("builder: the app's own control"),
           value: control.builder != null,
           onChanged: (on) =>
-              setControl(control.copyWith(builder: () => on ? _ownStow : null)),
+              setControl(control.copyWith(builder: () => on ? _ownHide : null)),
         ),
       ],
-      _Dropdown<DeckStowMotionLook>(
-        label: 'look (stowMotion)',
+      _Dropdown<DeckHideMotionLook>(
+        label: 'look (hideMotion)',
         value: motion.look,
-        values: DeckStowMotionLook.values,
+        values: DeckHideMotionLook.values,
         nameOf: (value) => value.name,
         onChanged: (value) => setMotion(motion.copyWith(look: value)),
       ),
@@ -653,31 +652,29 @@ class _PanelState extends State<_Panel> {
         title: const Text("builder: the app's own motion (a quarter turn)"),
         value: motion.builder != null,
         onChanged: (on) => setMotion(
-          motion.copyWith(builder: () => on ? _ownStowMotion : null),
+          motion.copyWith(builder: () => on ? _ownHideMotion : null),
         ),
       ),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
-        title: const Text('stowHandle'),
-        value: handle != null,
-        onChanged: (on) => setHandle(on ? const DeckStowHandle() : null),
+        title: const Text('zoneEmpty'),
+        value: empty != null,
+        onChanged: (on) => setEmpty(on ? const ZoneEmpty() : null),
       ),
-      if (handle != null) ...[
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          title: const Text("countLabel: 'N개 숨김'"),
-          value: handle.countLabel != null,
-          onChanged: (on) => setHandle(
-            handle.copyWith(countLabel: () => on ? _koreanHidden : null),
-          ),
+      if (empty != null) ...[
+        _Dropdown<String>(
+          label: 'label (zoneEmpty)',
+          value: empty.label,
+          values: {'No notifications', '알림 없음', empty.label}.toList(),
+          nameOf: (value) => value,
+          onChanged: (value) => setEmpty(empty.copyWith(label: value)),
         ),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text("builder: the app's own handle"),
-          value: handle.builder != null,
-          onChanged: (on) => setHandle(
-            handle.copyWith(builder: () => on ? _ownStowHandle : null),
-          ),
+          title: const Text("builder: the app's own empty card"),
+          value: empty.builder != null,
+          onChanged: (on) =>
+              setEmpty(empty.copyWith(builder: () => on ? _ownEmpty : null)),
         ),
       ],
     ];
@@ -1105,27 +1102,30 @@ class _PanelState extends State<_Panel> {
       ],
     ),
     _Section(
-      title: 'Stow the deck',
-      issue: 60,
+      title: 'The zone',
+      issue: 97,
       note:
-          'Put toasts up, rest the pointer on the deck and press Hide: the '
-          'deck goes, its toasts stay and keep counting down. Only a new '
-          'toast brings it back — an update does not — or the app, or the '
-          'handle when one is configured. Once no toast is left, the stow '
-          'ends.',
+          'The layer the deck lives in, and the app opens and closes it, toast '
+          'or no toast. open() fans every toast out with no pointer and keeps '
+          'counting down; with none it draws the empty card. close() goes '
+          'back to where open() came from. Hide, or hide(), takes the deck '
+          'away with its toasts kept and counting; a new toast then shows as '
+          'a banner until it has gone and the pointer has left. With the '
+          'switch on, an open zone closes once the pointer has been on it and '
+          'left — the app composing its own rule over held.',
       children: [
+        _Button('Five toasts, 10 s each', () {
+          for (var n = 1; n <= 5; n++) {
+            _show('Toast $n of 5', duration: const Duration(seconds: 10));
+          }
+        }),
         _Button('Three staying and one loading', () {
           for (var i = 1; i <= 3; i++) {
             _show('Kept $i of 3', duration: null);
           }
           _show('Saving…', isLoading: true);
         }),
-        _Button('Four counting: 4 s, 6 s, 8 s, 10 s', () {
-          for (final seconds in const [10, 8, 6, 4]) {
-            _show('$seconds seconds', duration: Duration(seconds: seconds));
-          }
-        }),
-        _Button('Loading, done in 5 s (an update: the deck stays away)', () {
+        _Button('Loading, done in 5 s (an update: no banner)', () {
           final id = _show('Uploading…', isLoading: true);
           Timer(const Duration(seconds: 5), () {
             if (mounted) {
@@ -1138,55 +1138,22 @@ class _PanelState extends State<_Panel> {
             }
           });
         }),
-        _Button('In 3 s: a new toast (it brings the deck back)', () {
+        _Button('In 3 s: a new toast (a banner while hidden)', () {
           Timer(const Duration(seconds: 3), () {
-            if (mounted) _show('A new one', description: 'The deck is back.');
+            if (mounted) _show('A new one', description: 'Arrived meanwhile.');
           });
         }),
-        _Button('The app: stow()', _toast.stow),
-        _Button('The app: unstow()', _toast.unstow),
-        ListenableBuilder(
-          listenable: _toast,
-          builder: (context, _) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Text(
-              'stowed: ${_toast.stowed}',
-              style: Theme.of(context).textTheme.labelLarge,
-            ),
-          ),
-        ),
-        ..._stowControls(config),
-      ],
-    ),
-    _Section(
-      title: 'The app expands the deck',
-      issue: 88,
-      note:
-          'Put five toasts up and press expand(): the deck fans out with no '
-          'pointer, every toast drawn and the controls past its far end, and '
-          'keeps counting down. Only collapse() or the last toast leaving '
-          'ends it. With the switch on, the deck folds up once the pointer '
-          'has been on it and left — the app composing its own rule over '
-          'held.',
-      children: [
-        _Button('Five toasts, 10 s each', () {
-          for (var n = 1; n <= 5; n++) {
-            _show('Toast $n of 5', duration: const Duration(seconds: 10));
-          }
-        }),
-        _Button('The app: expand()', _toast.expand),
-        _Button('The app: collapse()', _toast.collapse),
-        _Button('A notification button: unstow(); expand()', () {
-          _toast.unstow();
-          _toast.expand();
-        }),
+        _Button('The app: open()', _toast.zone.open),
+        _Button('The app: close()', _toast.zone.close),
+        _Button('The app: hide()', _toast.zone.hide),
+        _Button('The app: reveal()', _toast.zone.reveal),
         SwitchListTile(
           contentPadding: EdgeInsets.zero,
-          title: const Text('Fold up once the pointer has left'),
+          title: const Text('Close once the pointer has left'),
           value: _foldOnLeave,
           onChanged: (on) => setState(() {
             _foldOnLeave = on;
-            _wasHeld = _toast.held;
+            _wasHeld = _toast.zone.held;
           }),
         ),
         ListenableBuilder(
@@ -1194,11 +1161,12 @@ class _PanelState extends State<_Panel> {
           builder: (context, _) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
-              'expanded: ${_toast.expanded} · held: ${_toast.held}',
+              'state: ${_toast.zone.state.name} · held: ${_toast.zone.held}',
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ),
         ),
+        ..._hideControls(config),
       ],
     ),
     _Section(

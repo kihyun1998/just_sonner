@@ -45,6 +45,35 @@ void main() {
     ),
   );
 
+  testWidgets('attached, opening the zone with no toast draws the empty card '
+      'in the root overlay', (tester) async {
+    controller.attach(navigatorKey);
+    await tester.pumpWidget(app());
+
+    controller.zone.open();
+    await tester.pumpAndSettle();
+
+    expect(find.text('No notifications'), findsOneWidget);
+    expect(
+      find.ancestor(
+        of: find.text('No notifications'),
+        matching: find.byType(Overlay),
+      ),
+      findsOneWidget,
+    );
+    controller.zone.close();
+    await cleanUp(tester);
+  });
+
+  testWidgets('attached with no navigator to draw in, opening the zone is an '
+      'error and leaves it as it was', (tester) async {
+    controller.attach(navigatorKey);
+
+    expect(controller.zone.open, throwsStateError);
+    expect(controller.zone.state, ZoneState.shown);
+    controller.dispose();
+  });
+
   testWidgets(
     'attached before the app is built, a toast is drawn in the root overlay',
     (tester) async {

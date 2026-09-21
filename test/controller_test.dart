@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
-    show holdTimers, releaseTimers, toastsOf;
+    show holdDeck, holdTimers, releaseDeck, releaseTimers, toastsOf, zoneBanner;
 
 void main() {
   group('countdown', () {
@@ -1348,50 +1348,155 @@ void main() {
     expect(notifications, 1);
   });
 
-  group('stow', () {
-    test('stow puts the deck away and notifies; unstow brings it back; '
-        'neither does anything twice', () {
+  group('zone', () {
+    setUp(TestWidgetsFlutterBinding.ensureInitialized);
+
+    test('open, close, hide and reveal each notify once, and do nothing '
+        'twice', () {
       fakeAsync((async) {
         final controller = SonnerController();
+        final zone = controller.zone;
         var notifications = 0;
         controller.addListener(() => notifications++);
-        expect(controller.stowed, isFalse);
+        expect(zone.state, ZoneState.shown);
 
-        controller.stow();
-        expect(controller.stowed, isFalse, reason: 'nothing to stow');
-        expect(notifications, 0);
+        zone.open();
+        expect(zone.state, ZoneState.open);
+        zone.open();
+        expect(notifications, 1, reason: 'already open');
 
-        controller.show('Saved', duration: null);
-        notifications = 0;
-        controller.stow();
-        expect(controller.stowed, isTrue);
-        expect(notifications, 1);
-        controller.stow();
-        expect(notifications, 1, reason: 'already stowed');
+        zone.close();
+        expect(zone.state, ZoneState.shown);
+        zone.close();
+        expect(notifications, 2, reason: 'not open');
 
-        controller.unstow();
-        expect(controller.stowed, isFalse);
-        expect(notifications, 2);
-        controller.unstow();
-        expect(notifications, 2, reason: 'not stowed');
+        zone.hide();
+        expect(zone.state, ZoneState.hidden);
+        zone.hide();
+        expect(notifications, 3, reason: 'already hidden');
+
+        zone.reveal();
+        expect(zone.state, ZoneState.shown);
+        zone.reveal();
+        expect(notifications, 4, reason: 'already shown');
+        expect(identical(controller.zone, zone), isTrue);
         controller.dispose();
       });
     });
 
-    test('a new toast brings the deck back; an update, a replace and a '
-        'promise state on a toast on screen do not', () {
+    test('the state does not depend on how many toasts are alive', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+
+        zone.open();
+        expect(zone.state, ZoneState.open, reason: 'opened with no toast');
+        final id = controller.show('One', duration: null);
+        controller.dismiss(id);
+        expect(zone.state, ZoneState.open, reason: 'kept by its last toast');
+
+        zone.hide();
+        controller.show('Two', duration: const Duration(seconds: 1));
+        async.elapse(const Duration(milliseconds: 1200));
+        expect(toastsOf(controller), isEmpty);
+        expect(zone.state, ZoneState.hidden, reason: 'kept by its last toast');
+        controller.dispose();
+      });
+    });
+
+    test('close returns to the state open was called from, and hide sends an '
+        'open zone to hidden', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+
+        zone.hide();
+        zone.open();
+        zone.close();
+        expect(zone.state, ZoneState.hidden);
+
+        zone.reveal();
+        zone.open();
+        zone.hide();
+        expect(zone.state, ZoneState.hidden);
+        zone.close();
+        expect(zone.state, ZoneState.hidden, reason: 'not open any more');
+        controller.dispose();
+      });
+    });
+
+    test('reveal on an open zone makes close return to shown', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+        var notifications = 0;
+        zone.hide();
+        zone.open();
+        controller.addListener(() => notifications++);
+
+        zone.reveal();
+        expect(zone.state, ZoneState.open);
+        expect(notifications, 0, reason: 'nothing on screen changes');
+        zone.close();
+        expect(zone.state, ZoneState.shown);
+        controller.dispose();
+      });
+    });
+
+    test('a new toast while hidden puts up a banner, leaving the state '
+        'hidden, until it has gone', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+        final older = controller.show('Older', duration: null);
+        zone.hide();
+        expect(zoneBanner(controller), isFalse);
+
+        final arrived = controller.show('Arrived', duration: null);
+        expect(zone.state, ZoneState.hidden);
+        expect(zoneBanner(controller), isTrue);
+
+        controller.dismiss(older);
+        expect(zoneBanner(controller), isTrue, reason: 'it came before');
+        var notifications = 0;
+        controller.addListener(() => notifications++);
+        controller.dismiss(arrived);
+        expect(zoneBanner(controller), isFalse);
+        expect(notifications, 1);
+        expect(zone.state, ZoneState.hidden);
+        controller.dispose();
+      });
+    });
+
+    test('a banner that runs out under the pointer waits for it to leave', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        controller.zone.hide();
+        controller.show('Arrived', duration: const Duration(seconds: 1));
+        holdDeck(controller, #host);
+
+        async.elapse(const Duration(milliseconds: 1200));
+        expect(toastsOf(controller), isEmpty);
+        expect(zoneBanner(controller), isTrue, reason: 'still held');
+
+        releaseDeck(controller, #host);
+        expect(zoneBanner(controller), isFalse);
+        controller.dispose();
+      });
+    });
+
+    test('an update, a replace and a promise state on a toast on screen put '
+        'up no banner', () {
       fakeAsync((async) {
         final controller = SonnerController();
         const kept = ToastId('kept');
         controller.show('Kept', id: kept, duration: null);
+        controller.zone.hide();
 
-        controller.stow();
-        expect(controller.update(kept, title: 'Kept again'), isTrue);
-        expect(controller.stowed, isTrue, reason: 'an update');
-
+        controller.update(kept, title: 'Kept again');
+        expect(zoneBanner(controller), isFalse, reason: 'an update');
         controller.show('Replaced', id: kept, duration: null);
-        expect(controller.stowed, isTrue, reason: 'a replace');
-
+        expect(zoneBanner(controller), isFalse, reason: 'a replace');
         final completer = Completer<String>();
         final promised = controller.promise(
           completer.future,
@@ -1401,183 +1506,70 @@ void main() {
           error: (error) => const ToastContent('Failed'),
         );
         unawaited(promised.then<void>((_) {}, onError: (Object _) {}));
-        expect(controller.stowed, isTrue, reason: 'a promise loading state');
         completer.complete('Saved');
         async.flushMicrotasks();
-        expect(controller.stowed, isTrue, reason: 'a promise result');
-
-        controller.show('New', duration: null);
-        expect(controller.stowed, isFalse);
+        expect(zoneBanner(controller), isFalse, reason: 'a promise');
         controller.dismissAll();
         controller.dispose();
       });
     });
 
-    test('the stow ends when the last toast leaves, by dismiss, dismissAll '
-        'or its own timer', () {
+    test('hide takes a banner down and stays hidden; open takes it down too, '
+        'so close finds none', () {
       fakeAsync((async) {
         final controller = SonnerController();
-        final first = controller.show('One', duration: null);
-        controller.show('Two', duration: null);
-
-        controller.stow();
-        controller.dismiss(first);
-        expect(controller.stowed, isTrue, reason: 'one is left');
-        controller.dismiss(toastsOf(controller).single.id);
-        expect(controller.stowed, isFalse);
-
-        controller.show('Three', duration: null);
-        controller.stow();
-        controller.dismissAll();
-        expect(controller.stowed, isFalse);
-
-        controller.show('Four', duration: const Duration(seconds: 1));
-        controller.stow();
-        async.elapse(const Duration(milliseconds: 900));
-        expect(controller.stowed, isTrue, reason: 'still counting');
-        async.elapse(const Duration(milliseconds: 300));
-        expect(toastsOf(controller), isEmpty);
-        expect(controller.stowed, isFalse);
-        controller.dispose();
-      });
-    });
-
-    test('a stowed toast counts down as it would on screen, and stowing '
-        'does not pause or resume the timers', () {
-      fakeAsync((async) {
-        final controller = SonnerController();
-        controller.show('Counting', duration: const Duration(seconds: 4));
-        holdTimers(controller, #pointer);
-
-        controller.stow();
-        async.elapse(const Duration(seconds: 10));
-        expect(
-          toastsOf(controller),
-          hasLength(1),
-          reason: 'stowing does not release the pointer hold',
-        );
-
-        releaseTimers(controller, #pointer);
-        async.elapse(const Duration(milliseconds: 3900));
-        expect(toastsOf(controller), hasLength(1), reason: 'just short of 4 s');
-        async.elapse(const Duration(milliseconds: 200));
-        expect(toastsOf(controller), isEmpty, reason: 'gone while stowed');
-        controller.dispose();
-      });
-    });
-  });
-
-  group('expand', () {
-    test('expand fans the deck out and notifies; collapse brings it back; '
-        'neither does anything twice, and an empty deck is not expanded', () {
-      fakeAsync((async) {
-        final controller = SonnerController();
+        final zone = controller.zone;
+        zone.hide();
+        controller.show('One', duration: null);
         var notifications = 0;
         controller.addListener(() => notifications++);
-        expect(controller.expanded, isFalse);
 
-        controller.expand();
-        expect(controller.expanded, isFalse, reason: 'nothing to expand');
-        expect(notifications, 0);
-
-        controller.show('Saved', duration: null);
-        notifications = 0;
-        controller.expand();
-        expect(controller.expanded, isTrue);
+        zone.hide();
+        expect(zoneBanner(controller), isFalse);
+        expect(zone.state, ZoneState.hidden);
         expect(notifications, 1);
-        controller.expand();
-        expect(notifications, 1, reason: 'already expanded');
 
-        controller.collapse();
-        expect(controller.expanded, isFalse);
+        controller.show('Two', duration: null);
+        expect(zoneBanner(controller), isTrue);
+        zone.open();
+        zone.close();
+        expect(zone.state, ZoneState.hidden);
+        expect(zoneBanner(controller), isFalse);
+        controller.dismissAll();
+        controller.dispose();
+      });
+    });
+
+    test('neither opening nor hiding pauses the timers', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        for (final change in [controller.zone.open, controller.zone.hide]) {
+          controller.show('Counting', duration: const Duration(seconds: 4));
+          change();
+          async.elapse(const Duration(milliseconds: 3900));
+          expect(toastsOf(controller), hasLength(1), reason: 'short of 4 s');
+          async.elapse(const Duration(milliseconds: 200));
+          expect(toastsOf(controller), isEmpty);
+        }
+        controller.dispose();
+      });
+    });
+
+    test('held reports the pointer holding the deck and notifies on each '
+        'change', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+        var notifications = 0;
+        controller.addListener(() => notifications++);
+
+        holdDeck(controller, #host);
+        expect(zone.held, isTrue);
+        holdDeck(controller, #host);
+        expect(notifications, 1);
+        releaseDeck(controller, #host);
+        expect(zone.held, isFalse);
         expect(notifications, 2);
-        controller.collapse();
-        expect(notifications, 2, reason: 'not expanded');
-        controller.dispose();
-      });
-    });
-
-    test('the expansion ends when the last toast leaves, by dismiss, '
-        'dismissAll or its own timer, and notifies once for it', () {
-      fakeAsync((async) {
-        final controller = SonnerController();
-        final first = controller.show('One', duration: null);
-        controller.show('Two', duration: null);
-
-        controller.expand();
-        controller.dismiss(first);
-        expect(controller.expanded, isTrue, reason: 'one is left');
-        var notifications = 0;
-        controller.addListener(() => notifications++);
-        controller.dismiss(toastsOf(controller).single.id);
-        expect(controller.expanded, isFalse);
-        expect(notifications, 1);
-
-        controller.show('Three', duration: null);
-        controller.expand();
-        controller.dismissAll();
-        expect(controller.expanded, isFalse);
-
-        controller.show('Four', duration: const Duration(seconds: 1));
-        controller.expand();
-        async.elapse(const Duration(milliseconds: 900));
-        expect(controller.expanded, isTrue, reason: 'still counting');
-        async.elapse(const Duration(milliseconds: 300));
-        expect(toastsOf(controller), isEmpty);
-        expect(controller.expanded, isFalse);
-
-        controller.show('Five', duration: null);
-        expect(
-          controller.expanded,
-          isFalse,
-          reason: 'the next toast arrives collapsed',
-        );
-        controller.dismissAll();
-        controller.dispose();
-      });
-    });
-
-    test(
-      'stow and expansion are independent: a stowed deck can be '
-      'expanded and comes back expanded, and stowing keeps the expansion',
-      () {
-        fakeAsync((async) {
-          final controller = SonnerController();
-          controller.show('Saved', duration: null);
-
-          controller.stow();
-          controller.expand();
-          expect(controller.stowed, isTrue);
-          expect(controller.expanded, isTrue);
-
-          controller.unstow();
-          expect(controller.stowed, isFalse);
-          expect(controller.expanded, isTrue, reason: 'back expanded');
-
-          controller.stow();
-          expect(controller.expanded, isTrue, reason: 'stowing keeps it');
-          controller.collapse();
-          expect(
-            controller.stowed,
-            isTrue,
-            reason: 'collapsing keeps the stow',
-          );
-          controller.dismissAll();
-          controller.dispose();
-        });
-      },
-    );
-
-    test('expanding does not pause the timers', () {
-      fakeAsync((async) {
-        final controller = SonnerController();
-        controller.show('Counting', duration: const Duration(seconds: 4));
-
-        controller.expand();
-        async.elapse(const Duration(milliseconds: 3900));
-        expect(toastsOf(controller), hasLength(1), reason: 'just short of 4 s');
-        async.elapse(const Duration(milliseconds: 200));
-        expect(toastsOf(controller), isEmpty);
         controller.dispose();
       });
     });
@@ -1877,152 +1869,158 @@ void main() {
     });
 
     test('a config puts a pill labelled Hide on the expanded deck, slides the '
-        'deck away and leaves no handle', () {
+        'deck away and draws an empty card reading No notifications', () {
       const config = SonnerConfig();
-      expect(config.stowControl, const DeckStowControl());
-      expect(config.stowControl!.look, DeckStowLook.pill);
-      expect(config.stowControl!.label, 'Hide');
-      expect(config.stowControl!.countLabel, isNull, reason: 'N notifications');
-      expect(config.stowControl!.builder, isNull);
-      expect(config.stowMotion, const DeckStowMotion());
-      expect(config.stowMotion.look, DeckStowMotionLook.slide);
-      expect(config.stowMotion.builder, isNull);
-      expect(config.stowHandle, isNull);
+      expect(config.hideControl, const DeckHideControl());
+      expect(config.hideControl!.look, DeckHideLook.pill);
+      expect(config.hideControl!.label, 'Hide');
+      expect(config.hideControl!.countLabel, isNull, reason: 'N notifications');
+      expect(config.hideControl!.builder, isNull);
+      expect(config.hideMotion, const DeckHideMotion());
+      expect(config.hideMotion.look, DeckHideMotionLook.slide);
+      expect(config.hideMotion.builder, isNull);
+      expect(config.zoneEmpty, const ZoneEmpty());
+      expect(config.zoneEmpty!.label, 'No notifications');
+      expect(config.zoneEmpty!.builder, isNull);
     });
 
-    test('the stow types copy what they are not given, can take a function '
-        'away, and compare by value', () {
-      String count(int n) => '$n개';
-      Widget control(BuildContext context, DeckStowView view) =>
-          const SizedBox();
-      Widget motion(BuildContext c, DeckStowMotionView view, Widget deck) =>
-          deck;
-      Widget handle(BuildContext context, DeckStowHandleView view) =>
-          const SizedBox();
+    test(
+      'the hide types and ZoneEmpty copy what they are not given, can take a function '
+      'away, and compare by value',
+      () {
+        String count(int n) => '$n개';
+        Widget control(BuildContext context, DeckHideView view) =>
+            const SizedBox();
+        Widget motion(BuildContext c, DeckHideMotionView view, Widget deck) =>
+            deck;
+        Widget empty(BuildContext context, ZoneEmptyView view) =>
+            const SizedBox();
 
-      final changedControl = const DeckStowControl().copyWith(
-        look: DeckStowLook.icon,
-        label: '숨기기',
-        countLabel: () => count,
-        builder: () => control,
-      );
-      expect(
-        changedControl,
-        DeckStowControl(
-          look: DeckStowLook.icon,
+        final changedControl = const DeckHideControl().copyWith(
+          look: DeckHideLook.icon,
           label: '숨기기',
-          countLabel: count,
-          builder: control,
-        ),
-      );
-      expect(
-        changedControl.hashCode,
-        DeckStowControl(
-          look: DeckStowLook.icon,
-          label: '숨기기',
-          countLabel: count,
-          builder: control,
-        ).hashCode,
-      );
-      expect(changedControl.copyWith(label: 'x').builder, same(control));
-      expect(changedControl.copyWith(builder: () => null).builder, isNull);
-      expect(
-        changedControl.copyWith(countLabel: () => null).countLabel,
-        isNull,
-      );
-      for (final one in [
-        const DeckStowControl(look: DeckStowLook.header),
-        const DeckStowControl(label: 'x'),
-        DeckStowControl(countLabel: count),
-        DeckStowControl(builder: control),
-      ]) {
-        expect(one == const DeckStowControl(), isFalse, reason: '$one');
-      }
+          countLabel: () => count,
+          builder: () => control,
+        );
+        expect(
+          changedControl,
+          DeckHideControl(
+            look: DeckHideLook.icon,
+            label: '숨기기',
+            countLabel: count,
+            builder: control,
+          ),
+        );
+        expect(
+          changedControl.hashCode,
+          DeckHideControl(
+            look: DeckHideLook.icon,
+            label: '숨기기',
+            countLabel: count,
+            builder: control,
+          ).hashCode,
+        );
+        expect(changedControl.copyWith(label: 'x').builder, same(control));
+        expect(changedControl.copyWith(builder: () => null).builder, isNull);
+        expect(
+          changedControl.copyWith(countLabel: () => null).countLabel,
+          isNull,
+        );
+        for (final one in [
+          const DeckHideControl(look: DeckHideLook.header),
+          const DeckHideControl(label: 'x'),
+          DeckHideControl(countLabel: count),
+          DeckHideControl(builder: control),
+        ]) {
+          expect(one == const DeckHideControl(), isFalse, reason: '$one');
+        }
 
-      final changedMotion = const DeckStowMotion().copyWith(
-        look: DeckStowMotionLook.shrink,
-        builder: () => motion,
-      );
-      expect(
-        changedMotion,
-        DeckStowMotion(look: DeckStowMotionLook.shrink, builder: motion),
-      );
-      expect(
-        changedMotion.hashCode,
-        DeckStowMotion(
-          look: DeckStowMotionLook.shrink,
-          builder: motion,
-        ).hashCode,
-      );
-      expect(
-        changedMotion.copyWith(look: DeckStowMotionLook.fade).builder,
-        same(motion),
-      );
-      expect(changedMotion.copyWith(builder: () => null).builder, isNull);
-      expect(
-        const DeckStowMotion(look: DeckStowMotionLook.fade) ==
-            const DeckStowMotion(),
-        isFalse,
-      );
+        final changedMotion = const DeckHideMotion().copyWith(
+          look: DeckHideMotionLook.shrink,
+          builder: () => motion,
+        );
+        expect(
+          changedMotion,
+          DeckHideMotion(look: DeckHideMotionLook.shrink, builder: motion),
+        );
+        expect(
+          changedMotion.hashCode,
+          DeckHideMotion(
+            look: DeckHideMotionLook.shrink,
+            builder: motion,
+          ).hashCode,
+        );
+        expect(
+          changedMotion.copyWith(look: DeckHideMotionLook.fade).builder,
+          same(motion),
+        );
+        expect(changedMotion.copyWith(builder: () => null).builder, isNull);
+        expect(
+          const DeckHideMotion(look: DeckHideMotionLook.fade) ==
+              const DeckHideMotion(),
+          isFalse,
+        );
 
-      final changedHandle = const DeckStowHandle().copyWith(
-        countLabel: () => count,
-        builder: () => handle,
-      );
-      expect(changedHandle, DeckStowHandle(countLabel: count, builder: handle));
-      expect(
-        changedHandle.hashCode,
-        DeckStowHandle(countLabel: count, builder: handle).hashCode,
-      );
-      expect(changedHandle.copyWith().builder, same(handle), reason: 'kept');
-      expect(changedHandle.copyWith(builder: () => null).builder, isNull);
-      expect(
-        DeckStowHandle(countLabel: count) == const DeckStowHandle(),
-        isFalse,
-      );
-    });
+        final changedEmpty = const ZoneEmpty().copyWith(
+          label: '알림 없음',
+          builder: () => empty,
+        );
+        expect(changedEmpty, ZoneEmpty(label: '알림 없음', builder: empty));
+        expect(
+          changedEmpty.hashCode,
+          ZoneEmpty(label: '알림 없음', builder: empty).hashCode,
+        );
+        expect(changedEmpty.copyWith().builder, same(empty), reason: 'kept');
+        expect(changedEmpty.copyWith(builder: () => null).builder, isNull);
+        expect(const ZoneEmpty(label: 'x') == const ZoneEmpty(), isFalse);
+      },
+    );
 
-    test('copyWith keeps the stow fields unless given them, takes the two '
-        'nullable ones away, and a config with others is not equal', () {
-      const icon = DeckStowControl(look: DeckStowLook.icon);
-      const fade = DeckStowMotion(look: DeckStowMotionLook.fade);
-      const handle = DeckStowHandle();
-      const set = SonnerConfig(
-        stowControl: icon,
-        stowMotion: fade,
-        stowHandle: handle,
-      );
+    test(
+      'copyWith keeps the hide fields and zoneEmpty unless given them, takes the two '
+      'nullable ones away, and a config with others is not equal',
+      () {
+        const icon = DeckHideControl(look: DeckHideLook.icon);
+        const fade = DeckHideMotion(look: DeckHideMotionLook.fade);
+        const empty = ZoneEmpty(label: 'x');
+        const set = SonnerConfig(
+          hideControl: icon,
+          hideMotion: fade,
+          zoneEmpty: empty,
+        );
 
-      expect(set.copyWith(gap: 20).stowControl, icon, reason: 'kept');
-      expect(set.copyWith(gap: 20).stowMotion, fade, reason: 'kept');
-      expect(set.copyWith(gap: 20).stowHandle, handle, reason: 'kept');
-      expect(set.copyWith(stowControl: () => null).stowControl, isNull);
-      expect(set.copyWith(stowHandle: () => null).stowHandle, isNull);
-      expect(
-        set.copyWith(stowMotion: const DeckStowMotion()).stowMotion,
-        const DeckStowMotion(),
-      );
+        expect(set.copyWith(gap: 20).hideControl, icon, reason: 'kept');
+        expect(set.copyWith(gap: 20).hideMotion, fade, reason: 'kept');
+        expect(set.copyWith(gap: 20).zoneEmpty, empty, reason: 'kept');
+        expect(set.copyWith(hideControl: () => null).hideControl, isNull);
+        expect(set.copyWith(zoneEmpty: () => null).zoneEmpty, isNull);
+        expect(
+          set.copyWith(hideMotion: const DeckHideMotion()).hideMotion,
+          const DeckHideMotion(),
+        );
 
-      for (final one in [
-        const SonnerConfig(stowControl: null),
-        const SonnerConfig(stowControl: icon),
-        const SonnerConfig(stowMotion: fade),
-        const SonnerConfig(stowHandle: handle),
-      ]) {
-        expect(one == const SonnerConfig(), isFalse, reason: '$one');
-        expect(one.hashCode, isNot(const SonnerConfig().hashCode));
-      }
-      expect(
-        const SonnerConfig()
-            .copyWith(
-              stowControl: () => icon,
-              stowMotion: fade,
-              stowHandle: () => handle,
-            )
-            .hashCode,
-        set.hashCode,
-      );
-    });
+        for (final one in [
+          const SonnerConfig(hideControl: null),
+          const SonnerConfig(hideControl: icon),
+          const SonnerConfig(hideMotion: fade),
+          const SonnerConfig(zoneEmpty: empty),
+          const SonnerConfig(zoneEmpty: null),
+        ]) {
+          expect(one == const SonnerConfig(), isFalse, reason: '$one');
+          expect(one.hashCode, isNot(const SonnerConfig().hashCode));
+        }
+        expect(
+          const SonnerConfig()
+              .copyWith(
+                hideControl: () => icon,
+                hideMotion: fade,
+                zoneEmpty: () => empty,
+              )
+              .hashCode,
+          set.hashCode,
+        );
+      },
+    );
 
     test('copyWith keeps dismissAll unless given one, and can take it away; a '
         'config with another is not equal', () {

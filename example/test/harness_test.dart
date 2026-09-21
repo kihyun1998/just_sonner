@@ -152,8 +152,8 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('the expand section fans the deck out with no pointer, and '
-      'collapse folds it up', (tester) async {
+  testWidgets('the zone section opens the zone, fanning the deck out with '
+      'no pointer, and closes it again', (tester) async {
     await pumpHarness(tester);
 
     final five = find.widgetWithText(OutlinedButton, 'Five toasts, 10 s each');
@@ -169,19 +169,17 @@ void main() {
       reason: 'beyond the window',
     );
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'The app: expand()'));
+    await tester.tap(find.widgetWithText(OutlinedButton, 'The app: open()'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Toast 1 of 5'), findsOneWidget);
-    expect(find.text('expanded: true · held: false'), findsOneWidget);
+    expect(find.text('state: open · held: false'), findsOneWidget);
 
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, 'The app: collapse()'),
-    );
+    await tester.tap(find.widgetWithText(OutlinedButton, 'The app: close()'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Toast 1 of 5'), findsNothing);
-    expect(find.text('expanded: false · held: false'), findsOneWidget);
+    expect(find.text('state: shown · held: false'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpAndSettle();
