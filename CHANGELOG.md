@@ -13,13 +13,6 @@
   Give it `Duration? duration = SonnerConfig.configDuration`.
   A `promise`'s loading content takes no `duration` at all, and `ToastContent(duration: null)`
   there now asserts as any other duration does.
-- **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast
-  on a centered deck used not to move at all when dragged sideways, since neither left nor right is
-  a way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
-  the toast will not leave on is now damped that way, whichever axis it takes. **`swipeDirections:
-  {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
-  a drag still moves the toast and springs it back. To take the drag away altogether, make the
-  toast not `dismissible`.
 - **Breaking: the zone replaces stowing** (#97). `toast.zone` is the layer the deck lives in, your
   app's to open and close, and it exists with no toast up. Its state is **shown**, **open** or
   **hidden**:
@@ -41,7 +34,16 @@
   `DeckStowControl`, `DeckStowLook`, `DeckStowView`, `DeckStowBuilder`, `DeckStowMotion`,
   `DeckStowMotionLook`, `DeckStowMotionView` and `DeckStowMotionBuilder` → `DeckHide…`; a view's
   `stow` is `hide`, and a motion view's `stowed` is `hidden`. The Hide control now also shows on an
-  open zone with no toast, and on a banner it takes the banner down.
+  open zone with no toast, and on a banner it takes the banner down. New: `SonnerZone`,
+  `ZoneState`, `ZoneEmpty`, `ZoneEmptyView` and `ZoneEmptyBuilder`, and
+  `SonnerConfig.configDuration` from the entry above.
+- **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast
+  on a centered deck used not to move at all when dragged sideways, since neither left nor right is
+  a way out there, while a drag down on the same toast moved it a little and sprang back. Every drag
+  the toast will not leave on is now damped that way, whichever axis it takes. **`swipeDirections:
+  {}` changes meaning with it**: it used to take the swipe away, and now lets no swipe dismiss while
+  a drag still moves the toast and springs it back. To take the drag away altogether, make the
+  toast not `dismissible`.
 - **A scrolled deck no longer draws over the `offset` band** (#86). The deck is now cut at its
   **near** end as well as its far one. Scrolling a deck that overflows used to push toasts past the
   edge's own `offset` and go on painting them there — over the band an app keeps clear for its own

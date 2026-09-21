@@ -56,7 +56,7 @@ for the life of the app.
 
 **Or attach to the root overlay:** give the app a navigator key and attach the controller to it.
 The toasts are drawn in the root navigator's overlay, above its dialogs and pages, from the first
-toast shown.
+toast shown or the zone first opened.
 
 ```dart
 final navigatorKey = GlobalKey<NavigatorState>();
@@ -325,7 +325,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `width` | 356 | The width of every toast |
 | `gap` | 14 | The space between two toasts |
 | `offset` | `EdgeInsets.all(24)` | The distance from each screen edge. A centered position ignores left and right |
-| `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it and your app not expanding it, 1 to 20 |
+| `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it and the zone not open, 1 to 20 |
 | `duration` | 4 s | How long a toast shown without one stays; null keeps each until it is dismissed. Set it with `copyWith(duration: () => null)` |
 | `expandByDefault` | false | Fan the deck out with no pointer |
 | `loadingIndicator` | `CircularProgressIndicator` | What a loading toast's leading slot holds |
