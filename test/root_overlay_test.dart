@@ -11,9 +11,7 @@ void main() {
 
   // Toasts here have no timer: a widget test must not end with one pending.
   setUp(() {
-    controller = SonnerController(
-      config: const SonnerConfig(duration: Duration.zero),
-    );
+    controller = SonnerController(config: const SonnerConfig(duration: null));
     navigatorKey = GlobalKey<NavigatorState>();
   });
 

@@ -18,7 +18,7 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 
 ## What to look for
 
-- **Show and dismiss** (#17, #18) — a toast enters, counts itself down and leaves. `Duration.zero`
+- **Show and dismiss** (#17, #18) — a toast enters, counts itself down and leaves. `duration: null`
   keeps it until something dismisses it.
 - **The deck** (#19, #22, #23, #41) — rest the pointer on the deck. It fans out, draws every toast
   rather than `visibleToasts`, and every timer stops while the pointer is there. A deck taller

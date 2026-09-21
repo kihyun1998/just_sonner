@@ -1,5 +1,18 @@
 ## 0.4.0
 
+- **Breaking: a toast with no timer is shown with `duration: null`, not `Duration.zero`** (#97). A
+  toast shown with a `duration` is a **transient** toast and goes when it runs out; one shown with
+  `duration: null` stays until the user or your app dismisses it; one shown without a `duration`
+  takes `config.duration` as before. `Duration.zero` now **asserts** in debug, on `show`, `update`
+  and `SonnerConfig`, where it used to mean "no timer": write `duration: null` instead.
+  `config.duration` is a `Duration?`, set to null with `copyWith(duration: () => null)`, which
+  makes every toast shown without a duration stay. `update(id, duration: null)` takes a toast's
+  timer away, and `ToastContent(duration: null)` makes a `promise` result stay.
+  **A function that passes a duration on to `show` now needs a default**: with a plain
+  `Duration? duration`, every call that leaves it out passes null and shows a toast with no timer.
+  Give it `Duration? duration = SonnerConfig.configDuration`.
+  A `promise`'s loading content takes no `duration` at all, and `ToastContent(duration: null)`
+  there now asserts as any other duration does.
 - **Breaking: a drag a toast will not leave on moves it a little on either axis** (#87). A toast
   on a centered deck used not to move at all when dragged sideways, since neither left nor right is
   a way out there, while a drag down on the same toast moved it a little and sprang back. Every drag

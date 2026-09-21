@@ -60,9 +60,10 @@ class SonnerController extends ChangeNotifier {
   /// Asserts what a [SonnerConfig]'s const constructor cannot check.
   static bool _debugCheckConfig(SonnerConfig config) {
     assert(
-      config.duration >= Duration.zero,
-      'SonnerConfig.duration must not be negative; Duration.zero keeps '
-      'toasts until they are dismissed.',
+      debugCheckDuration(config.duration) &&
+          !identical(config.duration, SonnerConfig.configDuration),
+      'SonnerConfig.duration must be positive, or null to keep toasts until '
+      'they are dismissed.',
     );
     assert(
       config.visibleToasts >= 1 && config.visibleToasts <= 20,
@@ -225,9 +226,10 @@ class SonnerController extends ChangeNotifier {
 
   /// Shows a toast and returns its id.
   ///
-  /// It dismisses itself after [duration], or after `config.duration` when
-  /// [duration] is null. [Duration.zero] keeps it until it is dismissed; a
-  /// negative [duration] is an error.
+  /// With a [duration] it is a **transient** toast, and dismisses itself once
+  /// that has passed. A null [duration] keeps it until it is dismissed, by the
+  /// user or the app. With none given it takes `config.duration`, which may be
+  /// either. A [duration] that is not positive is an error.
   ///
   /// When [id] names a toast on screen, that toast is **replaced**: it keeps
   /// its place, takes this content whole, with every field not given back at
@@ -241,7 +243,7 @@ class SonnerController extends ChangeNotifier {
     String? description,
     bool isLoading = false,
     Widget? leading,
-    Duration? duration,
+    Duration? duration = SonnerConfig.configDuration,
     bool? dismissible,
     ToastSlot? action,
     bool? closeButton,
@@ -250,12 +252,14 @@ class SonnerController extends ChangeNotifier {
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
-      duration == null || duration >= Duration.zero,
-      'A negative duration is not allowed; Duration.zero keeps the toast '
-      'until it is dismissed.',
+      debugCheckDuration(duration),
+      'A duration must be positive, or null to keep the toast until it is '
+      'dismissed.',
     );
     assert(
-      !isLoading || duration == null,
+      !isLoading ||
+          identical(duration, SonnerConfig.configDuration) ||
+          duration == null,
       'A loading toast has no timer, so a duration would be ignored. Give it '
       'one when it stops loading instead: update(id, isLoading: false, '
       'duration: ...).',
@@ -278,7 +282,9 @@ class SonnerController extends ChangeNotifier {
       dismissible: dismissible,
       builder: builder,
     );
-    final lifetime = duration ?? config.duration;
+    final lifetime = identical(duration, SonnerConfig.configDuration)
+        ? config.duration
+        : duration;
     if (existing != null) {
       existing
         ..state = state
@@ -311,14 +317,15 @@ class SonnerController extends ChangeNotifier {
   /// keeps its place. Returns false when no toast with [id] is on screen.
   ///
   /// It counts down again whatever changed, from [duration] when it is passed
-  /// and from the toast's own duration otherwise.
+  /// and from the toast's own duration otherwise. A null [duration] keeps it
+  /// until it is dismissed.
   bool update(
     ToastId id, {
     String? title,
     String? description,
     bool? isLoading,
     Widget? leading,
-    Duration? duration,
+    Duration? duration = SonnerConfig.configDuration,
     bool? dismissible,
     ToastSlot? action,
     bool? closeButton,
@@ -326,9 +333,9 @@ class SonnerController extends ChangeNotifier {
   }) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
-      duration == null || duration >= Duration.zero,
-      'A negative duration is not allowed; Duration.zero keeps the toast '
-      'until it is dismissed.',
+      debugCheckDuration(duration),
+      'A duration must be positive, or null to keep the toast until it is '
+      'dismissed.',
     );
     final record = _recordOf(id);
     if (record == null) return false;
@@ -343,7 +350,9 @@ class SonnerController extends ChangeNotifier {
       dismissible: dismissible ?? state.dismissible,
       builder: builder ?? state.builder,
     );
-    if (duration != null) record.duration = duration;
+    if (!identical(duration, SonnerConfig.configDuration)) {
+      record.duration = duration;
+    }
     _startCountdown(record);
     notifyListeners();
     return true;
@@ -377,7 +386,7 @@ class SonnerController extends ChangeNotifier {
   }) async {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     assert(
-      loading.duration == null,
+      identical(loading.duration, SonnerConfig.configDuration),
       'A loading toast has no timer, so a duration on the loading content '
       'would be ignored. Put it on the success or error content instead.',
     );
@@ -422,7 +431,7 @@ class SonnerController extends ChangeNotifier {
         // branch; without it a release build would remember a duration the
         // loading toast is not allowed to have and count down from it when it
         // stopped loading.
-        duration: isLoading ? null : state.duration,
+        duration: isLoading ? SonnerConfig.configDuration : state.duration,
         id: id,
       );
     } catch (thrown, stack) {
@@ -536,7 +545,10 @@ class SonnerController extends ChangeNotifier {
   /// stops loading runs from the toast's own duration, as any restart does.
   void _startCountdown(ToastRecord record) {
     final duration = record.duration;
-    final counts = !record.state.isLoading && duration > Duration.zero;
+    // In release a duration that is not positive, which asserts in debug,
+    // keeps the toast as a null one does.
+    final counts =
+        !record.state.isLoading && duration != null && duration > Duration.zero;
     record
       ..remaining = counts ? duration : null
       ..skipTick = false;
@@ -642,9 +654,9 @@ final class ToastRecord {
   /// What it shows now.
   ToastState state;
 
-  /// The time it counts down from when it starts or restarts. [Duration.zero]
-  /// means it has no timer.
-  Duration duration;
+  /// The time it counts down from when it starts or restarts, or null when it
+  /// has no timer.
+  Duration? duration;
 
   /// The time left before the toast dismisses itself, or null when it has no
   /// timer.

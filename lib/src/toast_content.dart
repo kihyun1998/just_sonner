@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import 'config.dart';
 import 'toast_view.dart';
 
 /// The content of one `promise` state.
@@ -12,7 +13,7 @@ class ToastContent {
     this.title, {
     this.description,
     this.leading,
-    this.duration,
+    this.duration = SonnerConfig.configDuration,
     this.dismissible,
     this.action,
     this.closeButton,
@@ -23,7 +24,8 @@ class ToastContent {
   final String? description;
   final Widget? leading;
 
-  /// How long the toast stays once it shows this content. Ignored on a
+  /// How long the toast stays once it shows this content: null keeps it until
+  /// it is dismissed, and none given takes `config.duration`. Ignored on a
   /// `promise`'s loading content, which has no timer, and asserted there.
   final Duration? duration;
 

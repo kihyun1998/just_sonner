@@ -57,7 +57,7 @@ class TimeLeftFollower {
     final lastFrame = _lastFrame;
     _remaining = remaining;
     _lastFrame = now;
-    if (remaining == null || duration <= Duration.zero) return;
+    if (remaining == null || duration == null) return;
     if (previous == null) {
       _into = Duration.zero;
       _easeFrom = null;

@@ -31,7 +31,7 @@ abstract interface class ToastView {
   /// timers are paused, goes back up when an update or a replace starts the
   /// countdown again, and keeps where it stood once the toast is dismissed.
   /// Null while the toast has no timer — while it is loading, or when its
-  /// duration is [Duration.zero].
+  /// duration is null.
   ///
   /// It is here whatever `SonnerConfig.timeLeft` says, which governs only what
   /// the default look draws. While a toast counting down is drawn, frames run

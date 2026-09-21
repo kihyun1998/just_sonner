@@ -89,7 +89,8 @@ What just_sonner adds, in the order a real consumer needed them:
 
 | Term | Meaning |
 |---|---|
-| **toast** | One notification. Has an id, a state (title, description, `isLoading`, …) and a lifetime |
+| **toast** | One notification. Has an id, a state (title, description, `isLoading`, …) and a lifetime. One with no timer lives until it is dismissed, by the user or the app; a loading toast is one of these |
+| **transient toast** | A toast with a timer: when it runs out, the toast is gone. What `config.duration` makes by default (§7) |
 | **host** | The single widget that lays out and animates every toast |
 | **deck** | The collapsed stack: the front toast in full, the ones behind peeking out |
 | **front** | The newest visible toast |
@@ -125,19 +126,21 @@ class SonnerController extends ChangeNotifier {
     String? description,
     bool isLoading = false,      // no timer; the leading slot holds config.loadingIndicator
     Widget? leading,             // fills the leading slot when the toast is not loading
-    Duration? duration,          // null → config.duration; Duration.zero → stays until dismissed;
-                                 // negative → debug assert
+    Duration? duration = SonnerConfig.configDuration,
+                                 // given → a transient toast; null → stays until dismissed;
+                                 // omitted → config.duration; not positive → debug assert
     bool? dismissible,           // null → !isLoading (§8)
     ToastSlot? action,           // the caller's widget; it receives the toast (see Slots)
     bool? closeButton,           // null → config.closeButton
     ToastId? id,
     ToastBuilder? builder,       // replaces the look for this toast only
-  });                            // debug assert: !isLoading || duration == null
+  });                            // debug assert: !isLoading || duration omitted or null
 
   /// **Updates** a toast on screen: only the fields passed change. Returns false if it is gone.
+  /// `duration` omitted keeps the toast's own; null takes its timer away.
   bool update(ToastId id, {String? title, String? description, bool? isLoading, Widget? leading,
-      Duration? duration, bool? dismissible, ToastSlot? action, bool? closeButton,
-      ToastBuilder? builder});
+      Duration? duration = SonnerConfig.configDuration, bool? dismissible, ToastSlot? action,
+      bool? closeButton, ToastBuilder? builder});
 
   Future<T> promise<T>(Future<T> future, {
     required ToastContent loading,
@@ -166,7 +169,8 @@ class SonnerController extends ChangeNotifier {
 /// The content of one `promise` state. Everything `show` takes except `id` and `isLoading`,
 /// which `promise` sets itself.
 class ToastContent {
-  const ToastContent(String title, {String? description, Widget? leading, Duration? duration,
+  const ToastContent(String title, {String? description, Widget? leading,
+      Duration? duration = SonnerConfig.configDuration,   // as show's
       bool? dismissible, ToastSlot? action, bool? closeButton, ToastBuilder? builder});
 }
 
@@ -341,7 +345,8 @@ same methods as `toast`. There is no static facade.
 `controller`, or `toast` when omitted. `SonnerConfig` carry: `position` (`bottomRight`), `width` (356), `gap` (14),
 `offset` (`EdgeInsets.all(24)`, physical: the edge the position names holds the deck off it, the opposite
 one is where the expanded deck stops, and left or right places it on a left or right position — a centered
-one reads neither side), `visibleToasts` (3), `duration` (4 s), `expandByDefault` (false),
+one reads neither side), `visibleToasts` (3), `duration` (4 s; null makes every toast shown without one
+live until dismissed, and it is set with `copyWith(duration: () => null)`), `expandByDefault` (false),
 `swipeDirections` (derived from position), `builder` (the default look when null),
 `loadingIndicator` (what the leading slot holds while a toast is loading), `leadingSize` (20),
 `closeButton` (false), `timeLeft` (`ToastTimeLeft()`), `deckCap` (`DeckCap.pixels(400)`),
@@ -541,8 +546,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   them out, on every frame the deck lays out at all. This is deliberate. §6 Expanded draws each
   toast at its **measured** height the moment the pointer arrives, and a toast that was never laid
   out has no height to be drawn at — so the deck measures them all, whether or not it paints them.
-  A toast with a timer pays this only until its time runs out; one with `Duration.zero` or
-  `isLoading` never leaves the list on its own (§7), so an app that shows those and does not
+  A transient toast pays this only until its time runs out; one with no timer, or
+  `isLoading`, never leaves the list on its own (§7), so an app that shows those and does not
   dismiss them pays for all of them, forever, while the user sees `visibleToasts`. **What that
   costs has not been measured** (#79).
 - The front toast is drawn at its own height.
@@ -797,7 +802,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   those would leave a pile of stale toasts waiting whenever the user comes back. `hidden` is the
   state Flutter **synthesises** before `paused` so that one handler covers "conceptually hidden"
   on every platform, which is exactly what is wanted here.
-- Toasts with `isLoading` and `Duration.zero` toasts have no timer.
+- Toasts with `isLoading`, and toasts whose duration is null, have no timer.
+- **`SonnerConfig.configDuration` is the default of every `duration`**: `show`, `update` and
+  `ToastContent` tell it apart from null by identity, so omitting `duration` and passing null are
+  two things. It is public so a function that passes a duration on to `show` can take it as its
+  own default and still let its callers omit one.
 - A toast stops counting when it is **dismissed**, not when it is **removed** — its exit takes
   200 ms more (§6) and there is nothing left to count.
 - **How the countdown runs.** One `Timer.periodic` of **100 ms**, alive only while some toast has
@@ -857,7 +866,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   What stowing does end is the **pointer's** hold: nothing
   drawn is hovered, so the pause the pointer had goes at once, a press the deck was under is let
   go of, and a swipe under way is called off and springs back. A toast that never times out
-  (`Duration.zero`, loading) waits out the stow, which is why this is not the §2 notification
+  (no timer, or loading) waits out the stow, which is why this is not the §2 notification
   centre: nothing outlives its own duration.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
   `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
@@ -961,7 +970,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 
   `color` null is `colorScheme.primary`. It fades with the content while the deck covers the toast
   unless `fadeWhenCovered` is false — a `leadingRing` is content and fades either way. A toast
-  loading or with `Duration.zero` draws none, and `config.timeLeft` null draws none at all. A
+  loading or with no timer draws none, and `config.timeLeft` null draws none at all. A
   countdown started again by an update or a replace eases the time left back up over 400 ms,
   `ease`, toward a countdown already running again, or jumps with `easeRestart` false. A new
   `config.timeLeft` redraws the toasts on screen at once. The looks and the defaults were chosen
@@ -996,6 +1005,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - a toast pushed beyond `visibleToasts` keeps counting down, neither paused nor restarted, and is
   dismissed there when its time runs out
 - the tick stops when the last counting toast goes, and starts again with the next one
+- a null `duration` gives no timer, on `show`, on `update`, on a `promise` result and on
+  `config.duration`; an omitted one takes `config.duration`, and `update` without one keeps the
+  toast's own; a function passing its duration on with `SonnerConfig.configDuration` as its default
+  gives `config.duration`; a zero or negative duration asserts on `show`, `update` and the config,
+  and so does `SonnerConfig.configDuration` as the config's own;
+  `copyWith(duration: () => null)` takes it away
 - unset `dismissible` follows `isLoading` read by read, so `update(id, isLoading: false)` hands the
   toast back with no second call; a given `dismissible` wins either way; an update of `dismissible`
   alone restarts the countdown; `update` patches `action`, `closeButton` and `dismissible` and a
@@ -1003,7 +1018,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - a loading toast has no timer and keeps its duration, so leaving `isLoading` counts down the
   toast's own duration rather than what was left of it; entering it stops a countdown under way and
   stops the tick; it can stop and start again at the same id; `show(isLoading: true, duration:)`
-  asserts; a replace clears `leading` and `isLoading` like any other field not given
+  asserts, and with `duration: null` it stays once it stops loading; a replace clears `leading` and `isLoading` like any other field not given
 - `stow` and `unstow` notify, and do nothing twice or with nothing to stow; a new toast ends the
   stow, an update, a replace and a `promise` state on a toast on screen do not; the last toast
   leaving by dismiss, `dismissAll` or its own timer ends it; a stowed toast counts down as it
@@ -1223,7 +1238,10 @@ outside v0.1 is in §2's non-goals.
 | The close button is labelled, not tooltipped | derived | a `Tooltip` needs an `Overlay` ancestor, and mount mode 2 puts the host **above** the app's `Navigator`, so there is none — the first widget test of the close button threw `No Overlay widget found`. A semantics label is what sonner uses (`aria-label`) and needs nothing above it |
 | The countdown is one 100 ms `Timer.periodic` that subtracts; the controller reads no clock and takes none | maintainer | `Clock` is `package:clock`, which Flutter does not depend on — the old `SonnerController({Clock? clock})` already broke the §2 goal, and `Stopwatch` is not faked by `FakeAsync` so it cannot replace it. `Timer` is faked by both `testWidgets` and `fakeAsync`, so subtracting ticks needs no injection and leaves no test-only hole in the public API. It also removes the pause arithmetic that sonner needs a guard for |
 | The tick is started again when a toast is shown in a different `Zone` from the one the running tick was created in | maintainer | a `Timer` is bound to its zone, and the exported `toast` outlives test zones: measured while working #18, a toast left counting by one test kept `_ticker` pointing at a timer in that test's finished fake-time zone, and every later test's toasts silently never expired. Shown against documenting "clean up inside the test body" instead, which leaves the failure silent. Only a zone change restarts it — restarting on every `show` would let a burst of toasts shown faster than one tick hold every countdown back. **Not decided**: whether the tick should move to the host, as `SnackBar`'s timer lives in `ScaffoldMessengerState`; §7 keeps it on the controller |
-| A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |
+| A negative `duration` — on `show` or `SonnerConfig` — is a debug assertion; in release it keeps the toast like `Duration.zero` (since #97: like a null duration, and zero is refused with it) | maintainer | a duration computed as a deadline minus now can go negative, and silently pinning that toast hides the bug. Shown against dismissing at once (sonner's result, where a negative delay closes the toast) and against documenting it as pinned. `SonnerConfig`'s const constructor cannot compare `Duration`s, so the config is checked when a controller is constructed |
+| Two kinds of toast: a **transient** one has a timer, and every other one lives until it is dismissed. `show(duration: null)` makes the second, `config.duration` is `Duration?`, and `Duration.zero` is a debug assertion rather than "no timer" (#97) | maintainer | the model says what the app means instead of a timer every toast has, where zero stood for none. Behaviour does not change. A transient toast that expires at once means nothing, so zero is refused |
+| Omitting `duration` and passing null are told apart by a sentinel default, on `show`, `update` and `ToastContent` alike | derived | the only way Dart tells the two apart. `ToastContent` was not named in #97; without it a `promise` result could not be a toast with no timer. In release a duration that is not positive keeps the toast, as the negative row already said of a negative one |
+| The sentinel is public, as `SonnerConfig.configDuration` (#97) | maintainer | shown that a private one leaves a function passing its duration on to `show` — the example app's own `_show` — unable to omit it, so every toast shown through it without a duration silently loses its timer. Chosen over keeping it private and documenting the trap |
 | `ToastId` is `extension type ToastId(Object value)`: a caller may make one, and a generated id's value is an object compared by identity | derived | sonner takes a caller's id, which §4's `show(id:)` already implies; an identity-compared value keeps a caller's `ToastId(0)` from ever colliding with a generated id, with no reserved range to document. An extension type costs nothing at runtime and keeps `==` on the value |
 | Exit runs the enter's `ease` backwards over 200 ms, and the toasts behind close the gap over the same 200 ms, driven by the exiting toast's own animation | maintainer | shown sonner contradicting itself — `TIME_BEFORE_UNMOUNT = 200` is commented "equal to exit animation duration" while the front toast keeps its 400 ms transition and is cut off about 20% opaque, and neighbours move over 400 ms — against splitting the neighbours onto 400 ms, which needs a layout animation per toast. The expanded deck keeps them on the exiting toast's clock too (row below) |
 | A toast leaves the tree when its animation reports `dismissed`, which is the first tick **past** 200 ms; it is fully transparent at 200 ms | derived | #27 needs the animation reaching `dismissed` to count as removal, and `AnimationController` reports it only when elapsed time exceeds the duration (`_InterpolationSimulation.isDone` uses `>`, Flutter 3.41.9). An exiting toast keeps the distance from the edge it had when dismissed, as sonner freezes `offsetBeforeRemove`, and the newest toast paints on top, as sonner's `z-index: toasts.length - index` |
@@ -1313,7 +1331,7 @@ outside v0.1 is in §2's non-goals.
 | The backdrop is its own file, `lib/src/deck_backdrop.dart`, rather than a widget in `host.dart` | derived | `host.dart` had never imported `package:flutter/material.dart` — it is the layout and animation engine and stays on `widgets` — while the files that **draw** a part of the deck and need a theme role (`deck_scrollbar`, `deck_stow`, `deck_dismiss_all`, `default_look`) import material; `deck_cut` needs none and does not. Resolving `colorScheme.scrim` belongs on that side of the line. `_Eased` gained `implements ValueListenable<double>` so the widget can take it without knowing the host |
 | `DeckBackdrop` takes no rate of its own, and its widget takes the expansion as a plain `double` | maintainer | both were on an adversarial read's list and the maintainer took both. A rate against the deck's own 400 ms is a field nobody asked #78 for, with a §12 line, an example switch and a test behind it. And the host already rebuilds the whole layer on `_expand` through one `ListenableBuilder`, so a second listener on it bought a private class widened to a public interface and a builder that could never fire independently of the first — the value is in scope at the call site |
 | The backdrop is drawn **outside** the deck's cut, with a hard cut of its own, and is placed at paint rather than at layout | derived | measured while working #78. With the default `DeckCap`'s `fade` of 24 a ten-toast deck's stripes kept a contrast of **255** with the blur on — the blur drew nothing — against **5** with `fade: 0` and **5** with no cap: a fading cut is a `ShaderMask`, which the engine draws as a save layer, and a `BackdropFilter` inside one filters that layer. `BackdropGroup` with `BackdropFilter.grouped` does not escape it either (measured: still 255). The deck reports its box **while it lays out**, so a builder on it schedules a build mid-frame and a layout delegate mutates a sibling subtree during layout — Flutter raises on both — which is why the box is read at paint, as `DeckCutBox` and `DeckLayers` read theirs. **This was #78's own precondition and it was nearly shipped unanswered** |
-| A toast beyond `visibleToasts` is still built and laid out; only its paint is spared | derived | follows from §6 Expanded, which draws every toast at its **measured** height as soon as the pointer arrives: a toast never laid out has no height to draw at. Found while reading `deck_layout.dart` for #79, not by measurement — **what it costs is unmeasured**, and the cost is unbounded for a deck of `Duration.zero` or `isLoading` toasts, which never leave the list on their own (§7). `natural(id)` already caches the last measured height and the deck already falls back to it, so measuring once and then not building is not ruled out; it needs a number first |
+| A toast beyond `visibleToasts` is still built and laid out; only its paint is spared | derived | follows from §6 Expanded, which draws every toast at its **measured** height as soon as the pointer arrives: a toast never laid out has no height to draw at. Found while reading `deck_layout.dart` for #79, not by measurement — **what it costs is unmeasured**, and the cost is unbounded for a deck of `Duration.zero` (since #97, null-duration) or `isLoading` toasts, which never leave the list on their own (§7). `natural(id)` already caches the last measured height and the deck already falls back to it, so measuring once and then not building is not ruled out; it needs a number first |
 | The app can expand the deck: `expand()` / `collapse()` / `expanded` on the controller, its own control rather than a flag on `unstow` | maintainer | #88: an app whose entrance to the toasts is its own title-bar button called `unstow()` and got a collapsed pile. `unstow({expanded})` was offered and not chosen, since #60 keeps stow and the pointer apart and a flag would leave a deck that is not stowed with no way to expand. The app calls `unstow(); expand();` |
 | The package keeps the mechanism and the app the policy: nothing but `collapse()` and an empty deck ends an app's expansion, and `held` tells the app when the pointer holds the deck | maintainer | #88, chosen over the package folding the expansion up once the pointer has come and gone, and over expansion with no pointer signal. An app's rule — the pointer leaving, its own button, a timer — is composed over `held` |
 | The app's expansion draws every toast, as hover does, and does not pause the timers | maintainer | #88. The #41 row's reason was a region taking every tap in the column with nobody asking; here the app asked. Not pausing keeps §7's rule that only the pointer, a drag or a hidden app pauses |

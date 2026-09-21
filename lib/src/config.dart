@@ -576,9 +576,34 @@ class DeckStowHandle {
   int get hashCode => Object.hash(countLabel, builder);
 }
 
+/// The value of [SonnerConfig.configDuration].
+final class _ConfigDuration extends Duration {
+  const _ConfigDuration();
+}
+
+/// Whether [duration] is one a toast may have: [SonnerConfig.configDuration],
+/// null, or a positive length.
+bool debugCheckDuration(Duration? duration) =>
+    identical(duration, SonnerConfig.configDuration) ||
+    duration == null ||
+    duration > Duration.zero;
+
 /// How a controller's toasts are laid out and how long they stay.
 @immutable
 class SonnerConfig {
+  /// The default of every toast's `duration`: the toast takes [duration]. It
+  /// is told apart from null, which keeps the toast until it is dismissed, by
+  /// identity, so a function that passes a duration on to `show` gives this as
+  /// its own default:
+  ///
+  /// ```dart
+  /// ToastId notify(String title, {Duration? duration = SonnerConfig.configDuration}) =>
+  ///     toast.show(title, duration: duration);
+  /// ```
+  ///
+  /// Read as a length it is zero; it is not one.
+  static const Duration configDuration = _ConfigDuration();
+
   const SonnerConfig({
     this.position = SonnerPosition.bottomRight,
     this.width = 356,
@@ -623,9 +648,9 @@ class SonnerConfig {
   /// of which draws every toast; they count down all the while.
   final int visibleToasts;
 
-  /// How long a toast shown without a `duration` stays. [Duration.zero] keeps
-  /// it until it is dismissed.
-  final Duration duration;
+  /// How long a toast shown without a `duration` stays: every such toast is a
+  /// transient one. Null keeps each until it is dismissed. Must be positive.
+  final Duration? duration;
 
   /// Whether the deck is fanned out without the pointer over it. It draws only
   /// [visibleToasts], and does not pause the timers; the pointer over the deck
@@ -702,8 +727,10 @@ class SonnerConfig {
 
   /// A copy with the fields given changed.
   ///
-  /// [swipeDirections], [builder] and [timeLeft] are given as functions, since
-  /// null is a value each can take: `copyWith(swipeDirections: () => null)`
+  /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
+  /// functions, since null is a value each can take:
+  /// `copyWith(duration: () => null)` keeps every toast shown without a
+  /// duration until it is dismissed, `copyWith(swipeDirections: () => null)`
   /// follows the position again, `copyWith(builder: () => null)` the default
   /// look, and `copyWith(timeLeft: () => null)` draws no time left.
   SonnerConfig copyWith({
@@ -712,7 +739,7 @@ class SonnerConfig {
     double? gap,
     EdgeInsets? offset,
     int? visibleToasts,
-    Duration? duration,
+    ValueGetter<Duration?>? duration,
     bool? expandByDefault,
     Widget? loadingIndicator,
     double? leadingSize,
@@ -733,7 +760,7 @@ class SonnerConfig {
     gap: gap ?? this.gap,
     offset: offset ?? this.offset,
     visibleToasts: visibleToasts ?? this.visibleToasts,
-    duration: duration ?? this.duration,
+    duration: duration == null ? this.duration : duration(),
     expandByDefault: expandByDefault ?? this.expandByDefault,
     loadingIndicator: loadingIndicator ?? this.loadingIndicator,
     leadingSize: leadingSize ?? this.leadingSize,

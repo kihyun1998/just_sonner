@@ -15,7 +15,7 @@ void main() {
 
   setUp(
     () => controller = SonnerController(
-      config: const SonnerConfig(duration: Duration.zero),
+      config: const SonnerConfig(duration: null),
     ),
   );
   tearDown(() => controller.dispose());
