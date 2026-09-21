@@ -152,6 +152,41 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('the expand section fans the deck out with no pointer, and '
+      'collapse folds it up', (tester) async {
+    await pumpHarness(tester);
+
+    final five = find.widgetWithText(OutlinedButton, 'Five toasts, 10 s each');
+    await tester.ensureVisible(five);
+    await tester.pumpAndSettle();
+    await tester.tap(five);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.text('Toast 1 of 5'),
+      findsNothing,
+      reason: 'beyond the window',
+    );
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'The app: expand()'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Toast 1 of 5'), findsOneWidget);
+    expect(find.text('expanded: true · held: false'), findsOneWidget);
+
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'The app: collapse()'),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Toast 1 of 5'), findsNothing);
+    expect(find.text('expanded: false · held: false'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 11));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a config control is assigned, and the deck stays', (
     tester,
   ) async {
