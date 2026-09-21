@@ -26,7 +26,7 @@ void main() {
   // widget test must not end with one pending.
   setUp(
     () => controller = SonnerController(
-      config: const SonnerConfig(duration: Duration.zero),
+      config: const SonnerConfig(duration: null),
     ),
   );
   tearDown(() => controller.dispose());
@@ -167,7 +167,7 @@ void main() {
         tester,
       ) async {
         final controller = SonnerController(
-          config: SonnerConfig(position: position, duration: Duration.zero),
+          config: SonnerConfig(position: position, duration: null),
         );
         addTearDown(controller.dispose);
         await tester.pumpWidget(app(controller: controller));
@@ -200,7 +200,7 @@ void main() {
         config: const SonnerConfig(
           width: 300,
           offset: EdgeInsets.all(40),
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -220,7 +220,7 @@ void main() {
           config: SonnerConfig(
             position: position,
             offset: const EdgeInsets.fromLTRB(19, 11, 13, 17),
-            duration: Duration.zero,
+            duration: null,
           ),
         );
         addTearDown(controller.dispose);
@@ -309,7 +309,7 @@ void main() {
     testWidgets('the slot is a fixed square of config.leadingSize, whatever it '
         'holds', (tester) async {
       final wide = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero, leadingSize: 20),
+        config: const SonnerConfig(duration: null, leadingSize: 20),
       );
       addTearDown(wide.dispose);
       await tester.pumpWidget(app(controller: wide));
@@ -429,7 +429,7 @@ void main() {
           position: SonnerPosition.topLeft,
           gap: 20,
           visibleToasts: 2,
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -467,7 +467,7 @@ void main() {
       final controller = SonnerController(
         config: const SonnerConfig(
           position: SonnerPosition.topLeft,
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -526,7 +526,7 @@ void main() {
       final controller = SonnerController(
         config: const SonnerConfig(
           position: SonnerPosition.topLeft,
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -1029,7 +1029,7 @@ void main() {
       final controller = SonnerController(
         config: const SonnerConfig(
           position: SonnerPosition.topCenter,
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -1662,7 +1662,7 @@ void main() {
       final controller = SonnerController(
         config: const SonnerConfig(
           position: SonnerPosition.topLeft,
-          duration: Duration.zero,
+          duration: null,
         ),
       );
       addTearDown(controller.dispose);
@@ -1978,10 +1978,7 @@ void main() {
 
     SonnerController expandedController() {
       final controller = SonnerController(
-        config: const SonnerConfig(
-          duration: Duration.zero,
-          expandByDefault: true,
-        ),
+        config: const SonnerConfig(duration: null, expandByDefault: true),
       );
       addTearDown(controller.dispose);
       return controller;
@@ -2195,7 +2192,7 @@ void main() {
         WidgetTester tester,
         SonnerController controller,
       ) async {
-        controller.show('Measure', duration: Duration.zero);
+        controller.show('Measure', duration: null);
         await tester.pumpAndSettle();
         final centre = boxOf(tester, 'Measure').center;
         controller.dismissAll();
@@ -2552,7 +2549,7 @@ void main() {
       ) async {
         final controller = SonnerController(
           config: const SonnerConfig(
-            duration: Duration.zero,
+            duration: null,
             position: SonnerPosition.topRight,
           ),
         );
@@ -2885,7 +2882,7 @@ void main() {
         await tester.pumpAndSettle();
 
         final other = SonnerController(
-          config: const SonnerConfig(duration: Duration.zero),
+          config: const SonnerConfig(duration: null),
         );
         addTearDown(other.dispose);
         for (var n = 0; n < 14; n++) {
@@ -3054,7 +3051,7 @@ void main() {
             'with it', (tester) async {
           final controller = SonnerController(
             config: const SonnerConfig(
-              duration: Duration.zero,
+              duration: null,
               dismissAll: DeckDismissAll(),
             ),
           );
@@ -3099,7 +3096,7 @@ void main() {
           expect(drawn('Toast 0'), isFalse);
 
           final other = SonnerController(
-            config: const SonnerConfig(duration: Duration.zero),
+            config: const SonnerConfig(duration: null),
           );
           addTearDown(other.dispose);
           for (var n = 0; n < 5; n++) {
@@ -3215,7 +3212,7 @@ void main() {
             'after the frame, and a host handed another controller moves the '
             'hold to it', (tester) async {
           final other = SonnerController(
-            config: const SonnerConfig(duration: Duration.zero),
+            config: const SonnerConfig(duration: null),
           );
           addTearDown(other.dispose);
           await tester.pumpWidget(app(controller: controller));
@@ -3305,7 +3302,7 @@ void main() {
       }) {
         final controller = SonnerController(
           config: SonnerConfig(
-            duration: Duration.zero,
+            duration: null,
             position: position,
             offset: offset,
             deckCap: cap,
@@ -4168,7 +4165,7 @@ void main() {
       }) {
         final controller = SonnerController(
           config: SonnerConfig(
-            duration: Duration.zero,
+            duration: null,
             position: position,
             offset: offset,
             deckCap: const DeckCap.pixels(200, fade: 0),
@@ -4232,7 +4229,7 @@ void main() {
             'with no pointer on it, since nothing scrolls it', (tester) async {
           final controller = SonnerController(
             config: const SonnerConfig(
-              duration: Duration.zero,
+              duration: null,
               expandByDefault: true,
               visibleToasts: 12,
               deckCap: DeckCap.pixels(200, fade: 0),
@@ -4492,7 +4489,7 @@ void main() {
       }) {
         final controller = SonnerController(
           config: SonnerConfig(
-            duration: Duration.zero,
+            duration: null,
             position: position,
             deckCap: cap,
             scrollbar: null,
@@ -4743,7 +4740,7 @@ void main() {
       /// A controller whose deck draws [backdrop] behind it.
       SonnerController withBackdrop(DeckBackdrop? backdrop) {
         final controller = SonnerController(
-          config: SonnerConfig(duration: Duration.zero, deckBackdrop: backdrop),
+          config: SonnerConfig(duration: null, deckBackdrop: backdrop),
         );
         addTearDown(controller.dispose);
         return controller;
@@ -5189,7 +5186,7 @@ void main() {
     testWidgets('dismissible false takes the close button away, and dismiss '
         'still works', (tester) async {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero, closeButton: true),
+        config: const SonnerConfig(duration: null, closeButton: true),
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -5216,7 +5213,7 @@ void main() {
       tester,
     ) async {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero, closeButton: true),
+        config: const SonnerConfig(duration: null, closeButton: true),
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -5348,7 +5345,7 @@ void main() {
         () => controller = SonnerController(
           config: const SonnerConfig(
             position: SonnerPosition.topLeft,
-            duration: Duration.zero,
+            duration: null,
           ),
         ),
       );
@@ -5928,10 +5925,7 @@ void main() {
 
     testWidgets("the position's own words name the directions", (tester) async {
       final left = controllerWith(
-        const SonnerConfig(
-          duration: Duration.zero,
-          position: SonnerPosition.bottomLeft,
-        ),
+        const SonnerConfig(duration: null, position: SonnerPosition.bottomLeft),
       );
       await tester.pumpWidget(app(controller: left));
       left.show('Saved');
@@ -5988,7 +5982,7 @@ void main() {
     ) async {
       final upward = controllerWith(
         const SonnerConfig(
-          duration: Duration.zero,
+          duration: null,
           swipeDirections: {SwipeDirection.up},
         ),
       );
@@ -6198,7 +6192,7 @@ void main() {
         const SonnerConfig(duration: Duration(seconds: 1)),
       );
       await tester.pumpWidget(app(controller: counting));
-      final id = counting.show('Saved', duration: Duration.zero);
+      final id = counting.show('Saved', duration: null);
       await tester.pumpAndSettle();
       final at = toastRect(tester, 'Saved');
 
@@ -6331,7 +6325,7 @@ void main() {
     testWidgets('a toast brought back by swapping its controller back follows '
         'the next config, wherever an assignment left it', (tester) async {
       final other = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(other.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -6759,7 +6753,7 @@ void main() {
     'swapping back to a controller while its toasts exit keeps them',
     (tester) async {
       final other = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(other.dispose);
       await tester.pumpWidget(app(controller: controller));
@@ -6781,9 +6775,7 @@ void main() {
   testWidgets('a host handed a different controller follows it', (
     tester,
   ) async {
-    final other = SonnerController(
-      config: const SonnerConfig(duration: Duration.zero),
-    );
+    final other = SonnerController(config: const SonnerConfig(duration: null));
     await tester.pumpWidget(app(controller: controller));
     controller.show('Before');
     await tester.pumpAndSettle();
@@ -6835,7 +6827,7 @@ void main() {
 
     ToastId showCounting(
       String title, {
-      Duration duration = const Duration(seconds: 4),
+      Duration? duration = const Duration(seconds: 4),
       bool isLoading = false,
     }) => controller.show(
       title,
@@ -6851,12 +6843,12 @@ void main() {
         'with no timer has none until it starts counting', (tester) async {
       await tester.pumpWidget(app(controller: controller));
       showCounting('Counting');
-      showCounting('Waits', duration: Duration.zero);
+      showCounting('Waits', duration: null);
       final saving = showCounting('Saving', isLoading: true);
       await tester.pump();
 
       expect(views['Counting']!.timeLeft?.value, 1);
-      expect(views['Waits']!.timeLeft, isNull, reason: 'Duration.zero');
+      expect(views['Waits']!.timeLeft, isNull, reason: 'no timer');
       expect(views['Saving']!.timeLeft, isNull, reason: 'loading');
 
       controller.update(
@@ -7057,7 +7049,7 @@ void main() {
       // Newest first, so the counting one is the one the others push out.
       showCounting('Counting', duration: const Duration(seconds: 10));
       for (var n = 0; n < 3; n++) {
-        showCounting('Waits $n', duration: Duration.zero);
+        showCounting('Waits $n', duration: null);
       }
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 600));
@@ -7146,7 +7138,7 @@ void main() {
       );
       await tester.pumpWidget(app(controller: controller, theme: theme));
       showCounting('Counting');
-      showCounting('Waits', duration: Duration.zero);
+      showCounting('Waits', duration: null);
       await tester.pump();
 
       final [painter as TimeLeftBorderPainter] = painted(tester, 'Counting');
@@ -7535,7 +7527,7 @@ void main() {
       DeckStowHandle? handle,
       DeckDismissAll? dismissAll,
       SonnerPosition position = SonnerPosition.bottomRight,
-      Duration duration = Duration.zero,
+      Duration? duration,
     }) {
       final controller = SonnerController(
         config: SonnerConfig(
@@ -7612,7 +7604,7 @@ void main() {
         'the deck, as one over the deck does', (tester) async {
       final controller = SonnerController(
         config: const SonnerConfig(
-          duration: Duration.zero,
+          duration: null,
           deckCap: DeckCap.pixels(200, fade: 0),
           scrollbar: null,
         ),
@@ -8423,7 +8415,7 @@ class _OwnsController extends StatefulWidget {
 
 class _OwnsControllerState extends State<_OwnsController> {
   final controller = SonnerController(
-    config: const SonnerConfig(duration: Duration.zero),
+    config: const SonnerConfig(duration: null),
   );
 
   @override

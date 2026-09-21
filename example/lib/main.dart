@@ -266,16 +266,12 @@ class _PanelState extends State<_Panel> {
             ('Tests passed', '318 of 318'),
             ('Deploy finished', 'staging · 41 s'),
           ]) {
-            _show(line.$1, description: line.$2, duration: Duration.zero);
+            _show(line.$1, description: line.$2, duration: null);
           }
         }),
         _Button('Show ten, so the deck is tall', () {
           for (var n = 0; n < 10; n++) {
-            _show(
-              'Toast $n',
-              description: 'one of ten',
-              duration: Duration.zero,
-            );
+            _show('Toast $n', description: 'one of ten', duration: null);
           }
         }),
       ],
@@ -320,7 +316,7 @@ class _PanelState extends State<_Panel> {
     String? description,
     bool isLoading = false,
     Widget? leading,
-    Duration? duration,
+    Duration? duration = SonnerConfig.configDuration,
     bool? dismissible,
     ToastSlot? action,
     bool? closeButton,
@@ -942,8 +938,8 @@ class _PanelState extends State<_Panel> {
           'Stays until dismissed',
           () => _show(
             'This one waits for you',
-            description: 'duration: Duration.zero',
-            duration: Duration.zero,
+            description: 'duration: null',
+            duration: null,
           ),
         ),
         _Button('Dismiss the newest', _dismissNewest),
@@ -976,7 +972,7 @@ class _PanelState extends State<_Panel> {
         }),
         _Button('Twenty, staying', () {
           for (var i = 1; i <= 20; i++) {
-            _show('Toast $i of 20', duration: Duration.zero);
+            _show('Toast $i of 20', duration: null);
           }
         }),
       ],
@@ -1037,7 +1033,7 @@ class _PanelState extends State<_Panel> {
         ),
         _Button(
           'No timer: nothing to draw',
-          () => _show('Stays until dismissed', duration: Duration.zero),
+          () => _show('Stays until dismissed', duration: null),
         ),
         ..._timeLeftControls(config),
       ],
@@ -1053,7 +1049,7 @@ class _PanelState extends State<_Panel> {
       children: [
         _Button('Twenty, staying', () {
           for (var i = 1; i <= 20; i++) {
-            _show('Capped $i of 20', duration: Duration.zero);
+            _show('Capped $i of 20', duration: null);
           }
         }),
         _Button('Eight of mixed heights, staying', () {
@@ -1061,20 +1057,20 @@ class _PanelState extends State<_Panel> {
             _show(
               'Mixed $i of 8',
               description: i.isEven ? 'A second line\nand a third' : null,
-              duration: Duration.zero,
+              duration: null,
             );
           }
         }),
         _Button('A newest toast taller than a small cap', () {
           for (var i = 1; i <= 4; i++) {
-            _show('Behind $i of 4', duration: Duration.zero);
+            _show('Behind $i of 4', duration: null);
           }
           _show(
             'Read me whole',
             description: [
               for (var line = 1; line <= 8; line++) 'Line $line',
             ].join('\n'),
-            duration: Duration.zero,
+            duration: null,
           );
         }),
         ..._deckCapControls(config),
@@ -1091,18 +1087,18 @@ class _PanelState extends State<_Panel> {
       children: [
         _Button('Five, staying', () {
           for (var i = 1; i <= 5; i++) {
-            _show('Staying $i of 5', duration: Duration.zero);
+            _show('Staying $i of 5', duration: null);
           }
         }),
         _Button('Three staying and one loading', () {
           for (var i = 1; i <= 3; i++) {
-            _show('Kept $i of 3', duration: Duration.zero);
+            _show('Kept $i of 3', duration: null);
           }
           _show('Saving…', isLoading: true);
         }),
         _Button('Twenty, staying (past the cap)', () {
           for (var i = 1; i <= 20; i++) {
-            _show('Many $i of 20', duration: Duration.zero);
+            _show('Many $i of 20', duration: null);
           }
         }),
         ..._dismissAllControls(config),
@@ -1120,7 +1116,7 @@ class _PanelState extends State<_Panel> {
       children: [
         _Button('Three staying and one loading', () {
           for (var i = 1; i <= 3; i++) {
-            _show('Kept $i of 3', duration: Duration.zero);
+            _show('Kept $i of 3', duration: null);
           }
           _show('Saving…', isLoading: true);
         }),
@@ -1254,12 +1250,12 @@ class _PanelState extends State<_Panel> {
           () => _show(
             'Event has been created',
             description: 'Monday, January 3rd at 6:00pm',
-            duration: Duration.zero,
+            duration: null,
           ),
         ),
         _Button(
           'A short one, staying',
-          () => _show('Event has been created', duration: Duration.zero),
+          () => _show('Event has been created', duration: null),
         ),
       ],
     ),
@@ -1423,7 +1419,7 @@ class _PanelState extends State<_Panel> {
           () => _show(
             'Checking credentials…',
             description: 'A description that a replace will drop.',
-            duration: Duration.zero,
+            duration: null,
             id: _target,
           ),
         ),
@@ -1456,7 +1452,7 @@ class _PanelState extends State<_Panel> {
           _show(
             'Item deleted',
             description: 'Monday, January 3rd at 6:00pm',
-            duration: Duration.zero,
+            duration: null,
             action: (context, t) =>
                 TextButton(onPressed: t.dismiss, child: const Text('Undo')),
           );
@@ -1464,7 +1460,7 @@ class _PanelState extends State<_Panel> {
         _Button('Retry — the button keeps it', () {
           _show(
             'Connection failed',
-            duration: Duration.zero,
+            duration: null,
             action: (context, t) => TextButton(
               onPressed: () =>
                   _toast.update(t.id, title: 'Retrying…', isLoading: true),
@@ -1475,7 +1471,7 @@ class _PanelState extends State<_Panel> {
         _Button('Two buttons in the one slot', () {
           _show(
             'Discard your changes?',
-            duration: Duration.zero,
+            duration: null,
             action: (context, t) => Row(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -1489,7 +1485,7 @@ class _PanelState extends State<_Panel> {
           _show(
             'Event has been created',
             description: 'The X is the package’s, not yours.',
-            duration: Duration.zero,
+            duration: null,
             closeButton: true,
           );
         }),
@@ -1507,7 +1503,7 @@ class _PanelState extends State<_Panel> {
               title: 'Uploaded',
               description: 'Now you can close it.',
               isLoading: false,
-              duration: Duration.zero,
+              duration: null,
             );
           });
         }),
@@ -1515,7 +1511,7 @@ class _PanelState extends State<_Panel> {
           _show(
             'You cannot close this one',
             description: 'Use “Dismiss all”. dismissible governs the user.',
-            duration: Duration.zero,
+            duration: null,
             dismissible: false,
             closeButton: true,
           );
@@ -1538,19 +1534,19 @@ class _PanelState extends State<_Panel> {
           _show(
             'Drag me off the screen',
             description: 'A short, slow drag comes back.',
-            duration: Duration.zero,
+            duration: null,
           );
         }),
         _Button('Three to swipe', () {
           for (var i = 3; i >= 1; i--) {
-            _show('Swipe $i of 3', duration: Duration.zero);
+            _show('Swipe $i of 3', duration: null);
           }
         }),
         _Button('Pinned — dismissible: false', () {
           _show(
             'This one does not move',
             description: 'dismissible governs the swipe as well as the X.',
-            duration: Duration.zero,
+            duration: null,
             dismissible: false,
           );
         }),
@@ -1567,7 +1563,7 @@ class _PanelState extends State<_Panel> {
               title: 'Uploaded',
               description: 'Now it takes a swipe, with no second call.',
               isLoading: false,
-              duration: Duration.zero,
+              duration: null,
             );
           });
         }),
@@ -1588,23 +1584,19 @@ class _PanelState extends State<_Panel> {
           'flash’s and it wins, dismissible or not.',
       children: [
         _Button('A look of your own', () {
-          _show('Deployed', duration: Duration.zero, builder: _ownLook);
+          _show('Deployed', duration: null, builder: _ownLook);
         }),
         _Button('A tall one in your look, then a short one', () {
           _show(
             'Deployed to three regions',
             description: 'us-east\neu-west\nap-south',
-            duration: Duration.zero,
+            duration: null,
             builder: _ownLook,
           );
-          _show('Rolled back', duration: Duration.zero, builder: _ownLook);
+          _show('Rolled back', duration: null, builder: _ownLook);
         }),
         _Button('Change its look in place', () {
-          final id = _show(
-            'Changing look',
-            duration: Duration.zero,
-            builder: _ownLook,
-          );
+          final id = _show('Changing look', duration: null, builder: _ownLook);
           Timer(const Duration(seconds: 1), () {
             if (mounted) _toast.update(id, builder: _flashBar(swipe: false));
           });
@@ -1622,21 +1614,21 @@ class _PanelState extends State<_Panel> {
         _Button('FlashBar, keeping the toast’s swipe', () {
           _show(
             'Saved through the adapter',
-            duration: Duration.zero,
+            duration: null,
             builder: _flashBar(swipe: false),
           );
         }),
         _Button('FlashBar with flash’s own swipe', () {
           _show(
             'Flash swipes this one',
-            duration: Duration.zero,
+            duration: null,
             builder: _flashBar(swipe: true),
           );
         }),
         _Button('FlashBar, dismissible: false', () {
           _show(
             'Springs back from any swipe',
-            duration: Duration.zero,
+            duration: null,
             dismissible: false,
             builder: _flashBar(swipe: true),
           );
@@ -1669,7 +1661,7 @@ class _PanelState extends State<_Panel> {
         _Button('Five that stay, at topRight', () {
           widget.onConfig(config.copyWith(position: SonnerPosition.topRight));
           for (var i = 5; i >= 1; i--) {
-            _show('Offset $i of 5', duration: Duration.zero);
+            _show('Offset $i of 5', duration: null);
           }
         }),
         SwitchListTile(
@@ -1696,7 +1688,7 @@ class _PanelState extends State<_Panel> {
       children: [
         _Button('Three that stay', () {
           for (var i = 3; i >= 1; i--) {
-            _show('Watch me move ($i of 3)', duration: Duration.zero);
+            _show('Watch me move ($i of 3)', duration: null);
           }
         }),
         _Dropdown<SonnerPosition>(
@@ -1717,11 +1709,13 @@ class _PanelState extends State<_Panel> {
         ),
         _Dropdown<int>(
           label: 'duration',
-          value: config.duration.inSeconds,
+          value: config.duration?.inSeconds ?? 0,
           values: const [1, 2, 4, 8, 0],
           nameOf: (value) => value == 0 ? 'until dismissed' : '$value s',
           onChanged: (value) => widget.onConfig(
-            config.copyWith(duration: Duration(seconds: value)),
+            config.copyWith(
+              duration: () => value == 0 ? null : Duration(seconds: value),
+            ),
           ),
         ),
         _Dropdown<Set<SwipeDirection>?>(

@@ -8,12 +8,15 @@ single `show` can override, and what happens to toasts on screen when a field ch
 - [spec §12](../../spec.md#12-decision-record) — `offset` as an `EdgeInsets`, one inset
   per physical edge; the time left being config-only; the cap and scrollbar as separate
   fields; and the rules each live field brings.
+- [spec §12](../../spec.md#12-decision-record) — `duration` nullable, and
+  `SonnerConfig.configDuration` (#97).
 - [spec §4](../../spec.md#4-api).
 
 ## Design model
 A field is assigned, not rebuilt: changing one keeps the toasts on screen where they
 are. Nullable fields are given through a getter in `copyWith`, since null is a value
-they can take.
+they can take — `duration` among them since #97, where null keeps every toast shown
+without a duration until it is dismissed.
 
 `offset` is an `EdgeInsets` of **physical** edges. The edge the position names holds the
 deck off it and measures `DeckCap.pixels`, the scroll track and the scrollbar from it;

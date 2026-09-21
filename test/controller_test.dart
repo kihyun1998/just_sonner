@@ -47,11 +47,11 @@ void main() {
       });
     });
 
-    test('Duration.zero means no timer at all', () {
+    test('a null duration means no timer at all', () {
       fakeAsync((async) {
         final controller = SonnerController();
         var notifications = 0;
-        controller.show('Pinned', duration: Duration.zero);
+        controller.show('Pinned', duration: null);
         controller.addListener(() => notifications++);
 
         expect(async.periodicTimerCount, 0);
@@ -66,7 +66,7 @@ void main() {
         final controller = SonnerController();
         final first = controller.show('First');
         final second = controller.show('Second');
-        controller.show('Pinned', duration: Duration.zero);
+        controller.show('Pinned', duration: null);
         expect(async.periodicTimerCount, 1);
 
         controller.dismiss(first);
@@ -176,6 +176,31 @@ void main() {
       });
     });
 
+    test('a function passing its duration on with SonnerConfig.configDuration '
+        'as its default gives config.duration, and null no timer', () {
+      fakeAsync((async) {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: Duration(seconds: 2)),
+        );
+        ToastId notify(
+          String title, {
+          Duration? duration = SonnerConfig.configDuration,
+        }) => controller.show(title, duration: duration);
+
+        notify('Counted');
+        notify('Kept', duration: null);
+        final remaining = {
+          for (final record in toastsOf(controller))
+            record.state.title: record.remaining,
+        };
+        expect(remaining, {
+          'Kept': null,
+          'Counted': const Duration(seconds: 2),
+        });
+        controller.dispose();
+      });
+    });
+
     test('a negative duration is refused', () {
       final controller = SonnerController();
       expect(
@@ -191,14 +216,52 @@ void main() {
       controller.dispose();
     });
 
+    test('SonnerConfig.configDuration is refused as the config’s own '
+        'duration, which it would stand for', () {
+      expect(
+        () => SonnerController(
+          config: const SonnerConfig(duration: SonnerConfig.configDuration),
+        ),
+        throwsAssertionError,
+      );
+      final controller = SonnerController();
+      expect(
+        () => controller.config = controller.config.copyWith(
+          duration: () => SonnerConfig.configDuration,
+        ),
+        throwsAssertionError,
+      );
+      controller.dispose();
+    });
+
+    test('a zero duration is refused, since it would expire at once', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        expect(
+          () => controller.show('Gone', duration: Duration.zero),
+          throwsAssertionError,
+        );
+        expect(toastsOf(controller), isEmpty);
+        expect(
+          () => SonnerController(
+            config: const SonnerConfig(duration: Duration.zero),
+          ),
+          throwsAssertionError,
+        );
+        final id = controller.show('Saved');
+        expect(
+          () => controller.update(id, duration: Duration.zero),
+          throwsAssertionError,
+        );
+        controller.dispose();
+      });
+    });
+
     test('visibleToasts outside 1 to 20 is refused', () {
       for (final visibleToasts in [-1, 0, 21]) {
         expect(
           () => SonnerController(
-            config: SonnerConfig(
-              visibleToasts: visibleToasts,
-              duration: Duration.zero,
-            ),
+            config: SonnerConfig(visibleToasts: visibleToasts, duration: null),
           ),
           throwsAssertionError,
           reason: '$visibleToasts',
@@ -206,10 +269,7 @@ void main() {
       }
       for (final visibleToasts in [1, 20]) {
         SonnerController(
-          config: SonnerConfig(
-            visibleToasts: visibleToasts,
-            duration: Duration.zero,
-          ),
+          config: SonnerConfig(visibleToasts: visibleToasts, duration: null),
         ).dispose();
       }
     });
@@ -234,14 +294,24 @@ void main() {
       });
     });
 
-    test('a config duration of zero keeps toasts until dismissed', () {
+    test('a null config duration keeps toasts until dismissed', () {
       fakeAsync((async) {
         final controller = SonnerController(
-          config: const SonnerConfig(duration: Duration.zero),
+          config: const SonnerConfig(duration: null),
         );
         controller.show('Pinned');
 
         expect(async.periodicTimerCount, 0);
+        async.elapse(const Duration(minutes: 1));
+        expect(toastsOf(controller), hasLength(1));
+
+        controller.show('Transient', duration: const Duration(seconds: 1));
+        async.elapse(const Duration(milliseconds: 1100));
+        expect(
+          [for (final record in toastsOf(controller)) record.state.title],
+          ['Pinned'],
+          reason: 'a duration passed still makes a transient toast',
+        );
         controller.dispose();
       });
     });
@@ -472,10 +542,11 @@ void main() {
       },
     );
 
-    test('a loading toast with Duration.zero keeps no timer either way', () {
+    test('a loading toast with a null config duration keeps no timer either '
+        'way', () {
       fakeAsync((async) {
         final controller = SonnerController(
-          config: const SonnerConfig(duration: Duration.zero),
+          config: const SonnerConfig(duration: null),
         );
         final id = controller.show('Uploading', isLoading: true);
         expect(toastsOf(controller).single.remaining, isNull);
@@ -484,10 +555,37 @@ void main() {
         expect(
           toastsOf(controller).single.remaining,
           isNull,
-          reason: 'Duration.zero means it waits to be dismissed',
+          reason: 'a null duration means it waits to be dismissed',
         );
         async.elapse(const Duration(seconds: 60));
         expect(toastsOf(controller), hasLength(1));
+        controller.dispose();
+      });
+    });
+
+    test('a loading toast shown with a null duration stays once it stops '
+        'loading', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show(
+          'Uploading',
+          isLoading: true,
+          duration: null,
+        );
+
+        controller.update(id, isLoading: false, title: 'Uploaded');
+        expect(toastsOf(controller).single.remaining, isNull);
+        async.elapse(const Duration(seconds: 60));
+        expect(toastsOf(controller), hasLength(1));
+
+        final other = controller.show('Syncing', isLoading: true);
+        controller.update(other, isLoading: false, title: 'Synced');
+        expect(
+          toastsOf(controller).first.remaining,
+          const Duration(seconds: 4),
+          reason: 'with the duration omitted it takes config.duration',
+        );
+        controller.dismissAll();
         controller.dispose();
       });
     });
@@ -503,7 +601,7 @@ void main() {
 
     SonnerController pinned() {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       return controller;
@@ -674,6 +772,37 @@ void main() {
       });
     });
 
+    test('a result with a null duration stays; one with none given takes '
+        'config.duration', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        for (final (title, content) in [
+          ('Kept', const ToastContent('Kept', duration: null)),
+          ('Counted', const ToastContent('Counted')),
+        ]) {
+          controller.promise(
+            Future<void>.value(),
+            loading: ToastContent('$title…'),
+            success: (_) => content,
+            error: (e) => ToastContent('Failed: $e'),
+          );
+        }
+        async.flushMicrotasks();
+        final remaining = {
+          for (final record in toastsOf(controller))
+            record.state.title: record.remaining,
+        };
+        expect(remaining, {
+          'Kept': null,
+          'Counted': const Duration(seconds: 4),
+        });
+
+        async.elapse(const Duration(seconds: 60));
+        expect(toastsOf(controller).single.state.title, 'Kept');
+        controller.dispose();
+      });
+    });
+
     test('a duration on the loading content asserts, since it is ignored', () {
       final controller = SonnerController();
       addTearDown(controller.dispose);
@@ -713,7 +842,7 @@ void main() {
   group('slots, close button and dismissible', () {
     SonnerController pinned([SonnerConfig? config]) {
       final controller = SonnerController(
-        config: config ?? const SonnerConfig(duration: Duration.zero),
+        config: config ?? const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       return controller;
@@ -758,9 +887,7 @@ void main() {
       expect(drawn(off, 1), isFalse, reason: 'the config says no');
       expect(drawn(off, 0), isTrue, reason: 'the toast overrules it');
 
-      final on = pinned(
-        const SonnerConfig(duration: Duration.zero, closeButton: true),
-      );
+      final on = pinned(const SonnerConfig(duration: null, closeButton: true));
       on.show('Follows');
       on.show('Declines', closeButton: false);
       expect(drawn(on, 1), isTrue, reason: 'the config says yes');
@@ -769,7 +896,7 @@ void main() {
 
     test('a toast the user may not dismiss has no close button', () {
       final controller = pinned(
-        const SonnerConfig(duration: Duration.zero, closeButton: true),
+        const SonnerConfig(duration: null, closeButton: true),
       );
       controller.show('Uploading', isLoading: true);
       expect(
@@ -781,7 +908,7 @@ void main() {
 
     test('update patches the slots, and a replace clears them', () {
       final controller = pinned(
-        const SonnerConfig(duration: Duration.zero, closeButton: true),
+        const SonnerConfig(duration: null, closeButton: true),
       );
       const id = ToastId('connection');
       controller.show(
@@ -879,7 +1006,7 @@ void main() {
 
     test('update changes only the fields passed, in place', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       final id = controller.show('Checking', description: 'credentials');
@@ -906,7 +1033,7 @@ void main() {
 
     test('update returns false for an id that is not on screen', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       final id = controller.show('Saved');
@@ -922,7 +1049,7 @@ void main() {
 
     test('show at an id on screen replaces it whole, in place', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       final id = controller.show('Checking', description: 'credentials');
@@ -945,7 +1072,7 @@ void main() {
 
     test('a replace clears leading and isLoading too', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
       const id = ToastId('connection');
@@ -968,7 +1095,7 @@ void main() {
       'show at a dismissed id makes a new toast with nothing of the old',
       () {
         final controller = SonnerController(
-          config: const SonnerConfig(duration: Duration.zero),
+          config: const SonnerConfig(duration: null),
         );
         addTearDown(controller.dispose);
         const id = ToastId('connection');
@@ -989,7 +1116,7 @@ void main() {
 
     test('show with a caller id not on screen makes a toast with that id', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       addTearDown(controller.dispose);
 
@@ -1093,13 +1220,13 @@ void main() {
     });
 
     test(
-      'an update to Duration.zero stops the countdown, and back starts it',
+      'an update to a null duration stops the countdown, and back starts it',
       () {
         fakeAsync((async) {
           final controller = SonnerController();
           final id = controller.show('Saved');
 
-          controller.update(id, duration: Duration.zero);
+          controller.update(id, duration: null);
           expect(async.periodicTimerCount, 0, reason: 'nothing left to count');
           async.elapse(const Duration(minutes: 1));
           expect(titles(controller), ['Saved']);
@@ -1114,10 +1241,23 @@ void main() {
       },
     );
 
+    test('an update without a duration leaves a toast with no timer so', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('Pinned', duration: null);
+
+        controller.update(id, title: 'Still pinned');
+        expect(async.periodicTimerCount, 0);
+        async.elapse(const Duration(minutes: 1));
+        expect(toastsOf(controller), hasLength(1));
+        controller.dispose();
+      });
+    });
+
     test('a replace without a duration on a pinned toast starts counting', () {
       fakeAsync((async) {
         final controller = SonnerController();
-        final id = controller.show('Pinned', duration: Duration.zero);
+        final id = controller.show('Pinned', duration: null);
         expect(async.periodicTimerCount, 0);
 
         controller.show('Done', id: id);
@@ -1146,7 +1286,7 @@ void main() {
     test('a negative duration on update is refused', () {
       final controller = SonnerController();
       addTearDown(controller.dispose);
-      final id = controller.show('Saved', duration: Duration.zero);
+      final id = controller.show('Saved', duration: null);
 
       expect(
         () => controller.update(id, duration: const Duration(seconds: -1)),
@@ -1221,7 +1361,7 @@ void main() {
         expect(controller.stowed, isFalse, reason: 'nothing to stow');
         expect(notifications, 0);
 
-        controller.show('Saved', duration: Duration.zero);
+        controller.show('Saved', duration: null);
         notifications = 0;
         controller.stow();
         expect(controller.stowed, isTrue);
@@ -1243,13 +1383,13 @@ void main() {
       fakeAsync((async) {
         final controller = SonnerController();
         const kept = ToastId('kept');
-        controller.show('Kept', id: kept, duration: Duration.zero);
+        controller.show('Kept', id: kept, duration: null);
 
         controller.stow();
         expect(controller.update(kept, title: 'Kept again'), isTrue);
         expect(controller.stowed, isTrue, reason: 'an update');
 
-        controller.show('Replaced', id: kept, duration: Duration.zero);
+        controller.show('Replaced', id: kept, duration: null);
         expect(controller.stowed, isTrue, reason: 'a replace');
 
         final completer = Completer<String>();
@@ -1266,7 +1406,7 @@ void main() {
         async.flushMicrotasks();
         expect(controller.stowed, isTrue, reason: 'a promise result');
 
-        controller.show('New', duration: Duration.zero);
+        controller.show('New', duration: null);
         expect(controller.stowed, isFalse);
         controller.dismissAll();
         controller.dispose();
@@ -1277,8 +1417,8 @@ void main() {
         'or its own timer', () {
       fakeAsync((async) {
         final controller = SonnerController();
-        final first = controller.show('One', duration: Duration.zero);
-        controller.show('Two', duration: Duration.zero);
+        final first = controller.show('One', duration: null);
+        controller.show('Two', duration: null);
 
         controller.stow();
         controller.dismiss(first);
@@ -1286,7 +1426,7 @@ void main() {
         controller.dismiss(toastsOf(controller).single.id);
         expect(controller.stowed, isFalse);
 
-        controller.show('Three', duration: Duration.zero);
+        controller.show('Three', duration: null);
         controller.stow();
         controller.dismissAll();
         expect(controller.stowed, isFalse);
@@ -1340,7 +1480,7 @@ void main() {
         expect(controller.expanded, isFalse, reason: 'nothing to expand');
         expect(notifications, 0);
 
-        controller.show('Saved', duration: Duration.zero);
+        controller.show('Saved', duration: null);
         notifications = 0;
         controller.expand();
         expect(controller.expanded, isTrue);
@@ -1361,8 +1501,8 @@ void main() {
         'dismissAll or its own timer, and notifies once for it', () {
       fakeAsync((async) {
         final controller = SonnerController();
-        final first = controller.show('One', duration: Duration.zero);
-        controller.show('Two', duration: Duration.zero);
+        final first = controller.show('One', duration: null);
+        controller.show('Two', duration: null);
 
         controller.expand();
         controller.dismiss(first);
@@ -1373,7 +1513,7 @@ void main() {
         expect(controller.expanded, isFalse);
         expect(notifications, 1);
 
-        controller.show('Three', duration: Duration.zero);
+        controller.show('Three', duration: null);
         controller.expand();
         controller.dismissAll();
         expect(controller.expanded, isFalse);
@@ -1386,7 +1526,7 @@ void main() {
         expect(toastsOf(controller), isEmpty);
         expect(controller.expanded, isFalse);
 
-        controller.show('Five', duration: Duration.zero);
+        controller.show('Five', duration: null);
         expect(
           controller.expanded,
           isFalse,
@@ -1403,7 +1543,7 @@ void main() {
       () {
         fakeAsync((async) {
           final controller = SonnerController();
-          controller.show('Saved', duration: Duration.zero);
+          controller.show('Saved', duration: null);
 
           controller.stow();
           controller.expand();
@@ -1447,7 +1587,7 @@ void main() {
     test('assigning a config notifies, and a lowered visibleToasts keeps the '
         'hidden toasts in the list', () {
       final controller = SonnerController(
-        config: const SonnerConfig(duration: Duration.zero),
+        config: const SonnerConfig(duration: null),
       );
       for (final title in ['First', 'Second', 'Third']) {
         controller.show(title);
@@ -1465,6 +1605,20 @@ void main() {
         reason: 'lowering the window dismisses nothing',
       );
       controller.dispose();
+    });
+
+    test('copyWith keeps duration unless given one, and can take it away', () {
+      const set = SonnerConfig(duration: Duration(seconds: 2));
+
+      expect(set.copyWith(gap: 20).duration, const Duration(seconds: 2));
+      expect(
+        set.copyWith(duration: () => const Duration(seconds: 7)).duration,
+        const Duration(seconds: 7),
+      );
+      final none = set.copyWith(duration: () => null);
+      expect(none.duration, isNull);
+      expect(none, isNot(set));
+      expect(none.copyWith(gap: 20).duration, isNull, reason: 'kept');
     });
 
     test('copyWith keeps swipeDirections unless given one, and can put it '
@@ -1918,7 +2072,7 @@ void main() {
         controller.addListener(() => notifications++);
 
         controller.config = controller.config.copyWith(
-          duration: const Duration(seconds: 1),
+          duration: () => const Duration(seconds: 1),
         );
         notifications = 0;
 

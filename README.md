@@ -91,8 +91,16 @@ toast.dismiss(id);
 toast.dismissAll();
 ```
 
-- **Duration.** A toast stays `config.duration`, 4 s by default, or the `duration` it is shown
-  with. `Duration.zero` keeps it until it is dismissed.
+- **Duration.** A toast shown with a `duration` is a **transient** toast: it is gone once that
+  has passed. `duration: null` makes a toast that stays until the user or your app dismisses it.
+  With no `duration`, a toast takes `config.duration`, 4 s by default. A function of yours that
+  passes a duration on to `show` takes `SonnerConfig.configDuration` as its default, so its own
+  callers can still leave it out:
+
+  ```dart
+  ToastId notify(String title, {Duration? duration = SonnerConfig.configDuration}) =>
+      toast.show(title, duration: duration);
+  ```
 - **Loading.** A toast with `isLoading: true` has no timer, and draws a spinner in its leading slot.
   Give it a duration when it stops loading, as above.
 - **Update and replace.** `update` changes the fields passed and keeps the rest. `show` at the id of
@@ -302,7 +310,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `gap` | 14 | The space between two toasts |
 | `offset` | `EdgeInsets.all(24)` | The distance from each screen edge. A centered position ignores left and right |
 | `visibleToasts` | 3 | How many toasts the deck draws with no pointer over it and your app not expanding it, 1 to 20 |
-| `duration` | 4 s | How long a toast stays; `Duration.zero` keeps it |
+| `duration` | 4 s | How long a toast shown without one stays; null keeps each until it is dismissed. Set it with `copyWith(duration: () => null)` |
 | `expandByDefault` | false | Fan the deck out with no pointer |
 | `loadingIndicator` | `CircularProgressIndicator` | What a loading toast's leading slot holds |
 | `leadingSize` | 20 | The side of the leading slot's box |
@@ -462,7 +470,7 @@ Six things an app's widget tests meet with toasts on screen.
 the host, so unmounting the app does not stop it. `testWidgets` checks for pending timers before
 `tearDown` runs, so a test that leaves a counting toast up fails with "A Timer is still pending even
 after the widget tree was disposed". Before the test body ends, dismiss the toast, or pump past its
-duration. Or show it with `duration: Duration.zero`.
+duration. Or show it with `duration: null`, which gives it no timer.
 
 ```dart
 testWidgets('saving shows a toast', (tester) async {

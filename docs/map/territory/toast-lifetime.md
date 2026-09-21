@@ -9,12 +9,22 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — the rows on the countdown, on
   resuming skipping the partial tick, on update and replace, and on the visible window
   counting only toasts not yet dismissed.
+- [spec §12](../../spec.md#12-decision-record) — the two kinds of toast and `duration:
+  null` (#97, maintainer); the sentinel default (derived); the sentinel made public as
+  `SonnerConfig.configDuration` (maintainer).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
-One tick serves every counting toast and stops with the last. A toast with
-`Duration.zero` or `isLoading` has **no** timer, so nothing removes it but an explicit
-dismiss. Resuming skips the partial tick, because a pause released just before a tick
+One tick serves every counting toast and stops with the last. A **transient** toast has
+a timer; one whose duration is null, or that `isLoading`, has **no** timer, so nothing
+removes it but an explicit dismiss.
+
+Every `duration` defaults to `SonnerConfig.configDuration`, a zero-valued `Duration`
+subclass told apart **by identity** — never by `==`, which a zero `Duration` would pass.
+Omitted takes `config.duration`, null takes the timer away. The trap it exists for: a
+function that passes a `Duration?` on to `show` with no default turns every omission
+into null, and so into a toast with no timer, with nothing to warn of it. That is why it
+is public. A duration that is not positive asserts; in release it keeps the toast. Resuming skips the partial tick, because a pause released just before a tick
 would otherwise subtract a whole one.
 
 Nothing the app does to the deck pauses: neither `stow()` nor `expand()`. A deck left
@@ -29,6 +39,7 @@ already off screen for the API's purposes.
 `toast_id.dart` — ToastId
 `toast_state.dart` — ToastState
 `toast_content.dart` — ToastContent
+`config.dart` — debugCheckDuration
 `time_left.dart` — TimeLeftFollower
 
 ## Reference behaviour

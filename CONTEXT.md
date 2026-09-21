@@ -100,8 +100,12 @@ The default look draws it as `config.timeLeft` says; a builder is handed it eith
 _Avoid_: progress (that reads as a loading toast's), countdown (that is the controller counting), timer bar
 
 **Toast**:
-One notification, with an id, content and a lifetime.
+One notification, with an id, content and a lifetime. One with no timer lives until the user or the app dismisses it; a **Loading** toast is one of these.
 _Avoid_: toast (for the thing that shows toasts — that is the controller)
+
+**Transient toast**:
+A toast with a timer: once it runs out, the toast is gone. Shown with a `duration`, or without one while `config.duration` has one.
+_Avoid_: timed toast, auto-dismiss; persistent or pinned (for the other kind — it is simply a toast)
 
 **Update**:
 Changing a toast on screen field by field; every field not given keeps its value. Its place in the deck is kept.
