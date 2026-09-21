@@ -2,8 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'config.dart';
-import 'dismiss_all_view.dart';
+import '../config.dart';
+import '../dismiss_all_view.dart';
 
 /// The [DeckDismissAll] control: its builder's widget, or the look it names.
 class DeckDismissAllButton extends StatelessWidget {

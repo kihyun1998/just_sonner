@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
-import 'config.dart';
+import '../config.dart';
 import 'deck_dismiss_all.dart';
-import 'stow_view.dart';
+import '../stow_view.dart';
 
 /// The deck drawn as far out of sight as [view] says, by the motion
 /// [DeckStowMotion] names or by its builder.

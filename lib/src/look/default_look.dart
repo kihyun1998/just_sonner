@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 
-import 'config.dart';
-import 'time_left.dart';
-import 'toast_fit.dart';
-import 'toast_view.dart';
+import '../config.dart';
+import '../time_left.dart';
+import '../toast_fit.dart';
+import '../toast_view.dart';
 
 /// The look a toast has when no builder replaces it.
 ///

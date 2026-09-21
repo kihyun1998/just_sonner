@@ -29,7 +29,7 @@ It is a **paint** cut. Hit-testing reads the far end alone.
 ## Code
 `deck_cut.dart` — DeckCutBox, RenderDeckCut
 `deck_layout.dart` — DeckCut, DeckCutEnd, DeckScrollbarGeometry, ToastDeckDelegate
-`deck_scrollbar.dart` — DeckScrollbarThumb
+`look/deck_scrollbar.dart` — DeckScrollbarThumb
 
 ## Reference behaviour
 

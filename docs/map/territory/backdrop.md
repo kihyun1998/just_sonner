@@ -24,7 +24,7 @@ out, so a builder on it would schedule a build mid-frame.
 It takes no pointer: a click in the `padding` it reaches into goes to the app.
 
 ## Code
-`deck_backdrop.dart` — DeckBackdropBox
+`look/deck_backdrop.dart` — DeckBackdropBox
 `config.dart` — DeckBackdrop
 `deck_cut.dart` — DeckCutBox
 

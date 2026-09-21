@@ -24,8 +24,8 @@ is the user's control.
 Stowing keeps the toasts and their countdowns until the next new toast brings them back.
 
 ## Code
-`deck_dismiss_all.dart` — DeckDismissAllButton, DeckLayers, DeckLayerSlot, RenderDeckLayers
-`deck_stow.dart` — DeckStowMotionBox, DeckStowButton, DeckFarEndBar, DeckBarButton, DeckStowHandleButton
+`look/deck_dismiss_all.dart` — DeckDismissAllButton, DeckLayers, DeckLayerSlot, RenderDeckLayers
+`look/deck_stow.dart` — DeckStowMotionBox, DeckStowButton, DeckFarEndBar, DeckBarButton, DeckStowHandleButton
 `dismiss_all_view.dart` — DeckDismissAllView, DeckDismissAllBuilder
 `stow_view.dart` — DeckStowView, DeckStowMotionView, DeckStowHandleView
 

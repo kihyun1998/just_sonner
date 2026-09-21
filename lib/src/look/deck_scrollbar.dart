@@ -2,7 +2,7 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/widgets.dart';
 
-import 'config.dart';
+import '../config.dart';
 
 /// The thumb of the deck's [scrollbar], drawn down the middle of the box it is
 /// laid out in and faded by [opacity]. A draggable one reports each vertical

@@ -23,7 +23,7 @@ The time left is the countdown's own number filled in between ticks, never a sec
 count: it stands still while nothing draws it and comes back on the number.
 
 ## Code
-`default_look.dart` — DefaultToastLook
+`look/default_look.dart` — DefaultToastLook
 `toast_view.dart` — ToastBuilder, ToastSlot
 `toast_fit.dart` — ToastFit, toastCardBuilder
 `content_fade.dart` — ContentFade

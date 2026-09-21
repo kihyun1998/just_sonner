@@ -5,7 +5,7 @@ import 'package:flutter/material.dart' show Theme;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
-import 'config.dart';
+import '../config.dart';
 
 /// Draws what [backdrop] says behind the fanned-out deck: over the box [at]
 /// reports, and [DeckBackdrop.padding] further.

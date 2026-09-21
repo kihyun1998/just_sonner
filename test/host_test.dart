@@ -9,13 +9,13 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart' show timersPaused, toastsOf;
-import 'package:just_sonner/src/deck_backdrop.dart' show DeckBackdropBox;
+import 'package:just_sonner/src/look/deck_backdrop.dart' show DeckBackdropBox;
 import 'package:just_sonner/src/host.dart' show DeckHitBox;
 import 'package:just_sonner/src/deck_layout.dart' show ToastHeight;
-import 'package:just_sonner/src/deck_stow.dart';
-import 'package:just_sonner/src/deck_dismiss_all.dart';
-import 'package:just_sonner/src/deck_scrollbar.dart';
-import 'package:just_sonner/src/default_look.dart' show DefaultToastLook;
+import 'package:just_sonner/src/look/deck_stow.dart';
+import 'package:just_sonner/src/look/deck_dismiss_all.dart';
+import 'package:just_sonner/src/look/deck_scrollbar.dart';
+import 'package:just_sonner/src/look/default_look.dart' show DefaultToastLook;
 import 'package:just_sonner/src/time_left.dart';
 
 void main() {
