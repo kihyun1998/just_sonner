@@ -153,6 +153,27 @@ does not pause them.
 **`expandByDefault`** fans the deck out with no pointer. It draws only `visibleToasts` and does not
 pause the timers.
 
+**`toast.expand()`** fans the deck out from your app, drawn as the pointer draws it — every toast,
+the ones beyond `visibleToasts` included, with the controls past its far end. It does not pause the
+timers, and only `toast.collapse()` or the last toast leaving ends it. `toast.expanded` says whether
+your app has it expanded. **`toast.held`** says whether the pointer holds the deck, and notifies
+when that changes, so your app decides what ends its expansion:
+
+```dart
+// A notification button that brings the deck back fanned out, and folds it
+// up once the pointer has been on it and left.
+void showToasts() {
+  toast.unstow();
+  toast.expand();
+}
+
+var wasHeld = false;
+toast.addListener(() {
+  if (wasHeld && !toast.held) toast.collapse();
+  wasHeld = toast.held;
+});
+```
+
 **Swipe** a toast to dismiss it, in the directions its position names: `bottomRight` takes down and
 right, `topCenter` up only. A drag any other way moves the toast a little and springs it back.
 `config.swipeDirections` gives your own set, and an empty set lets no swipe dismiss; to take the
@@ -323,7 +344,8 @@ the while the deck can scroll. `placement: DeckScrollbarPlacement.inside` puts i
 pointer.
 
 **Dismiss all.** `DeckDismissAll()` draws a pill reading "Clear all" past the deck's far end. It
-shows while the pointer holds the deck and at least two toasts the user may dismiss are up.
+shows while the pointer holds the deck or your app has expanded it, and at least two toasts the
+user may dismiss are up.
 
 - Pressing it leaves loading toasts and `dismissible: false` ones. `toast.dismissAll()` still
   dismisses everything.
@@ -382,7 +404,7 @@ screen. The next **new** toast brings the deck back with whatever is left, as do
 do not. `toast.stowed` says whether it is hidden.
 
 - **`stowControl`**, `DeckStowControl()` by default, is a pill reading "Hide". It shows while the
-  pointer holds the deck. Its looks are `pill`, `header` and `icon`, and `builder:` draws your own
+  pointer holds the deck or your app has expanded it. Its looks are `pill`, `header` and `icon`, and `builder:` draws your own
   from a `DeckStowView`. Where either control asks for a header look, the two share one bar.
 - **`stowMotion`**, `DeckStowMotion()` by default, slides the deck past its edge. Its looks are
   `slide`, `fade` and `shrink`, and `builder:` takes the deck out of sight your own way. It is not

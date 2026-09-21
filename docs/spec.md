@@ -62,6 +62,9 @@ What just_sonner adds, in the order a real consumer needed them:
   new toast brings it back — `stow()` / `unstow()` on the controller, a control on the deck
   (`config.stowControl`), a motion (`config.stowMotion`) and a handle left at the edge
   (`config.stowHandle`), each with built-in looks and a builder (§6, §7)
+- Expanding the deck from the app — `expand()` / `collapse()` / `expanded` on the controller, drawn
+  as the pointer draws it — and `held`, whether the pointer holds the deck, so the app decides what
+  ends its expansion (§6)
 - **Windows, macOS, Linux**; no dependency beyond Flutter
 
 ### Non-goals (v0.1)
@@ -90,7 +93,8 @@ What just_sonner adds, in the order a real consumer needed them:
 | **host** | The single widget that lays out and animates every toast |
 | **deck** | The collapsed stack: the front toast in full, the ones behind peeking out |
 | **front** | The newest visible toast |
-| **expanded** | The deck fanned out into a list — on hover, or always if `expandByDefault` |
+| **expanded** | The deck fanned out into a list — while the pointer holds it, while the app has expanded it, or always if `expandByDefault` |
+| **held** | The pointer holds the deck: it has moved, pressed or turned the wheel over the deck and not left, or a press that started there is still down (§6) |
 | **controller** | Owns the toast list, ids and timers. No widgets. The package's default one is the instance `toast` — in prose, "toast" alone always means one notification |
 | **update** | Change a toast on screen field by field; fields not given keep their value |
 | **replace** | Show new content at the id of a toast on screen; the old content goes whole, the place stays |
@@ -150,6 +154,13 @@ class SonnerController extends ChangeNotifier {
   /// Brings a stowed deck back with what is left of them.
   void unstow();
   bool get stowed;
+
+  /// Fans the deck out with every toast drawn, as the pointer does, until collapse() or until
+  /// no toast is left (§6). Nothing to expand does nothing; a stowed deck comes back expanded.
+  void expand();
+  void collapse();
+  bool get expanded;                 // the app's own expansion only
+  bool get held;                     // the pointer holds the deck; notifies when it changes
 }
 
 /// The content of one `promise` state. Everything `show` takes except `id` and `isLoading`,
@@ -591,8 +602,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - **While the pointer is over the deck, every toast is drawn**, not only `visibleToasts`: the ones
   beyond the window fade in over the same 400 ms, `ease`, take taps, join the semantics tree, and
   fade out and leave it again when the pointer goes — or, where a press that started on the deck is
-  still down, when it lets go. `expandByDefault` alone still draws only
-  `visibleToasts`. Nothing marks the hidden toasts while the pointer is away.
+  still down, when it lets go. **While the app has expanded the deck** (`expand()`), every toast
+  is drawn the same way, and they leave with `collapse()` unless the pointer still holds the deck.
+  `expandByDefault` alone still draws only `visibleToasts`. Nothing marks the hidden toasts while
+  neither holds.
 - **Toasts that do not fit scroll**, between the edge and the **cap**, with the mouse wheel or a
   trackpad pan over the deck, gaps included, or by dragging the scrollbar's thumb. A mouse drag on
   a toast does not scroll (it swipes, §8). Scrolling away from the edge moves the newest toasts off
@@ -608,7 +621,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     toasts are **drawn**, not whether the scroll overflows: the toasts beyond the window leave the
     deck the moment the pointer does, while they are still fanned out and fading, so a cut keyed
     on the overflow let them show past the cap for the whole collapse. An `expandByDefault` deck
-    with no pointer on it is cut at the cap too, and does not scroll. The promise holds however the
+    with no pointer on it is cut at the cap too, and does not scroll; so is a deck the app expanded,
+    until the pointer comes onto it. The promise holds however the
     deck is transformed around the cut — by the stow motion (§6 Stowed) or by the app — and a fading
     cut keeps it as a hard one does, toasts laid out beyond the layer included.
   - **The deck is cut at both ends.** The near end sits at the edge's own `offset`, so a scroll
@@ -636,8 +650,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     track, and holds the deck as any press that started on it does; one that is not draggable
     takes no pointer. A click on the track does nothing.
 - **The dismiss-all control** is `config.dismissAll`, drawn while the pointer holds the deck (a
-  hover, or a press that started on it) and at least two toasts the user may dismiss are on
-  screen — never on a collapsed deck, nor on an `expandByDefault` deck with no pointer on it. It
+  hover, or a press that started on it) or the app has expanded it, and at least two toasts the
+  user may dismiss are on screen — never on a collapsed deck, nor on an `expandByDefault` deck
+  with no pointer on it, nor on a stowed one. It
   sits `gap` past the deck's far end, and on a deck that scrolls, past the cap however far the
   toasts are scrolled; it lines up with the deck's right edge at a right position, its left at a
   left one, and its centre at a centre one. Pressing it dismisses every toast whose
@@ -708,8 +723,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - An exiting toast keeps the place **on screen** it was dismissed at, so a scroll during its exit
     moves the toasts around it and not it.
 - The hover region is the box around the toasts in the deck — the window, or every toast while the
-  pointer is over it — gaps included and cut to the layer, and from the edge to the far edge's
-  `offset` past the cap while the toasts do not fit, with a draggable scrollbar's thumb in it, so moving the pointer
+  pointer is over it or the app has expanded it — gaps included and cut to the layer, and from the edge to the far edge's
+  `offset` past the cap while the toasts do not fit and the pointer is on the deck, with a draggable scrollbar's thumb in it, so moving the pointer
   between two
   toasts does not collapse the deck. A toast exiting from the window stays in
   it until it is removed, so dismissing the toast under a resting pointer does not collapse the
@@ -725,9 +740,14 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   leaves — the last toast removed from under it — is not over the next deck that appears there
   until it moves again. A pointer that moved onto the deck and then rests stays over it.
 - The deck is expanded while the pointer is over it, while a **press that started on it** is still
-  down, or while `expandByDefault` is set. Collapse ↔ expand
+  down, while the app has expanded it, or while `expandByDefault` is set. Collapse ↔ expand
   is one value for the whole deck, eased from wherever it is toward where it is headed; an exiting
   toast keeps the distance from the edge it had when dismissed, whatever the deck does after.
+- **The app's expansion is the app's to end.** `expand()` holds until `collapse()` or until the
+  last toast leaves; the pointer leaving, a new toast, `stow()` and time do not end it. A stowed
+  deck draws none of it and comes back expanded. `held` reports whether the pointer holds the
+  deck — false while it is stowed — and notifies when that changes, at the end of the frame where
+  the change happens during one, so an app can fold its expansion up once the pointer has left.
 - **A press holds the deck as it found it until it lets go**, wherever the pointer travels in
   between: expanded, every toast drawn, the scroll where it was. A drag carries the pointer off the
   deck by design (§8), and the hover region reports an exit while the button is down, so without
@@ -761,7 +781,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     entered — a toast landing under a still pointer does not pause). The trigger is the
     pointer, not the expansion — a lone toast has nothing to fan out but still pauses under the
     cursor, which is the most common case of all. `expandByDefault` does **not** pause: it is not
-    hover.
+    hover. Nor does the app's `expand()`: a deck left expanded with nobody on it counts down.
   - **a toast is being dragged**, and it keeps pausing after the drag carries the pointer off the
     deck.
   - the app is **`hidden`, `paused` or `detached`**.
@@ -988,6 +1008,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   stow, an update, a replace and a `promise` state on a toast on screen do not; the last toast
   leaving by dismiss, `dismissAll` or its own timer ends it; a stowed toast counts down as it
   would on screen
+- `expand` and `collapse` notify, and do nothing twice or with nothing to expand; the last toast
+  leaving ends the expansion; a stowed deck can be expanded, stowing keeps the expansion and
+  collapsing keeps the stow; expanding pauses nothing
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the hidden toasts in the list;
   an equal config does not notify, an invalid one asserts as at construction, and a new `duration`
   leaves the countdowns under way alone
@@ -1020,7 +1043,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   holds the deck until it lets go; one not draggable takes no pointer; a new cap keeps the toasts
   in view where they are
 - The backdrop draws nothing with no `deckBackdrop` and nothing on a collapsed deck; hovering brings it and leaving takes it away; a `blur` of 0 draws no filter and a `dim` of 0 no cover; what it draws reaches past the deck by its `padding` and no further, read from the pixels; a click in that padding still reaches the app while the deck keeps its own
-- The dismiss-all control shows only while the pointer holds a deck with two dismissible toasts;
+- The dismiss-all control shows only while the pointer holds, or the app has expanded, a deck with
+  two dismissible toasts;
   it sits a gap past the far end at a right, a left and a centre position, from the first frame,
   and at the cap on a scrolling deck, drawn past the cut; the pointer moved onto it keeps the
   deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
@@ -1045,7 +1069,16 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   brings the deck back, pauses nothing while the pointer is on it, takes the pointer only while
   the deck is stowed, and a builder draws it instead
 - a mode-1 toast shown while the app is hidden waits before its host is built
-- Only `visibleToasts` are hit-testable while the pointer is away
+- `expand()` draws every toast with no pointer, the ones beyond the window taking taps, and
+  `collapse()` hides them; it draws the controls, a stowed deck draws none and brings them back; it
+  counts down with no pointer; `collapse()` leaves it fanned out while the pointer holds it, and a
+  host handed another controller draws that controller's expansion; with no pointer it is cut at the cap and shows no scrollbar, which
+  the pointer moving on brings; `held` is set by a pointer that moves and not by one the deck
+  appears under, lasts through a press carried off the deck, is let go of by stowing, by a host
+  handed another controller and by a host taken away — after the frame, and not to a controller
+  disposed in it — and an app collapsing when it falls folds the deck up as the pointer leaves
+- Only `visibleToasts` are hit-testable while the pointer is away and the app has not expanded
+  the deck
 - The `action` slot is placed at the trailing edge and handed the toast; its widget can dismiss the
   toast or leave it standing. `ToastView.dismiss` completes once the toast has left the tree, and
   the animation it is handed runs 0 → 1 as the toast enters
@@ -1226,7 +1259,7 @@ outside v0.1 is in §2's non-goals.
 | `position` defaults to `bottomRight` | derived | the spec named no default; sonner's `Toaster` defaults to `'bottom-right'` (`index.tsx:608` at 8e4662b) |
 | The close button is the package's, resolved `show(closeButton:) ?? config.closeButton` (false) | maintainer | a dismissal affordance, not content — the pointer equivalent of a swipe, which `dismissible` already governs; desktop-first (§1) makes drag-to-dismiss undiscoverable. Flutter's `SnackBar` and sonner resolve it the same way, instance over config |
 | While the pointer is over the deck every toast is drawn, fanned out, taking taps; toasts that do not fit scroll; nothing marks the hidden toasts while the pointer is away | maintainer | decided while working #23 and #41, as the premise #23's reversal rested on. No reachable prior art does it: sonner never draws a toast beyond `visibleToasts`, expanded or not (`index.tsx:105`, `:286`; `styles.css:319-322` at 8e4662b); zentoast documents it but hides `index >= visibleCount` whatever the hover (`toast.dart:582` at 6deb04f). An indicator such as "+N" was shown and not chosen |
-| `expandByDefault` draws only `visibleToasts`; the pointer over the deck draws the rest, fading in over 400 ms | maintainer | shown while working #41 against drawing every toast whenever the deck is expanded: measured, 12 toasts reach 794 px against a 552 px band on an 800 × 600 surface, and the region would take every tap in that column with no pointer involved (mode 1 sits above dialogs). Matches sonner's `expand`, which never overrides `data-visible='false'` |
+| `expandByDefault` draws only `visibleToasts`; the pointer over the deck draws the rest, fading in over 400 ms | maintainer | shown while working #41 against drawing every toast whenever the deck is expanded: measured, 12 toasts reach 794 px against a 552 px band on an 800 × 600 surface, and the region would take every tap in that column with no pointer involved (mode 1 sits above dialogs). Matches sonner's `expand`, which never overrides `data-visible='false'`. **Scope named by #88:** this holds for `expandByDefault`, which nobody asked for at that moment; the app's `expand()` draws every toast, since the app asked and the app ends it |
 | The deck scrolls through a `Scrollable` whose position the deck's layout reads, not an offset the host applies from a `Listener`; no scrollbar and no overscroll indicator; the scroll runs between the edge and `offset` from the far side, over the toasts in the deck; a box behind the deck takes the wheel in the gaps | derived | measured while working #41: a host-applied offset collides with any swipe that takes trackpad pans whatever the gesture arena decides, and gets no momentum, since the engines regenerate it only through a `Scrollable`'s drag velocity. A `Scrollable`'s default scrollbar would sit at the layer's edge, the window's, not beside the deck. `hitTestBehavior: deferToChild` keeps the layer from taking the pointer outside the deck. The scroll now runs to the cap, not always `offset` from the far side, and a scrollbar is drawn beside the deck by the host rather than the `Scrollable` (the rows for #62). *Was* **Not covered**: whether the maintainer wants a scrollbar beside the deck — they do |
 | While the scroll is under way the deck holds four things of its own: the hover region runs the layer's whole length while the toasts do not fit **and the pointer is on the deck** (since #62, from the edge to `offset` past the cap); a host handed another controller starts that deck at the edge; the anchored toast is kept until something other than the anchoring moves the scroll; an exiting toast gives its place and the gap before it back to the scroll's reach on its exit clock, from where it stood before scrolling; and the deck's scroll notifications stop at the host | derived | found by an adversarial pass while working #41, each measured and then pinned by a test that fails without it. A pointer resting in the far margin at y = 10 was left outside the region as the scroll brought the oldest toast to 24, collapsing the deck. Re-choosing the anchor every layout let the scroll's own correction bring an out-of-view toast into view and anchor on it: the toast being read moved 6.9 px in one frame when the anchor was dismissed. Leaving exiting toasts out of the reach moved every toast in view 66 px in one frame when the farthest was dismissed at the end; reading an exiting toast's reach from the current scroll instead fed the shrinking scroll back into itself (21 px a frame). A second pass over the fixes found two more, each now pinned by its own test: the full-length region applied with no pointer on the deck, so an `expandByDefault` deck taller than the layer took the taps in its margins and paused under a pointer resting above every toast (probe: a 800 × 220 window, three 5 s toasts, `taps=0` at y = 5 and alive after 8 s); and the scroll survived a controller swap, so another controller's deck arrived 188 px below the edge, or 160 px off a top deck. An M3 `AppBar` above the host turned to its scrolled-under colour on hover alone, since the deck's layout is not a viewport and its notifications arrived at depth 0 like the app's own. **Not covered**: a touch drag scrolls the deck with no hover and stays scrolled until a pointer leaves (touch is outside v0.1, §2) |
 | A swipe takes pointer drags and never trackpad pans; §8's directions stay vertical | maintainer | shown while working #41, with probes of a vertical `Scrollable` at offset 300 over a child with its own drag: a mouse drag never scrolls (`ScrollBehavior.dragDevices` leaves out the mouse, `scroll_configuration.dart:29-37, 120`), a wheel never reaches a drag recognizer (`PointerSignalResolver`, `scrollable.dart:953-975`), and a trackpad pan (0, −60) went to a vertical swipe on default devices (scroll stayed 300) and to the scroll without trackpad (360). Chosen over horizontal-only swipe, which #11 raised before v0.1 was narrowed to desktop and which a vertical pan then loses 20 px of scroll to. **Not covered**: a builder with its own drag recognizer on default devices (#27, flash's `FlashBar`), and whether a physical trackpad click-drag reaches the framework as a mouse drag (engine sources say so on macOS and Windows; not run on hardware) |
@@ -1281,6 +1314,12 @@ outside v0.1 is in §2's non-goals.
 | `DeckBackdrop` takes no rate of its own, and its widget takes the expansion as a plain `double` | maintainer | both were on an adversarial read's list and the maintainer took both. A rate against the deck's own 400 ms is a field nobody asked #78 for, with a §12 line, an example switch and a test behind it. And the host already rebuilds the whole layer on `_expand` through one `ListenableBuilder`, so a second listener on it bought a private class widened to a public interface and a builder that could never fire independently of the first — the value is in scope at the call site |
 | The backdrop is drawn **outside** the deck's cut, with a hard cut of its own, and is placed at paint rather than at layout | derived | measured while working #78. With the default `DeckCap`'s `fade` of 24 a ten-toast deck's stripes kept a contrast of **255** with the blur on — the blur drew nothing — against **5** with `fade: 0` and **5** with no cap: a fading cut is a `ShaderMask`, which the engine draws as a save layer, and a `BackdropFilter` inside one filters that layer. `BackdropGroup` with `BackdropFilter.grouped` does not escape it either (measured: still 255). The deck reports its box **while it lays out**, so a builder on it schedules a build mid-frame and a layout delegate mutates a sibling subtree during layout — Flutter raises on both — which is why the box is read at paint, as `DeckCutBox` and `DeckLayers` read theirs. **This was #78's own precondition and it was nearly shipped unanswered** |
 | A toast beyond `visibleToasts` is still built and laid out; only its paint is spared | derived | follows from §6 Expanded, which draws every toast at its **measured** height as soon as the pointer arrives: a toast never laid out has no height to draw at. Found while reading `deck_layout.dart` for #79, not by measurement — **what it costs is unmeasured**, and the cost is unbounded for a deck of `Duration.zero` or `isLoading` toasts, which never leave the list on their own (§7). `natural(id)` already caches the last measured height and the deck already falls back to it, so measuring once and then not building is not ruled out; it needs a number first |
+| The app can expand the deck: `expand()` / `collapse()` / `expanded` on the controller, its own control rather than a flag on `unstow` | maintainer | #88: an app whose entrance to the toasts is its own title-bar button called `unstow()` and got a collapsed pile. `unstow({expanded})` was offered and not chosen, since #60 keeps stow and the pointer apart and a flag would leave a deck that is not stowed with no way to expand. The app calls `unstow(); expand();` |
+| The package keeps the mechanism and the app the policy: nothing but `collapse()` and an empty deck ends an app's expansion, and `held` tells the app when the pointer holds the deck | maintainer | #88, chosen over the package folding the expansion up once the pointer has come and gone, and over expansion with no pointer signal. An app's rule — the pointer leaving, its own button, a timer — is composed over `held` |
+| The app's expansion draws every toast, as hover does, and does not pause the timers | maintainer | #88. The #41 row's reason was a region taking every tap in the column with nobody asking; here the app asked. Not pausing keeps §7's rule that only the pointer, a drag or a hidden app pauses |
+| Stow and the app's expansion are independent; the expansion ends when the last toast leaves; the controls show on a deck the app expanded; the signal is named `held` | maintainer | #88, the defaults filled at filing and confirmed after. `held` is §6's own phrase, "the pointer holds the deck", and covers a press carried off it, which `pointerOnDeck` or `hovered` would misname |
+| `held` is published by the host from every place the hold changes — a hover, a press, a stow, another controller, its own dispose — and a change during a frame reaches listeners at its end, never to a controller disposed by then | derived | two of those places run mid-frame (a new controller in the build, a dispose in finalizing the tree), where a listener rebuilding would throw; a host and the controller its owner disposes go in one frame. Measured by tests that redden with the deferral or the guard removed |
+| The host draws itself again when the hold changes, not only when the expansion moves | derived | found by #88's scrollbar test: with the app's expansion already whole, the pointer arriving moved no animation, so nothing rebuilt and what follows the pointer — the scrollbar, the stretched region — stayed off |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

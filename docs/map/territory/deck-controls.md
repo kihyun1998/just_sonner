@@ -23,6 +23,9 @@ is the user's control.
 
 Stowing keeps the toasts and their countdowns until the next new toast brings them back.
 
+Both show while the pointer holds the deck **or the app has expanded it**, and neither on
+a stowed deck, which keeps the app's expansion for when it comes back.
+
 ## Code
 `look/deck_dismiss_all.dart` — DeckDismissAllButton, DeckLayers, DeckLayerSlot, RenderDeckLayers
 `look/deck_stow.dart` — DeckStowMotionBox, DeckStowButton, DeckFarEndBar, DeckBarButton, DeckStowHandleButton

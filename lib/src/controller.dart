@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart'
     show
         AppLifecycleState,
@@ -122,9 +123,82 @@ class SonnerController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Ends the stow once no toast is left, so an empty deck is never stowed.
+  /// Whether the app has expanded the deck with [expand]: fanned out with
+  /// every toast drawn, as the pointer over it draws it. Reports the app's own
+  /// expansion only — not the pointer's, and not `expandByDefault`'s.
+  bool get expanded => _expanded;
+  bool _expanded = false;
+
+  /// Fans the deck out and draws every toast, the ones beyond `visibleToasts`
+  /// included, as the pointer over it does, until [collapse] or until no toast
+  /// is left. It does not pause the timers, and nothing else ends it: an app
+  /// that wants the deck to fold up once the pointer has left it watches
+  /// [held]. With no toast on screen there is nothing to expand, and this does
+  /// nothing.
+  ///
+  /// A stowed deck stays stowed, and comes back expanded on [unstow].
+  void expand() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    if (_expanded || _toasts.isEmpty) return;
+    _expanded = true;
+    notifyListeners();
+  }
+
+  /// Ends an expansion [expand] began. The deck stays fanned out while the
+  /// pointer still holds it. Does nothing when the app has not expanded it.
+  void collapse() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    if (!_expanded) return;
+    _expanded = false;
+    notifyListeners();
+  }
+
+  /// Whether the pointer holds the deck: it has moved, pressed or turned the
+  /// wheel over the deck and not left since, or a press that started on the
+  /// deck is still down, wherever it has been carried. The deck is fanned out
+  /// and every timer stops while it holds. False while the deck is stowed,
+  /// since a stowed deck takes no pointer.
+  ///
+  /// Listeners are notified when it changes, so an app can end its own
+  /// [expand] once the pointer has left the deck.
+  bool get held => _deckHolders.isNotEmpty;
+
+  /// The hosts whose deck the pointer holds.
+  final Set<Object> _deckHolders = {};
+
+  /// [held] as listeners were last told it.
+  bool _heldNotified = false;
+
+  bool _disposed = false;
+
+  /// Applies [change] to what holds the deck and tells the listeners when
+  /// [held] has changed, at the end of the frame when it changes during one.
+  void _setHeld(VoidCallback change) {
+    change();
+    if (held == _heldNotified) return;
+    if (SchedulerBinding.instance.schedulerPhase !=
+        SchedulerPhase.persistentCallbacks) {
+      _notifyHeld();
+      return;
+    }
+    SchedulerBinding.instance.addPostFrameCallback(
+      (_) => _notifyHeld(),
+      debugLabel: 'SonnerController.held',
+    );
+  }
+
+  void _notifyHeld() {
+    if (_disposed || held == _heldNotified) return;
+    _heldNotified = held;
+    notifyListeners();
+  }
+
+  /// Ends the stow and the app's expansion once no toast is left, so an empty
+  /// deck is never stowed or expanded.
   void _unstowIfEmpty() {
-    if (_toasts.isEmpty) _stowed = false;
+    if (_toasts.isNotEmpty) return;
+    _stowed = false;
+    _expanded = false;
   }
 
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
@@ -384,6 +458,7 @@ class SonnerController extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _mount?.detach();
     _ticker?.cancel();
     _lifecycle?.dispose();
@@ -520,6 +595,16 @@ void holdTimers(SonnerController controller, Object holder) =>
 /// nothing holds them. A holder that holds nothing is ignored.
 void releaseTimers(SonnerController controller, Object holder) =>
     controller._setPaused(() => controller._holders.remove(holder));
+
+/// Reports that the pointer holds the deck [holder] draws, for [held].
+/// Holding twice with one holder holds once. For the host; not exported.
+void holdDeck(SonnerController controller, Object holder) =>
+    controller._setHeld(() => controller._deckHolders.add(holder));
+
+/// Lets go of a hold [holder] reported with [holdDeck]. A holder that holds
+/// nothing is ignored.
+void releaseDeck(SonnerController controller, Object holder) =>
+    controller._setHeld(() => controller._deckHolders.remove(holder));
 
 /// Makes [controller] pause its timers while the app is `hidden`, `paused` or
 /// `detached`. For the host, which has a binding; not exported.

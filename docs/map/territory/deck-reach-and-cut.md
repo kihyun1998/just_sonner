@@ -26,6 +26,9 @@ fades cannot cross the gradient's stops.
 
 It is a **paint** cut. Hit-testing reads the far end alone.
 
+A deck the app expanded draws every toast with no pointer on it, and is cut at the cap
+and does not scroll, as an `expandByDefault` deck is, until the pointer comes onto it.
+
 ## Code
 `deck_cut.dart` — DeckCutBox, RenderDeckCut
 `deck_layout.dart` — DeckCut, DeckCutEnd, DeckScrollbarGeometry, ToastDeckDelegate
