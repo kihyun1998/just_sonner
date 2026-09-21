@@ -1886,9 +1886,7 @@ class _Dropdown<T> extends StatelessWidget {
         for (final value in values)
           DropdownMenuItem(value: value, child: Text(nameOf(value))),
       ],
-      onChanged: (value) {
-        if (value != null) onChanged(value);
-      },
+      onChanged: (value) => onChanged(value as T),
     ),
   );
 }

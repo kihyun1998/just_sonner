@@ -252,4 +252,28 @@ void main() {
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
   });
+
+  testWidgets('a dropdown takes a null value back', (tester) async {
+    await pumpHarness(tester);
+
+    Future<void> pick(String item) async {
+      final field = find.widgetWithText(InputDecorator, 'swipeDirections');
+      await tester.ensureVisible(field);
+      await tester.pumpAndSettle();
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(item).last);
+      await tester.pumpAndSettle();
+    }
+
+    await pick('up');
+    expect(find.textContaining('swipeDirections allows up'), findsOneWidget);
+
+    await pick('from the position');
+    expect(find.textContaining('swipeDirections allows up'), findsNothing);
+    expect(
+      find.textContaining('bottomRight allows down and right'),
+      findsOneWidget,
+    );
+  });
 }
