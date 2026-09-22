@@ -1,3 +1,14 @@
+## 0.4.1
+
+- **The backdrop stays out of the `offset` band before the deck is scrolled too** (#101). With
+  `deckBackdrop` set and the pointer resting on a deck that can scroll, the backdrop was drawn
+  from the window's edge rather than from `offset`, over the band an app keeps clear for its own
+  title bar, until a scroll cut it there. It is now cut at the `offset` edge whether the deck has
+  scrolled or not, and `DeckBackdrop.padding` gives way to it there. Clicks are unchanged.
+- **The example app opens on a showcase** (#29): every argument of `show` and every part of
+  `SonnerConfig` on a control, grouped on one page, beside buttons that show toasts with them. The
+  harness each behaviour was verified in is on a page of its own, behind the app bar.
+
 ## 0.4.0
 
 - **Breaking: a toast with no timer is shown with `duration: null`, not `Duration.zero`** (#97). A
