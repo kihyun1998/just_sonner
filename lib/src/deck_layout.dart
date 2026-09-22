@@ -30,20 +30,19 @@ import 'toast_fit.dart' show ClipsOverflow;
 /// and covers with those instead, at the distance it gives if any, reaching as
 /// far into the scroll as the place it gives, and is not reported.
 ///
-/// The box around the toasts [inDeck] names, and the gaps between them, cut to
-/// the layer, is reported through [onDeck]; while they do not fit and the deck
-/// [follows] the pointer, it runs from the edge to [DeckOffsets.farOffset] past
-/// the cap, and takes in a draggable [scrollbar]. A child with the id
-/// [backdrop], if any, is laid out over that box.
+/// The box around the toasts [inDeck] names, and the gaps between them, cut
+/// where the deck is cut and to the layer, is reported through [onDeck]; it
+/// takes in a draggable [scrollbar] and the dismiss-all control. A child with
+/// the id [backdrop], if any, is laid out over that box.
 ///
 /// With a [scroll], the toasts [inDeck] names scroll between the edge and the
 /// cap — [DeckOffsets.farOffset] from the far side, or nearer where
 /// `config.deckCap` says, and never short of the newest toast's far end — an
 /// exiting toast shrinking out of that reach by its presence, and every toast
 /// not pinned to a distance is drawn that much, plus [unscrolled], closer to
-/// the edge. Where any toast is drawn past a cap nearer than the layer's, or
-/// nearer the edge than [DeckOffsets.nearOffset], that end of the cut is
-/// reported through [onCut]; with neither end cut, null is.
+/// the edge. Where any toast is drawn past the cap, or nearer the edge than
+/// [DeckOffsets.nearOffset], that end of the cut is reported through [onCut];
+/// with neither end cut, null is.
 ///
 /// While [dismissAllSize] gives a size, the dismiss-all control of that size
 /// is placed `gap` past the deck's far end, no further than the cap, on the
@@ -286,7 +285,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final cap = config.deckCap;
     final fade = cap?.fade ?? 0;
     DeckCutEnd? farEnd;
-    if (cap != null && far < layerFar && drawnReach > far) {
+    if (drawnReach > far) {
       final newest = _newestEnd(placed);
       farEnd = (
         at: far,
@@ -328,22 +327,9 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
 
     var deck = Rect.zero;
     if (around != null) {
-      // A deck being scrolled moves its own ends across the margins, and must
-      // not slide out from under the pointer resting there. With no pointer on
-      // it nothing scrolls, and the margins are the app's.
-      if (overflows && follows) {
-        final reach = math.min(size.height, far + config.farOffset);
-        around = config.position.isTop
-            ? Rect.fromLTRB(around.left, 0, around.right, reach)
-            : Rect.fromLTRB(
-                around.left,
-                size.height - reach,
-                around.right,
-                size.height,
-              );
-        if (thumb != null && config.scrollbar!.draggable) {
-          around = around.expandToInclude(thumb);
-        }
+      around = _cutBox(size, around, nearEnd, farEnd);
+      if (thumb != null && config.scrollbar!.draggable) {
+        around = around.expandToInclude(thumb);
       }
       if (dismissAll != null) around = around.expandToInclude(dismissAll);
       deck = around.intersect(Offset.zero & size);
@@ -356,6 +342,23 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       layoutChild(backdrop, BoxConstraints.tight(deck.size));
       positionChild(backdrop, deck.topLeft);
     }
+  }
+
+  /// [box] cut at [near] and [far], whichever are given.
+  Rect _cutBox(Size size, Rect box, DeckCutEnd? near, DeckCutEnd? far) {
+    double down(double distance) =>
+        config.position.isTop ? distance : size.height - distance;
+    final nearAt = near == null ? null : down(near.at);
+    final farAt = far == null ? null : down(far.at);
+    final (top, bottom) = config.position.isTop
+        ? (nearAt, farAt)
+        : (farAt, nearAt);
+    return Rect.fromLTRB(
+      box.left,
+      top == null ? box.top : math.max(box.top, top),
+      box.right,
+      bottom == null ? box.bottom : math.min(box.bottom, bottom),
+    );
   }
 
   /// [to] as drawn [glide] of the way from the box [glideFrom] gives, holding

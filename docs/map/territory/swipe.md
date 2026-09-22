@@ -33,7 +33,7 @@ direction sets are this repo's, since sonner's toaster has one axis. So is the a
 neither way is allowed: sonner leaves it still, and this repo damps it (#87).
 
 ## Cross-cutting invariants
-- [A held deck stretches to the layer's edge](../invariant/a-held-deck-stretches-to-the-layer-edge.md)
+- [Hit-testing follows paint](../invariant/hit-testing-follows-paint.md)
 
 ## Blast radius
 - [Pointer hold](pointer-hold.md) — the gesture arena is shared with the deck's scroll

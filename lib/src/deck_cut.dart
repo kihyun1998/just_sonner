@@ -6,7 +6,7 @@ import 'deck_layout.dart';
 
 /// Draws [child] only within the band the [cut] its layout last reported
 /// leaves, fading it out toward each end, and passes the pointer to [child]
-/// only up to [margin] past that cut's **far** end.
+/// only within that band.
 ///
 /// Distances are from the edge: the top of the layer when [fromTop], the
 /// bottom otherwise. Either end may be absent, and with no cut at all [child]
@@ -17,26 +17,23 @@ class DeckCutBox extends SingleChildRenderObjectWidget {
     super.key,
     required this.cut,
     required this.fromTop,
-    required this.margin,
     required this.fades,
     super.child,
   });
 
   final ValueListenable<DeckCut?> cut;
   final bool fromTop;
-  final double margin;
   final bool fades;
 
   @override
   RenderDeckCut createRenderObject(BuildContext context) =>
-      RenderDeckCut(cut: cut, fromTop: fromTop, margin: margin, fades: fades);
+      RenderDeckCut(cut: cut, fromTop: fromTop, fades: fades);
 
   @override
   void updateRenderObject(BuildContext context, RenderDeckCut renderObject) =>
       renderObject
         ..cut = cut
         ..fromTop = fromTop
-        ..margin = margin
         ..fades = fades;
 }
 
@@ -44,7 +41,6 @@ class RenderDeckCut extends RenderProxyBox {
   RenderDeckCut({
     required ValueListenable<DeckCut?> cut,
     required bool fromTop,
-    required this.margin,
     required bool fades,
   }) : _cut = cut,
        _fromTop = fromTop,
@@ -69,8 +65,6 @@ class RenderDeckCut extends RenderProxyBox {
     _fromTop = value;
     markNeedsPaint();
   }
-
-  double margin;
 
   final _clip = LayerHandle<ClipRectLayer>();
   final _mask = LayerHandle<ShaderMaskLayer>();
@@ -106,19 +100,22 @@ class RenderDeckCut extends RenderProxyBox {
   /// [distance] from the edge as a position down the box.
   double _down(double distance) => fromTop ? distance : size.height - distance;
 
+  /// The band [cut] leaves, across the whole width.
+  Rect _shown(DeckCut cut) {
+    final nearAt = cut.near == null ? null : _down(cut.near!.at);
+    final farAt = cut.far == null ? null : _down(cut.far!.at);
+    return Rect.fromLTRB(
+      -_unbounded,
+      (fromTop ? nearAt : farAt) ?? -_unbounded,
+      _unbounded,
+      (fromTop ? farAt : nearAt) ?? _unbounded,
+    );
+  }
+
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
-    // The far end alone. The pointer nearer than the near end is already the
-    // deck's: a deck that can scroll and is held by the pointer stretches its
-    // box to the layer's edge so it cannot slide out from under a resting
-    // pointer, and the near cut is a paint cut only.
-    final far = _cut.value?.far;
-    if (far != null) {
-      final past = fromTop
-          ? position.dy > _down(far.at + margin)
-          : position.dy < _down(far.at + margin);
-      if (past) return false;
-    }
+    final cut = _cut.value;
+    if (cut != null && !_shown(cut).contains(position)) return false;
     return super.hitTest(result, position: position);
   }
 
@@ -133,14 +130,7 @@ class RenderDeckCut extends RenderProxyBox {
     }
     final near = cut.near;
     final far = cut.far;
-    final nearAt = near == null ? null : _down(near.at);
-    final farAt = far == null ? null : _down(far.at);
-    final shown = Rect.fromLTRB(
-      -_unbounded,
-      (fromTop ? nearAt : farAt) ?? -_unbounded,
-      _unbounded,
-      (fromTop ? farAt : nearAt) ?? _unbounded,
-    );
+    final shown = _shown(cut);
     final nearFades = _fades && near != null && near.fadeFrom > near.at;
     final farFades = _fades && far != null && far.fadeFrom < far.at;
     if (!nearFades && !farFades) {

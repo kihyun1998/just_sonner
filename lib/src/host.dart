@@ -886,7 +886,6 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                         child: DeckCutBox(
                           cut: _cut,
                           fromTop: isTop,
-                          margin: config.farOffset,
                           fades: false,
                           child: DeckBackdropBox(
                             at: _deckAt,
@@ -900,7 +899,6 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                     DeckCutBox(
                       cut: _cut,
                       fromTop: isTop,
-                      margin: config.farOffset,
                       fades: (config.deckCap?.fade ?? 0) > 0,
                       child: Scrollable(
                         controller: _scroll,
