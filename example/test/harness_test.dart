@@ -15,6 +15,9 @@ void main() {
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const ExampleApp());
+    // The harness is a page behind the showcase's app bar.
+    await tester.tap(find.byTooltip('Harness'));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('a button puts a toast on screen, and it counts itself down', (
@@ -205,5 +208,76 @@ void main() {
     expect(find.text('Event has been created'), findsOneWidget);
     await tester.pump(const Duration(seconds: 5));
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('the playground shows what its controls compose, and an update '
+      'keeps what a replace drops', (tester) async {
+    await pumpHarness(tester);
+
+    // A `Text`, so the field the words were typed into is not counted.
+    Finder toast(String text) =>
+        find.byWidgetPredicate((it) => it is Text && it.data == text);
+    final title = find.widgetWithText(TextField, 'title');
+    final description = find.widgetWithText(TextField, 'description');
+    Future<void> press(String label) async {
+      final button = find.widgetWithText(OutlinedButton, label);
+      await tester.ensureVisible(button);
+      await tester.pump();
+      await tester.tap(button);
+      await tester.pump();
+      // Past the content's crossfade, by hand: the toast counts down.
+      await tester.pump(const Duration(milliseconds: 500));
+    }
+
+    expect(title, findsNothing, reason: 'a page of its own, not on the panel');
+    await tester.tap(find.byTooltip('Playground'));
+    await tester.pumpAndSettle();
+    await tester.enterText(title, 'Composed');
+    await tester.enterText(description, 'A second line');
+    await press('Show');
+    expect(toast('Composed'), findsOneWidget);
+    expect(toast('A second line'), findsOneWidget);
+
+    // An empty description is null, which an update reads as "keep".
+    await tester.enterText(title, 'Updated');
+    await tester.enterText(description, '');
+    await press('Update the last');
+    expect(toast('Composed'), findsNothing);
+    expect(toast('Updated'), findsOneWidget);
+    expect(toast('A second line'), findsOneWidget);
+
+    // A replace takes the content whole, so the description goes.
+    await tester.enterText(title, 'Replaced');
+    await press('Replace the last');
+    expect(toast('Updated'), findsNothing);
+    expect(toast('Replaced'), findsOneWidget);
+    expect(toast('A second line'), findsNothing);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a dropdown takes a null value back', (tester) async {
+    await pumpHarness(tester);
+
+    Future<void> pick(String item) async {
+      final field = find.widgetWithText(InputDecorator, 'swipeDirections');
+      await tester.ensureVisible(field);
+      await tester.pumpAndSettle();
+      await tester.tap(field);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text(item).last);
+      await tester.pumpAndSettle();
+    }
+
+    await pick('up');
+    expect(find.textContaining('swipeDirections allows up'), findsOneWidget);
+
+    await pick('from the position');
+    expect(find.textContaining('swipeDirections allows up'), findsNothing);
+    expect(
+      find.textContaining('bottomRight allows down and right'),
+      findsOneWidget,
+    );
   });
 }

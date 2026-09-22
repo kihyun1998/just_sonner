@@ -1,22 +1,41 @@
 # just_sonner example
 
-A desktop harness that makes every behaviour just_sonner has today pressable, so the package can
-be felt rather than only tested.
+Every option just_sonner has, on one page, and buttons that show toasts with them.
 
 ```sh
 cd example
 flutter run -d windows   # or -d linux
 ```
 
-## How it is meant to be used
+## The showcase
 
-The package is built one issue at a time, and each one is verified here before the next starts.
-Every section of the panel names the issue it came from. Every feature issue of v0.1 has its
-section now; a change to a behaviour changes its section in the same change.
+The page the app opens on.
+
+- **Left: the options**, folded by group. **Toast** is what `show` is given: title, description,
+  `isLoading`, `leading`, `duration`, `dismissible`, `closeButton`, `action` and `builder`. Every
+  other group is a part of `SonnerConfig`: position and size, the deck, the look, the time left,
+  swipe, the deck cap, the scrollbar, the backdrop, dismiss all, hide and the empty zone. A config
+  option is assigned to the one controller as it changes, so the toasts on screen stay and follow
+  it. "Reset the config" puts every config option back.
+- **Right: the buttons.** **Toast** shows, updates or replaces what the Toast options compose, and
+  dismisses. **Flows** change one toast in place: loading then done, three steps at one id,
+  `promise` succeeding and failing, an upload updated every 400 ms. **Zone** opens, closes, hides and
+  reveals the layer the deck lives in. **Scenarios** are situations worth watching whatever the
+  options are: a burst, twenty that stay, mixed heights, a toast under a still pointer, a stream,
+  a toast over a dialog.
+
+## The harness
+
+Behind the flask in the app bar: the panel each feature of the package was verified in, one section
+per behaviour.
+
+The package is built one issue at a time, and each one is verified there before the next starts.
+Every section of the panel names the issue it came from; a change to a behaviour changes its
+section in the same change.
 
 The harness is also where the values `docs/spec.md` §9 left provisional get settled by feel.
 
-## What to look for
+### What to look for in the harness
 
 - **Show and dismiss** (#17, #18) — a toast enters, counts itself down and leaves. `duration: null`
   keeps it until something dismisses it.
@@ -80,7 +99,14 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Config** (#28) — put "Three that stay" up, then change a control. Each is assigned to the one
   controller, so the toasts stay and move to the new config over 400 ms: across the screen for a
   position on another side, fading out or in for `visibleToasts`. A toast dismissed just before
-  keeps its place on screen while it leaves.
+  keeps its place on screen while it leaves. `width`, `gap`, `leadingSize`, `loadingIndicator`
+  and `closeButton` are on controls too; the hourglass is an indicator that settles, where a
+  spinner never does.
+- **Playground** (#29) — its own page, behind the tune button in the harness's app bar: every
+  argument of `show` on a control. Show puts up a new toast, "Replace the last" shows at its id and
+  "Update the last" updates it. An empty description, an
+  unset `dismissible` or `closeButton` and `configDuration` all reach `update` as "keep what it
+  has", so a description or a leading widget goes only by a replace.
 - **Light and dark** — the toggle in the app bar. The default look takes its colours from the
   ambient `Theme`.
 
