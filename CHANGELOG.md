@@ -1,3 +1,14 @@
+## 0.4.2
+
+- **The deck takes the pointer only where it is drawn** (#104). While the pointer held a deck that
+  could scroll, the deck kept the pointer in the band `offset` keeps clear at its edge and a
+  margin past the cap, where nothing of it was drawn: a click there did not reach your app, and a
+  pointer moved there kept the deck fanned out with its timers stopped. Both bands are now your
+  app's, before and after a scroll.
+- **A deck with no cap is cut at the far edge's `offset`** (#104). With `deckCap: () => null`, a
+  deck taller than the window was drawn into the band `offset` keeps clear on the far side, as
+  0.4.0 fixed at the near end (#86). It is now cut there, hard.
+
 ## 0.4.1
 
 - **The backdrop stays out of the `offset` band before the deck is scrolled too** (#101). With

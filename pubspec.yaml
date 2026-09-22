@@ -1,6 +1,6 @@
 name: just_sonner
 description: "Stacking toasts for Flutter desktop in the spirit of sonner: a deck that fans out on hover, toasts updated in place, promise toasts, no BuildContext."
-version: 0.4.1
+version: 0.4.2
 homepage: https://github.com/kihyun1998/just_sonner
 repository: https://github.com/kihyun1998/just_sonner
 topics:

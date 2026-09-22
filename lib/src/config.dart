@@ -699,7 +699,8 @@ class SonnerConfig {
   final ToastTimeLeft? timeLeft;
 
   /// How far the expanded deck reaches before its toasts scroll. Null lets it
-  /// reach as far as the layer, `offset` short of the far side.
+  /// reach as far as the layer, `offset` short of the far side, and cuts it
+  /// there.
   final DeckCap? deckCap;
 
   /// What is drawn behind the deck while it is fanned out. Null, the default,
