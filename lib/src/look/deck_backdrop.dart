@@ -8,7 +8,8 @@ import 'package:flutter/widgets.dart';
 import '../config.dart';
 
 /// Draws what [backdrop] says behind the fanned-out deck: over the box [at]
-/// reports, and [DeckBackdrop.padding] further.
+/// reports, and [DeckBackdrop.padding] further, never nearer the edge than
+/// [near] — from the top of the layer when [fromTop], the bottom otherwise.
 ///
 /// **It is drawn outside the deck's own cut**, under it. A cut that fades is a
 /// `ShaderMask`, which the engine draws as a save layer, and a `BackdropFilter`
@@ -30,6 +31,8 @@ class DeckBackdropBox extends StatelessWidget {
     required this.at,
     required this.expansion,
     required this.backdrop,
+    required this.near,
+    required this.fromTop,
   });
 
   /// The deck's own box, as its layout last reported it; null before the first
@@ -43,6 +46,9 @@ class DeckBackdropBox extends StatelessWidget {
 
   final DeckBackdrop backdrop;
 
+  final double near;
+  final bool fromTop;
+
   @override
   Widget build(BuildContext context) {
     final reach = expansion.clamp(0.0, 1.0);
@@ -53,6 +59,8 @@ class DeckBackdropBox extends StatelessWidget {
         at: at,
         padding: backdrop.padding,
         radius: backdrop.radius,
+        near: near,
+        fromTop: fromTop,
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -74,7 +82,8 @@ class DeckBackdropBox extends StatelessWidget {
 }
 
 /// Fills the layer and draws [child] only inside the deck's box, [padding]
-/// further out and rounded by [radius].
+/// further out and rounded by [radius], and cut hard at [near] from the edge
+/// [fromTop] names.
 ///
 /// The deck reports its box **while it lays out**, so following it with a
 /// builder would schedule a build mid-frame, and a layout delegate reading it
@@ -89,16 +98,26 @@ class _BackdropClip extends SingleChildRenderObjectWidget {
     required this.at,
     required this.padding,
     required this.radius,
+    required this.near,
+    required this.fromTop,
     required super.child,
   });
 
   final ValueListenable<Rect?> at;
   final EdgeInsets padding;
   final double radius;
+  final double near;
+  final bool fromTop;
 
   @override
   _RenderBackdropClip createRenderObject(BuildContext context) =>
-      _RenderBackdropClip(at: at, padding: padding, radius: radius);
+      _RenderBackdropClip(
+        at: at,
+        padding: padding,
+        radius: radius,
+        near: near,
+        fromTop: fromTop,
+      );
 
   @override
   void updateRenderObject(
@@ -107,7 +126,9 @@ class _BackdropClip extends SingleChildRenderObjectWidget {
   ) => renderObject
     ..at = at
     ..padding = padding
-    ..radius = radius;
+    ..radius = radius
+    ..near = near
+    ..fromTop = fromTop;
 }
 
 class _RenderBackdropClip extends RenderProxyBox {
@@ -115,9 +136,13 @@ class _RenderBackdropClip extends RenderProxyBox {
     required ValueListenable<Rect?> at,
     required EdgeInsets padding,
     required double radius,
+    required double near,
+    required bool fromTop,
   }) : _at = at,
        _padding = padding,
-       _radius = radius;
+       _radius = radius,
+       _near = near,
+       _fromTop = fromTop;
 
   ValueListenable<Rect?> get at => _at;
   ValueListenable<Rect?> _at;
@@ -147,6 +172,23 @@ class _RenderBackdropClip extends RenderProxyBox {
     markNeedsPaint();
   }
 
+  double get near => _near;
+  double _near;
+  set near(double value) {
+    if (value == _near) return;
+    _near = value;
+    markNeedsPaint();
+  }
+
+  bool get fromTop => _fromTop;
+  bool _fromTop;
+  set fromTop(bool value) {
+    if (value == _fromTop) return;
+    _fromTop = value;
+    markNeedsPaint();
+  }
+
+  final _band = LayerHandle<ClipRectLayer>();
   final _clip = LayerHandle<ClipRRectLayer>();
 
   @override
@@ -170,22 +212,33 @@ class _RenderBackdropClip extends RenderProxyBox {
     final deck = _at.value;
     final child = this.child;
     if (child == null || deck == null || deck.isEmpty) {
+      _band.layer = null;
       _clip.layer = null;
       return;
     }
     final box = _padding.inflateRect(deck);
-    _clip.layer = context.pushClipRRect(
+    final band = _fromTop
+        ? Rect.fromLTRB(box.left, _near, box.right, box.bottom)
+        : Rect.fromLTRB(box.left, box.top, box.right, size.height - _near);
+    _band.layer = context.pushClipRect(
       needsCompositing,
       offset,
-      box,
-      RRect.fromRectAndRadius(box, Radius.circular(_radius)),
-      (context, offset) => context.paintChild(child, offset),
-      oldLayer: _clip.layer,
+      band,
+      (context, offset) => _clip.layer = context.pushClipRRect(
+        needsCompositing,
+        offset,
+        box,
+        RRect.fromRectAndRadius(box, Radius.circular(_radius)),
+        (context, offset) => context.paintChild(child, offset),
+        oldLayer: _clip.layer,
+      ),
+      oldLayer: _band.layer,
     );
   }
 
   @override
   void dispose() {
+    _band.layer = null;
     _clip.layer = null;
     super.dispose();
   }
