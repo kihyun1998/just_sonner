@@ -334,7 +334,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `swipeDirections` | null | The position's own directions |
 | `builder` | null | The default look |
 | `timeLeft` | `ToastTimeLeft()` | A border; null draws none |
-| `deckCap` | `DeckCap.pixels(400)` | Null lets the deck reach the whole window |
+| `deckCap` | `DeckCap.pixels(400)` | Null lets the deck reach the whole window, short of the far `offset` |
 | `deckBackdrop` | null | What is drawn behind the fanned-out deck; null draws nothing |
 | `scrollbar` | `DeckScrollbar()` | Null draws none |
 | `dismissAll` | `DeckDismissAll()` | Null draws none |
@@ -358,12 +358,18 @@ toast.config = toast.config.copyWith(
 
 A cap is `DeckCap.pixels(400)`, a share of the window with `DeckCap.share`, or a number of toasts
 with `DeckCap.toasts`. Each takes `fade:`, and `fade: 0` cuts hard. `deckCap: () => null` lets
-the deck reach the whole window.
+the deck reach the whole window, and cuts it at the far edge's `offset`, so the band you keep
+clear there stays clear too.
 
 **Both ends are cut.** Scrolling a deck that overflows pushes toasts past the edge's own `offset`
 too, and they stop being drawn there — so the band you keep clear with `offset` stays clear, title
 bar and all. That end fades over the same `fade`, inward from the `offset` edge, and needs no cap:
-a deck taller than the window is cut there whether you set one or not. Clicks are unaffected.
+a deck taller than the window is cut there whether you set one or not.
+
+**The pointer follows the cuts.** A band the deck leaves empty — the `offset` band at its edge, the
+band past the cap — is your app's: a click there reaches it, and moving the pointer there lets the
+deck go. Inside the cuts the deck always has a toast under a resting pointer, so a scroll cannot
+slide the deck out from under it.
 
 **The scrollbar.** `DeckScrollbar()` is a draggable thumb outside the deck's right edge, shown all
 the while the deck can scroll. `placement: DeckScrollbarPlacement.inside` puts it over the toasts,
