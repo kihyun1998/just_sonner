@@ -892,6 +892,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                             at: _deckAt,
                             expansion: expansion,
                             backdrop: backdrop,
+                            near: config.nearOffset,
+                            fromTop: isTop,
                           ),
                         ),
                       ),

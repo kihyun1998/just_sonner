@@ -23,6 +23,13 @@ out, so a builder on it would schedule a build mid-frame.
 
 It takes no pointer: a click in the `padding` it reaches into goes to the app.
 
+It never reaches nearer the edge than `offset`, scrolled or not. The box it follows is
+the deck's **hit** box, which runs to the layer's edge while the pointer holds a deck
+that can scroll, and the deck's near cut exists only once a toast is pushed past the
+offset — so before a scroll nothing stopped the blur at the offset and it ran to the
+edge. It carries a hard cut of its own at `nearOffset` for that; the `padding` gives
+way to it.
+
 ## Code
 `look/deck_backdrop.dart` — DeckBackdropBox
 `config.dart` — DeckBackdrop
@@ -47,5 +54,3 @@ holds nothing on it. The defaults were settled by feel in the example app.
 - A `BackdropFilter` costs about **2.4x a frame's whole raster cost** on the deck it was
   measured against, and 84% of that is there at sigma 2 — the layer costs, not the blur.
   The numbers come from the software rasterizer, so what transfers is the structure.
-- The `padding` reaches into the `offset` band when the deck is unscrolled and is
-  clipped at the edge once it scrolls. Nobody decided that this should depend on state.

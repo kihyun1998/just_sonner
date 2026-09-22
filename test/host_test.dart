@@ -4149,6 +4149,30 @@ void main() {
           expect(await drawnNearer(tester, key, position, edge), 0);
         });
 
+        for (final position in [
+          SonnerPosition.bottomRight,
+          SonnerPosition.topRight,
+        ]) {
+          testWidgets('the backdrop stays out of the offset band before a '
+              'scroll too, with the pointer holding a deck that can scroll, '
+              '$position', (tester) async {
+            final key = GlobalKey();
+            final controller = capped(position: position);
+            controller.config = controller.config.copyWith(
+              deckBackdrop: () =>
+                  const DeckBackdrop(blur: 0, dim: 1, color: Color(0xFF000000)),
+            );
+            await tester.pumpWidget(shotApp(controller, key, banner: false));
+            await showToasts(tester, controller, 12);
+            await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+            await tester.pumpAndSettle();
+
+            final front = boxOf(tester, 'Toast 11');
+            expect(startsAt(position, front), moreOrLessEquals(edge));
+            expect(await drawnNearer(tester, key, position, edge), 0);
+          });
+        }
+
         testWidgets('hit-testing is unchanged: a click in the offset band is '
             'the deck’s before and after a scroll', (tester) async {
           final key = GlobalKey();
