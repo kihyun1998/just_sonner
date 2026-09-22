@@ -2845,7 +2845,7 @@ void main() {
         );
       });
 
-      testWidgets('with no cap, a pointer resting in the layer’s far margin '
+      testWidgets('with no cap, a pointer resting just inside the far offset '
           'stays over the deck as it scrolls to the end', (tester) async {
         controller.config = controller.config.copyWith(
           deckCap: () => null,
@@ -2860,16 +2860,17 @@ void main() {
         final front = boxOf(tester, 'Toast 11').center;
         final mouse = await mouseAt(tester, front);
         await tester.pumpAndSettle();
-        final margin = Offset(front.dx, 10);
-        await mouse.moveTo(margin);
+        final inside = Offset(front.dx, 34);
+        await mouse.moveTo(inside);
         await tester.pumpAndSettle();
 
         for (var n = 0; n < 4; n++) {
-          await wheel(tester, margin, const Offset(0, -100));
+          await wheel(tester, inside, const Offset(0, -100));
           await tester.pumpAndSettle();
         }
         expect(boxOf(tester, 'Toast 0').top, moreOrLessEquals(24));
         expect(boxOf(tester, 'Toast 11').bottom, greaterThan(576));
+        expect(controller.zone.held, isTrue);
       });
 
       testWidgets('a host handed another controller draws its deck at the '
@@ -3707,8 +3708,8 @@ void main() {
         expect(boxOf(tester, 'Toast 0').top, moreOrLessEquals(50));
       });
 
-      testWidgets('the pointer holds the deck up to the far edge’s offset past '
-          'the cap', (tester) async {
+      testWidgets('the pointer holds the deck up to the far cut, not the far '
+          'edge’s offset past it', (tester) async {
         final controller = capped(offset: unequal);
         await tester.pumpWidget(app(controller: controller));
         await showToasts(tester, controller, 12);
@@ -3716,18 +3717,19 @@ void main() {
         final mouse = await mouseAt(tester, boxOf(tester, 'Toast 11').center);
         await tester.pumpAndSettle();
 
-        // Past the near edge's offset, inside the far edge's.
-        await mouse.moveTo(Offset(x, 600 - (30 + 200 + 40)));
+        await mouse.moveTo(Offset(x, 600 - (30 + 200 - 10)));
         await tester.pumpAndSettle();
         expect(find.text('Toast 0'), findsOneWidget, reason: 'still held');
 
-        await mouse.moveTo(Offset(x, 600 - (30 + 200 + 56)));
+        // Past the cut, inside the far edge's offset.
+        await mouse.moveTo(Offset(x, 600 - (30 + 200 + 10)));
         await tester.pumpAndSettle();
         expect(find.text('Toast 0'), findsNothing, reason: 'left');
       });
 
-      testWidgets('a toast laid out up to the far edge’s offset past the cap '
-          'takes the pointer', (tester) async {
+      testWidgets('a toast laid out past the far cut takes no pointer there', (
+        tester,
+      ) async {
         final controller = capped(offset: unequal);
         await tester.pumpWidget(app(controller: controller));
         await showToasts(tester, controller, 12);
@@ -3735,8 +3737,7 @@ void main() {
         await mouseAt(tester, boxOf(tester, 'Toast 11').center);
         await tester.pumpAndSettle();
 
-        // Past the near edge's offset, inside the far edge's.
-        final at = Offset(x, 600 - (30 + 200 + 40));
+        final at = Offset(x, 600 - (30 + 200 + 10));
         final title = [
           for (var n = 0; n < 12; n++) 'Toast $n',
         ].firstWhere((title) => boxOf(tester, title).contains(at));
@@ -3746,11 +3747,11 @@ void main() {
               .first,
         );
         final path = tester.hitTestOnBinding(at).path;
-        expect(path.map((entry) => entry.target), contains(toast));
+        expect(path.map((entry) => entry.target), isNot(contains(toast)));
       });
 
-      testWidgets('a click is the deck’s up to the far edge’s offset past the '
-          'cap, and the app’s past that', (tester) async {
+      testWidgets('a click is the deck’s up to the far cut, and the app’s past '
+          'it', (tester) async {
         final key = GlobalKey();
         final taps = <int>[];
         final controller = capped(offset: unequal);
@@ -3760,16 +3761,15 @@ void main() {
         await mouseAt(tester, boxOf(tester, 'Toast 11').center);
         await tester.pumpAndSettle();
 
-        // Past the near edge's offset, inside the far edge's.
         await tester.tapAt(
-          Offset(x, 600 - (30 + 200 + 40)),
+          Offset(x, 600 - (30 + 200 - 10)),
           kind: PointerDeviceKind.mouse,
         );
         await tester.pump();
-        expect(taps, isEmpty, reason: 'inside the margin');
+        expect(taps, isEmpty, reason: 'inside the cut');
 
         await tester.tapAt(
-          Offset(x, 600 - (30 + 200 + 56)),
+          Offset(x, 600 - (30 + 200 + 10)),
           kind: PointerDeviceKind.mouse,
         );
         await tester.pump();
@@ -3777,8 +3777,8 @@ void main() {
         await tester.pumpAndSettle();
       });
 
-      testWidgets('the pointer holds the deck up to the cap’s margin, and '
-          'leaves it past that', (tester) async {
+      testWidgets('the pointer holds the deck up to the cap, and leaves it '
+          'past that', (tester) async {
         final controller = capped();
         await tester.pumpWidget(app(controller: controller));
         await showToasts(tester, controller, 12);
@@ -3786,11 +3786,11 @@ void main() {
         final mouse = await mouseAt(tester, boxOf(tester, 'Toast 11').center);
         await tester.pumpAndSettle();
 
-        await mouse.moveTo(Offset(x, 600 - (edge + 200 + edge - 4)));
+        await mouse.moveTo(Offset(x, 600 - (edge + 200 - 4)));
         await tester.pumpAndSettle();
         expect(find.text('Toast 0'), findsOneWidget, reason: 'still held');
 
-        await mouse.moveTo(Offset(x, 600 - (edge + 200 + edge + 4)));
+        await mouse.moveTo(Offset(x, 600 - (edge + 200 + 4)));
         await tester.pumpAndSettle();
         expect(find.text('Toast 0'), findsNothing, reason: 'left');
       });
@@ -4173,29 +4173,97 @@ void main() {
           });
         }
 
-        testWidgets('hit-testing is unchanged: a click in the offset band is '
-            'the deck’s before and after a scroll', (tester) async {
+        for (final position in [
+          SonnerPosition.bottomRight,
+          SonnerPosition.topRight,
+        ]) {
+          /// A point in the band `offset` keeps clear at [position]'s edge.
+          Offset inBand(WidgetTester tester) {
+            final x = boxOf(tester, 'Toast 11').center.dx;
+            return Offset(x, position.isTop ? edge / 2 : 600 - edge / 2);
+          }
+
+          testWidgets('a click in the offset band reaches the app before and '
+              'after a scroll, $position', (tester) async {
+            final key = GlobalKey();
+            final taps = <int>[];
+            final controller = capped(position: position);
+            await tester.pumpWidget(shotApp(controller, key, taps: taps));
+            await showToasts(tester, controller, 12);
+            final at = boxOf(tester, 'Toast 11').center;
+            await mouseAt(tester, at);
+            await tester.pumpAndSettle();
+
+            await tester.tapAt(inBand(tester), kind: PointerDeviceKind.mouse);
+            await tester.pump();
+            expect(taps, hasLength(1), reason: 'the app’s before the scroll');
+
+            await scrollToOldest(tester, position, at);
+            await tester.tapAt(inBand(tester), kind: PointerDeviceKind.mouse);
+            await tester.pump();
+            expect(taps, hasLength(2), reason: 'and still the app’s after it');
+            await tester.pumpAndSettle();
+          });
+
+          testWidgets('the pointer moved into the offset band lets a deck that '
+              'can scroll go, $position', (tester) async {
+            final controller = capped(position: position);
+            await tester.pumpWidget(app(controller: controller));
+            await showToasts(tester, controller, 12);
+            final mouse = await mouseAt(
+              tester,
+              boxOf(tester, 'Toast 11').center,
+            );
+            await tester.pumpAndSettle();
+            expect(controller.zone.held, isTrue);
+
+            await mouse.moveTo(inBand(tester));
+            await tester.pumpAndSettle();
+            expect(controller.zone.held, isFalse);
+          });
+        }
+
+        testWidgets('the pointer moved past the far cut lets the deck go, and '
+            'a click there reaches the app', (tester) async {
           final key = GlobalKey();
-          const position = SonnerPosition.bottomRight;
           final taps = <int>[];
           final controller = capped();
           await tester.pumpWidget(shotApp(controller, key, taps: taps));
           await showToasts(tester, controller, 12);
-          final x = boxOf(tester, 'Toast 11').center.dx;
-          final inBand = Offset(x, 600 - edge / 2);
-          final at = boxOf(tester, 'Toast 11').center;
-          await mouseAt(tester, at);
+          final front = boxOf(tester, 'Toast 11').center;
+          final mouse = await mouseAt(tester, front);
           await tester.pumpAndSettle();
+          // The cap is 200 from the offset: the far cut is 224 from the edge.
+          final past = Offset(front.dx, 600 - edge - 200 - 12);
 
-          await tester.tapAt(inBand, kind: PointerDeviceKind.mouse);
-          await tester.pump();
-          expect(taps, isEmpty, reason: 'the deck’s before the scroll');
-
-          await scrollToOldest(tester, position, at);
-          await tester.tapAt(inBand, kind: PointerDeviceKind.mouse);
-          await tester.pump();
-          expect(taps, isEmpty, reason: 'and still the deck’s after it');
+          await mouse.moveTo(past);
           await tester.pumpAndSettle();
+          expect(controller.zone.held, isFalse);
+          await tester.tapAt(past, kind: PointerDeviceKind.mouse);
+          await tester.pump();
+          expect(taps, hasLength(1));
+          await tester.pumpAndSettle();
+        });
+
+        testWidgets('with no cap the deck is cut at the far offset too', (
+          tester,
+        ) async {
+          final key = GlobalKey();
+          final controller = capped(cap: null);
+          await tester.pumpWidget(shotApp(controller, key, banner: false));
+          await showToasts(tester, controller, 12);
+          await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+          await tester.pumpAndSettle();
+          expect(
+            boxOf(tester, 'Toast 0').top,
+            lessThan(edge),
+            reason: 'the deck reaches past the far offset',
+          );
+          // The far offset of a bottom deck is the band at the top.
+          expect(
+            await drawnNearer(tester, key, SonnerPosition.topRight, edge),
+            0,
+          );
         });
       });
     });

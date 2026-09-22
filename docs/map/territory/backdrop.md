@@ -24,11 +24,9 @@ out, so a builder on it would schedule a build mid-frame.
 It takes no pointer: a click in the `padding` it reaches into goes to the app.
 
 It never reaches nearer the edge than `offset`, scrolled or not. The box it follows is
-the deck's **hit** box, which runs to the layer's edge while the pointer holds a deck
-that can scroll, and the deck's near cut exists only once a toast is pushed past the
-offset — so before a scroll nothing stopped the blur at the offset and it ran to the
-edge. It carries a hard cut of its own at `nearOffset` for that; the `padding` gives
-way to it.
+the deck's drawn box, and the deck's near cut exists only once a toast is pushed past
+the offset — so before a scroll nothing stops its `padding` at the offset. It carries a
+hard cut of its own at `nearOffset` for that; the `padding` gives way to it.
 
 ## Code
 `look/deck_backdrop.dart` — DeckBackdropBox
@@ -43,6 +41,7 @@ holds nothing on it. The defaults were settled by feel in the example app.
 
 ## Cross-cutting invariants
 - [A clip survives a transform applied outside it](../invariant/a-clip-survives-an-outside-transform.md)
+- [Hit-testing follows paint](../invariant/hit-testing-follows-paint.md)
 
 ## Blast radius
 - [Deck reach and cut](deck-reach-and-cut.md) — the backdrop's own cut is taken from the

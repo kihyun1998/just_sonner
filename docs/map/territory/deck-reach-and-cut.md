@@ -8,23 +8,25 @@ Holds the cap, the scroll, the two-ended cut and the scrollbar beside it.
 ## Governing decisions
 - [spec §12](../../spec.md#12-decision-record) — the cap and the scrollbar as
   separate config fields; the newest toast never cut *by the cap*; the cut keyed on
-  where toasts are drawn; a fading cut clipping as a hard one does; and the near end.
+  where toasts are drawn; a fading cut clipping as a hard one does; the near end; and
+  the far end cut with no cap, the pointer following both ends (#104).
 - [spec §6](../../spec.md#6-layout-and-animation) — the cap, the cut and the scrollbar.
 
 ## Design model
 The cut has two ends and each is reported from **where toasts were drawn**, never from
 whether the scroll overflows — the toasts beyond the window leave the deck the moment
 the pointer does, while still fanned out, so a cut keyed on the overflow shows them for
-the whole 400 ms collapse. The far end sits at the cap; the near end at the position's
-own `offset`, and **the near end needs no cap at all**, since a deck taller than the
-layer scrolls with none.
+the whole 400 ms collapse. The far end sits at the cap, or at the far edge's `offset`
+where the cap reaches it or there is none; the near end at the position's own `offset`.
+**Neither end needs a cap**, since a deck taller than the layer scrolls with none.
 
 Both ends fade over `DeckCap.fade` — outward at the far end, inward at the near — and
 cut hard where there is no fade. The report holds
 `near.at <= near.fadeFrom <= far.fadeFrom <= far.at`, so a window shorter than two
 fades cannot cross the gradient's stops.
 
-It is a **paint** cut. Hit-testing reads the far end alone.
+The pointer follows it: hit-testing reads both ends of the same report paint does, and
+the hover region is cut there too.
 
 An open zone draws every toast with no pointer on it, and is cut at the cap
 and does not scroll, as an `expandByDefault` deck is, until the pointer comes onto it.
@@ -46,14 +48,14 @@ this territory was settled by this repo's own measurement.
 - [Distances are measured from the position's own edge](../invariant/distances-from-the-positions-edge.md)
 - [Drawnness is the key](../invariant/drawnness-is-the-key.md)
 - [A clip survives a transform applied outside it](../invariant/a-clip-survives-an-outside-transform.md)
-- [A held deck stretches to the layer's edge](../invariant/a-held-deck-stretches-to-the-layer-edge.md)
+- [Hit-testing follows paint](../invariant/hit-testing-follows-paint.md)
 
 ## Blast radius
 - [Deck layout](deck-layout.md) — the cut reads what that territory drew.
 - [Backdrop](backdrop.md) — drawn outside this cut with a hard one of its own at both ends.
 - [Deck controls](deck-controls.md) — the dismiss-all control sits against the far end
   and is drawn outside the cut so it is not eaten by it.
-- [Pointer hold](pointer-hold.md) — the region runs to the far edge's `offset` past the cap.
+- [Pointer hold](pointer-hold.md) — the region is cut where this cut falls.
 
 ## Known holes / open
 - Whether a `ShaderMask` save layer now appears where none did before — a fading cap

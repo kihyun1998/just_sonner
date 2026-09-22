@@ -11,14 +11,13 @@ between the two insets and correct whenever they happen to be equal.
 `offset` became an `EdgeInsets` of physical edges, and the two insets a deck is measured
 along are derived per position rather than passed down. Each site resolves them for
 itself — the layout for a toast's distance, the cut for both of its ends, the scrollbar
-for its track, the hover region for its margin, the empty card for its place. **They do not
+for its track, the empty card for its place. **They do not
 call each other**, so there is no chain along which a fix propagates: each reads the
 config and decides again.
 
 ## Territories it holds in
 - [Deck layout](../territory/deck-layout.md) — each toast's distance from the edge.
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — the near end, `DeckCap.pixels`, and the scrollbar's track.
-- [Pointer hold](../territory/pointer-hold.md) — the region's margin past the cap.
 - [Deck controls](../territory/deck-controls.md) — the far end the controls sit against.
 - [Zone](../territory/zone.md) — the empty card sits at the near edge's `offset`, where the front toast would.
 - [Configuration](../territory/configuration.md) — where the two insets are derived.
