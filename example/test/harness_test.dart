@@ -15,6 +15,9 @@ void main() {
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     await tester.pumpWidget(const ExampleApp());
+    // The harness is a page behind the showcase's app bar.
+    await tester.tap(find.byTooltip('Harness'));
+    await tester.pumpAndSettle();
   }
 
   testWidgets('a button puts a toast on screen, and it counts itself down', (

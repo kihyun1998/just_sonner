@@ -1,4 +1,4 @@
-part of 'main.dart';
+part of 'harness.dart';
 
 /// A `bool?` argument as a control: unset, on or off.
 enum _Tri {
@@ -127,8 +127,8 @@ class _PlaygroundState extends State<_Playground> {
 
   ToastBuilder? get _builderNow => switch (_look) {
     _Look.none => null,
-    _Look.own => _PanelState._ownLook,
-    _Look.flashBar => _PanelState._flashBar(swipe: false),
+    _Look.own => ownLook,
+    _Look.flashBar => flashBar(swipe: false),
   };
 
   /// A new toast when [id] is null, and a replace of the toast at [id]

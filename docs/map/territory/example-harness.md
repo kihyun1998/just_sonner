@@ -1,8 +1,8 @@
 # Example harness
 
 ## What it is
-The desktop app under `example/` that makes every behaviour pressable, and its own small
-test suite. It is where values the spec left provisional are settled by feel, and where
+The desktop app under `example/`: a showcase with every option on one page, the harness
+that makes every behaviour pressable behind it, and their own small test suite. It is where values the spec left provisional are settled by feel, and where
 a change is verified by a person rather than by an assertion.
 
 ## Governing decisions
@@ -17,13 +17,18 @@ order, not issue order, because features were built in dependency order — the 
 before the clear-all control, since the control had no far end to sit against until the
 cap gave it one.
 
+The showcase is the other half: **every option on one page**, so a new `show` argument or
+config field gets a control on its left side in the same change that adds it, and a
+situation worth watching whatever the options are goes under its Scenarios.
+
 `example/` is a separate package with its own manifest, so it resolves separately from
 the package it demonstrates and can be broken without any gate here noticing.
 
 ## Code
 
-**None.** The harness is `example/lib/main.dart`, its playground part and its adapter;
-nothing under `lib/` belongs to this territory, and the symbol check stands down.
+**None.** The app is `example/lib/`: `showcase.dart` the page it opens on, `harness.dart`
+and its `playground.dart` part behind it, and the looks, settings and flash adapter both
+share. Nothing under `lib/` belongs to this territory, and the symbol check stands down.
 
 ## Reference behaviour
 
