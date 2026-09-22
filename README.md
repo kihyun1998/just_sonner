@@ -418,10 +418,11 @@ toast.config = toast.config.copyWith(
 the content under it inside the window; the wallpaper needs a transparent native window, which is
 the app's own decision and not this package's.
 
-It is drawn to the deck's own box and reaches `padding` further. **A click in that padding still
-reaches your app** — what the backdrop draws over claims no pointer the deck did not already claim.
-`blur: 0` draws no filter and `dim: 0` no cover, so the default softens what is behind the deck
-without darkening it.
+It is drawn to the deck's own box and reaches `padding` further, but never into the band `offset`
+keeps clear at the deck's edge, scrolled or not. **A click in that padding still reaches your
+app** — what the backdrop draws over claims no pointer the deck did not already claim. `blur: 0`
+draws no filter and `dim: 0` no cover, so the default softens what is behind the deck without
+darkening it.
 
 ## Hiding the zone
 
@@ -521,8 +522,8 @@ overflow. Use `ToastFit` or `toastCardBuilder` ([Your own look](#your-own-look))
 
 ## More
 
-- [`example/`](https://github.com/kihyun1998/just_sonner/tree/main/example): a desktop harness with
-  every behaviour on a button
+- [`example/`](https://github.com/kihyun1998/just_sonner/tree/main/example): a desktop showcase with
+  every option on one page, and a harness with every behaviour on a button
 - [`docs/spec.md`](https://github.com/kihyun1998/just_sonner/blob/main/docs/spec.md): the full
   specification, and the reason behind each decision
 
