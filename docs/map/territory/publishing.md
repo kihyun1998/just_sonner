@@ -16,7 +16,7 @@ this territory rather than a decision about it.
 ## Design model
 The archive is `lib/`, `example/`, the README, the CHANGELOG and the licence. Excluded:
 `/test/` — 368 KB against `lib`'s 240, and nobody consuming the package runs it —
-together with `/docs/`, `CLAUDE.md`, `CONTEXT.md` and `AGENTS.md`.
+together with `/docs/`, `CLAUDE.md`, `GLOSSARY.md` and `AGENTS.md`.
 
 **`.pubignore` replaces `.gitignore` for pub rather than adding to it**, so every rule
 the two share is written twice. An exclusion added to `.gitignore` alone still ships.

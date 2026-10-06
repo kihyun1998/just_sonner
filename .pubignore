@@ -37,7 +37,7 @@ migrate_working_dir/
 # are repeated here.
 /AGENTS.md
 /CLAUDE.md
-/CONTEXT.md
+/GLOSSARY.md
 /docs/
 
 # The suite is 368 KB against lib's 240, and nobody consuming the package runs
