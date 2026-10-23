@@ -64,7 +64,8 @@ What just_sonner adds, in the order a real consumer needed them:
   toasts and their countdowns, and a new toast shows as a banner; a control on the deck
   (`config.hideControl`) and a motion (`config.hideMotion`) come with built-in looks and a builder,
   and an open zone with no toast draws `config.zoneEmpty` (§6, §7)
-- **Windows, macOS, Linux**; no dependency beyond Flutter
+- **Windows, macOS, Linux**; one dependency beyond Flutter, `flutter_smooth_wheel_scroll`, which
+  glides the deck under the mouse wheel (§6, §12)
 
 ### Non-goals (v0.1)
 
@@ -618,6 +619,14 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   trackpad pan over the deck, gaps included, or by dragging the scrollbar's thumb. A mouse drag on
   a toast does not scroll (it swipes, §8). Scrolling away from the edge moves the newest toasts off
   it; the wheel toward the edge brings them back.
+  - **The wheel glides.** A notch moves the deck on `flutter_smooth_wheel_scroll`'s default motion,
+    a spring that settles in 400 ms with no bounce, and notches turned during it add to where it is
+    headed rather than starting again. A toast entering or leaving under a glide keeps the toasts
+    being read in place in every frame, and the glide lands as far as the wheel turned; a reach
+    shrinking under it stops it at the new end. The pointer leaving ends it, and the deck eases to
+    the edge from where it is drawn; a trackpad pan or a drag of the thumb takes over from it, and
+    neither glides. An app that installs the package's `SmoothWheelBinding` sets how far a notch
+    goes over the deck too; just_sonner installs nothing and exports none of the package.
   - **The cap** is `config.deckCap`: the deck's own height in pixels, a share of the layer's
     height with the far edge's `offset` included, or the far end of the newest N toasts as they are drawn
     expanded, counting those beyond the window, which leave the deck with the pointer while they
@@ -685,7 +694,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - **It is drawn outside the deck**, over it, so the cap's cut does not reach it, and laid out
     before the deck, so the deck places it by its size in the same frame. The hover region takes
     it in, so moving the pointer from the deck onto it does not collapse the deck. **A wheel
-    turned over it scrolls the deck**, which it cannot reach on its own, being drawn outside it —
+    turned over it glides the deck** as one over the deck does, which it cannot reach on its own, being drawn outside it —
     a hand holding the deck open rests there, and the same goes for the hide control.
 - **The hide control** is `config.hideControl`, drawn in the same place and on the same terms as
   the dismiss-all control, except that **one toast is enough** and it need not be one the user
@@ -1086,7 +1095,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
   its count label and label; a builder replaces the look, is placed by its size and dismisses
   through its view
-- A wheel turned over a control past the far end scrolls the deck, at the top and at the bottom
+- A wheel turned over a control past the far end glides the deck, at the top and at the bottom
 - Hiding takes the deck out of sight and lets go of the pointer as it goes — the timers run
   again, a press no longer holds the deck open when it comes back, and a swipe under way does not
   dismiss its toast; a pointer moving where the deck was holds nothing; a hidden deck is out of the
@@ -1153,6 +1162,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   a gap, and stop at the far offset; a toast entering keeps the toasts in view in place; leaving
   eases the scroll back to the edge; an exiting toast keeps its place on screen under a scroll;
   toasts more than 20 deep never scale below zero
+- The wheel glides over several frames to where it aimed, and notches turned during a glide land
+  at their sum; a toast shown under a glide keeps the toasts being read where the glide alone draws
+  them in every frame; an oldest toast dismissed late in a glide stops it at the new end with no
+  frame jumping; the pointer leaving mid-glide eases to the edge from where the deck is drawn; a
+  trackpad pan takes over a glide; a scrollbar not always shown fades 600 ms after a glide lands
 - Swipe below and above the threshold, and short of it but fast; a swiped toast leaving the way it
   was swiped rather than toward its edge; a toast the deck covers taking a swipe; a drag the
   position does not allow moving the damped distance and staying, including one fast enough to
@@ -1372,6 +1386,7 @@ outside v0.1 is in §2's non-goals.
 | The `hide*` renames; `zoneEmpty` and its label; Hide taking a banner down; an open zone not pausing the timers; a banner that runs out under the pointer waiting for it to leave | derived | #97's own "derived by the agent" list, which the maintainer can overturn |
 | Only a new toast puts up a banner; `open()` in mount mode 1 puts the host into the overlay, and with no navigator follows a new toast's rule; `reveal()` on an open zone changes where `close()` returns; the banner lives on the controller, which already knows `held`; the empty card is a child of the deck's layout, so the hover region, the controls and the backdrop take it in | derived | worked out while building #97. The first from #60's rule for what brought a stowed deck back. The second because the overlay was inserted on the first `show`, and an empty zone opened first drew nothing. A host first drawn on a zone reads its state then, since a zone now keeps a state a mounting host must not miss |
 | The hover region and hit-testing follow what is drawn: the box around the toasts, cut where the deck is cut, with the controls past the far end and a draggable scrollbar's thumb. The far end is cut whenever a toast is drawn past it, with or without a cap, at the far edge's `offset` where there is none. The backdrop keeps a hard cut at the `offset` edge before a scroll too, and its `padding` gives way to it | maintainer | #104, from the same desktop app as #86: at `topRight` with `offset.top` 124, the pointer moved into the band above a fanned-out deck kept it fanned out with nothing of it drawn there. The stretch it came from (the #41 row) was measured at the **far** margin with no cap, where toasts were drawn in that margin, so a wheel turned there slid them out from under a still pointer; while the toasts do not fit they cover the whole band from the `offset` edge to the cap whatever the scroll, so that can only happen where the deck is not cut. The near end has been cut since #86; the far end was cut only with a cap inside the layer. Probed on 800 × 600 with twelve toasts under the pointer: with no cap, 8544 px painted in the far `offset` band of a `bottomRight` deck, unscrolled — #86's report at the other end; with `DeckCap.pixels(200, fade: 0)`, a tap 12 px past the far cut, over nothing drawn, did not reach the app and `held` stayed true. Chosen over keeping the far stretch alone, since every change that cut the deck since (#62, #86, #101) had to be kept from disagreeing with it. The backdrop's cut at the `offset` edge is #101's, where the maintainer chose it over letting the `padding` reach into the band only while unscrolled |
+| The deck's scroll glides under the mouse wheel through `flutter_smooth_wheel_scroll`'s `SmoothScrollController` with its default motion (spring, 400 ms, no bounce), over the deck, its gaps and the controls past its far end; the package is the first dependency beyond Flutter, hosted, from 0.1.4. A layout correction under a glide carries the glide and its target, fixed in the package rather than here. The pointer leaving, a reset, a drag of the thumb and a trackpad pan end a glide; nothing is configurable, nothing of the package is exported, and the app's `SmoothWheelBinding` applies when it installs one | maintainer; the anchor carrying is derived | #107. A notch moved the deck about 60 px in one frame on Windows (3 lines × 20 px), the one motion in the deck that did not ease. The maintainer chose their own package over writing an animation here, which drops §2's "no dependency beyond Flutter". Derived from source, then measured in kihyun1998/flutter_smooth_wheel_scroll#19: `ScrollPosition.correctBy` moves the pixels without telling the activity, so on 0.1.3 the next tick undid the anchor — `Toast 6` settled at 228 against 294 with a toast shown three frames into a glide. 0.1.4 shifts the running motion by the correction; the test of a toast shown under a glide fails on 0.1.3 and passes on 0.1.4. A workaround here (ending the glide on a correction, or a position of our own) was ruled out, since the fault is true of any scroll view that corrects its offset. Decided in the design round and open to overturning: the order (package first), clamping a shrinking reach, ending on leave, the control gliding, honouring the app's binding, the scrollbar's timer, no re-export, and 0.5.0. **Not covered**: a browser build, smoothing a scroll view inside a builder, a drag of the thumb, the keyboard and a trackpad pan, none of which glide |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

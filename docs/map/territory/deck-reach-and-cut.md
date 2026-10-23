@@ -9,7 +9,8 @@ Holds the cap, the scroll, the two-ended cut and the scrollbar beside it.
 - [spec §12](../../spec.md#12-decision-record) — the cap and the scrollbar as
   separate config fields; the newest toast never cut *by the cap*; the cut keyed on
   where toasts are drawn; a fading cut clipping as a hard one does; the near end; and
-  the far end cut with no cap, the pointer following both ends (#104).
+  the far end cut with no cap, the pointer following both ends (#104); the wheel gliding
+  through `flutter_smooth_wheel_scroll`, with a layout correction carrying the glide (#107).
 - [spec §6](../../spec.md#6-layout-and-animation) — the cap, the cut and the scrollbar.
 
 ## Design model
@@ -28,12 +29,22 @@ fades cannot cross the gradient's stops.
 The pointer follows it: hit-testing reads both ends of the same report paint does, and
 the hover region is cut there too.
 
+**The scroll moves through a wheel motion that layout corrections carry.** The deck's
+controller is the package's `SmoothScrollController`, so a wheel notch is a glide with a target,
+not a jump. The layout keeps the anchored toast in place and clamps a shrinking reach through
+`correctBy` as before, and from the package's 0.1.4 a correction shifts the running glide and its
+target by the same amount — on 0.1.3 the next tick undid it. A change to the anchor or the clamp
+checks against a glide under way, not only a scroll at rest. A wheel over the controls past the
+far end goes through the same `pointerScroll`; leaving, a reset and a drag of the thumb jump, which
+ends a glide.
+
 An open zone draws every toast with no pointer on it, and is cut at the cap
 and does not scroll, as an `expandByDefault` deck is, until the pointer comes onto it.
 
 ## Code
 `deck_cut.dart` — DeckCutBox, RenderDeckCut
 `deck_layout.dart` — DeckCut, DeckCutEnd, DeckScrollbarGeometry, ToastDeckDelegate
+`host.dart` — ToastLayer
 `look/deck_scrollbar.dart` — DeckScrollbarThumb
 
 ## Reference behaviour

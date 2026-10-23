@@ -18,6 +18,8 @@ import 'package:flutter/services.dart'
         PointerExitEventListener,
         PointerHoverEventListener;
 import 'package:flutter/widgets.dart';
+import 'package:flutter_smooth_wheel_scroll/flutter_smooth_wheel_scroll.dart'
+    show SmoothScrollController;
 
 import 'config.dart';
 import 'content_fade.dart';
@@ -143,7 +145,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   double get _revealTarget => _everyToast ? 1 : 0;
 
-  final ScrollController _scroll = ScrollController();
+  final ScrollController _scroll = SmoothScrollController();
 
   /// How far the deck was scrolled when the pointer left it; the scroll is
   /// back at the edge, and the deck is drawn this much of the way there.
@@ -472,12 +474,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final delta = _config.position.isTop
         ? event.scrollDelta.dy
         : -event.scrollDelta.dy;
-    position.jumpTo(
-      (position.pixels + delta).clamp(
-        position.minScrollExtent,
-        position.maxScrollExtent,
-      ),
-    );
+    if (delta != 0) position.pointerScroll(delta);
   }
 
   /// Scrolls the deck as far as a drag of the scrollbar's thumb by [delta],

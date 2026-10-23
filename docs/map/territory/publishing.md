@@ -6,8 +6,10 @@ the version, the changelog and the platforms claimed. Nothing here changes on a 
 day, and everything here fails for a stranger rather than locally.
 
 ## Governing decisions
+- [spec §12](../../spec.md#12-decision-record) — the first dependency beyond Flutter,
+  `flutter_smooth_wheel_scroll` from 0.1.4 (#107), and with it §2's promise dropped.
 
-**None.** No row in §12 decides what ships or how the version moves; the rules live in
+No other row decides what ships or how the version moves; those rules live in
 `.pubignore` and in the changelog's shape, and were settled in the changes that made
 them. Adjacent but not governing: the §12 row on `offset` becoming an `EdgeInsets`
 records a **breaking** change and the release it went out in, which is a consequence of
@@ -24,6 +26,11 @@ the two share is written twice. An exclusion added to `.gitignore` alone still s
 This map is under `/docs/`, so it is **not published**. It is a repository artifact.
 
 A published changelog entry is never rewritten, only superseded.
+
+**One dependency beyond Flutter**, `flutter_smooth_wheel_scroll`, hosted, with its lower bound at
+the first release carrying the fix this package relies on. Its SDK floor sits below this
+package's, so it moves no constraint; a consumer depending on it too resolves one copy. A new
+lower bound there is a release here.
 
 ## Code
 

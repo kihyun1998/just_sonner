@@ -18,6 +18,11 @@ a builder's size and its place arrive in one frame. The hover region has to take
 in: laid out outside the deck's box, moving the pointer onto one collapsed the deck
 before it could be pressed.
 
+A wheel turned over either one moves the deck, which the deck's own `Scrollable` cannot
+see from outside its cut: it goes to the deck's scroll position as a wheel over the deck
+does, and so glides with the same motion and adds to the same target (#107). A turn with
+no vertical part moves nothing, rather than stopping a glide under way.
+
 Dismiss-all leaves toasts that are loading or not dismissible, and counts the ones
 beyond the window, because **Dismissible** governs what the *user* may dismiss and this
 is the user's control.
