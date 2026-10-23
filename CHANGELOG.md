@@ -1,3 +1,16 @@
+## 0.5.0
+
+- **The deck glides under the mouse wheel** (#107). A notch turned over a deck whose toasts do not
+  fit moved it about 60 px in one frame; it now glides there on a spring that settles in 400 ms,
+  and notches turned during a glide add to it. A toast arriving or leaving under a glide keeps the
+  toasts you are reading in place. The same goes for a wheel over the dismiss-all and hide
+  controls. A trackpad pan and a drag of the scrollbar's thumb move the deck as before.
+- **just_sonner now depends on
+  [`flutter_smooth_wheel_scroll`](https://pub.dev/packages/flutter_smooth_wheel_scroll)** `^0.1.4`,
+  its first dependency beyond Flutter. Nothing to set up: nothing of it is exported, and if your
+  app installs its `SmoothWheelBinding` with a wheel scale, the deck follows that scale too. No
+  public API changed.
+
 ## 0.4.2
 
 - **The deck takes the pointer only where it is drawn** (#104). While the pointer held a deck that
