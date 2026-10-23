@@ -14,7 +14,9 @@ ships a default look that a builder can replace whole.
 - A backdrop that softens what is behind the deck as it fans out, if you ask for one
 - Swipe to dismiss, a close button, and an action slot you fill
 - Each toast's time left, drawn as a border, a bar or a ring
-- No dependency beyond Flutter
+- A deck that glides under the mouse wheel, through
+  [`flutter_smooth_wheel_scroll`](https://pub.dev/packages/flutter_smooth_wheel_scroll), its one
+  dependency beyond Flutter
 
 **Desktop only, for now: Windows, macOS and Linux.** The package builds for mobile and web, but it
 makes no promises there: nothing is specified or tested for touch, notches or the keyboard.
