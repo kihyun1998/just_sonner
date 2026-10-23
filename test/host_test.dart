@@ -2587,6 +2587,35 @@ void main() {
         expect(boxOf(tester, 'Toast 11').bottom, greaterThan(576));
       });
 
+      testWidgets('a trackpad pan takes over a glide the wheel started', (
+        tester,
+      ) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -300));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        final trackpad = TestPointer(2, PointerDeviceKind.trackpad);
+        await tester.sendEventToBinding(trackpad.panZoomStart(at));
+        await tester.pump(const Duration(milliseconds: 16));
+        final held = boxOf(tester, 'Toast 11').bottom;
+        for (var frame = 0; frame < 20; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          expect(
+            boxOf(tester, 'Toast 11').bottom,
+            moreOrLessEquals(held),
+            reason: 'a still pan holds the deck at frame $frame',
+          );
+        }
+        await tester.sendEventToBinding(trackpad.panZoomEnd());
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, lessThan(576 + 300));
+      });
+
       testWidgets(
         'leaving eases the scroll back to the edge with the collapse, and the '
         'next hover starts there',
@@ -2661,9 +2690,10 @@ void main() {
         await wheel(
           tester,
           boxOf(tester, 'Toast 9').center,
-          const Offset(0, -40),
+          const Offset(0, -100),
         );
         await tester.pump();
+        await tester.pump(const Duration(milliseconds: 200));
         final drawn = boxOf(tester, 'Toast 11').bottom;
         expect(drawn, greaterThan(easing), reason: 'the wheel scrolled it');
 
@@ -2845,6 +2875,163 @@ void main() {
         );
       });
 
+      testWidgets('one wheel notch glides the deck over several frames, and '
+          'lands where it aimed', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(boxOf(tester, 'Toast 11').bottom, inExclusiveRange(576, 676));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
+      });
+
+      testWidgets('notches turned in quick succession glide to their sum', (
+        tester,
+      ) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -60));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        await wheel(tester, at, const Offset(0, -60));
+        await tester.pump(const Duration(milliseconds: 16));
+        await wheel(tester, at, const Offset(0, -60));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(576 + 180));
+      });
+
+      /// Hovers 12 toasts on a fresh host with [mouse], turns the wheel by
+      /// 100, runs [during] three frames into the glide, and returns where
+      /// `Toast 6` is drawn in every 16 ms frame after that.
+      Future<List<double>> glide(
+        WidgetTester tester,
+        TestGesture mouse, {
+        void Function(SonnerController controller)? during,
+      }) async {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: null),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouse.moveTo(at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pump();
+        for (var frame = 0; frame < 3; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        during?.call(controller);
+        final tops = <double>[];
+        for (var elapsed = 0; elapsed <= 800; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          tops.add(boxOf(tester, 'Toast 6').top);
+        }
+        await mouse.moveTo(away);
+        await tester.pumpAndSettle();
+        return tops;
+      }
+
+      testWidgets('a toast shown while the deck glides keeps the toasts being '
+          'read where the glide alone draws them, in every frame', (
+        tester,
+      ) async {
+        final mouse = await mouseAt(tester, away);
+        final alone = await glide(tester, mouse);
+        final shown = await glide(
+          tester,
+          mouse,
+          during: (controller) => controller.show('New'),
+        );
+        for (var frame = 0; frame < alone.length; frame++) {
+          expect(
+            shown[frame],
+            moreOrLessEquals(alone[frame], epsilon: 0.5),
+            reason: 'at ${frame * 16} ms',
+          );
+        }
+      });
+
+      testWidgets('a glide toward the end stops at the end a dismissed oldest '
+          'toast leaves, with no frame jumping', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -2000));
+        await tester.pumpAndSettle();
+        final end = boxOf(tester, 'Toast 0').top;
+        await wheel(tester, at, const Offset(0, 2000));
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, 576);
+
+        await wheel(tester, at, const Offset(0, -2000));
+        await tester.pump();
+        // Late in the glide, so the reach shrinks under where it is headed.
+        for (var frame = 0; frame < 16; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        controller.dismiss(toastsOf(controller).last.id);
+        var previous = boxOf(tester, 'Toast 5').top;
+        for (var elapsed = 0; elapsed <= 600; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          final top = boxOf(tester, 'Toast 5').top;
+          expect(
+            (top - previous).abs(),
+            // A toast and a gap given back in one frame would be 66 px.
+            lessThan(40),
+            reason: 'at $elapsed ms',
+          );
+          previous = top;
+        }
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 1').top, moreOrLessEquals(end));
+      });
+
+      testWidgets('a pointer leaving mid-glide eases the deck to the edge from '
+          'where it is drawn, never on toward the glide’s end', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        final mouse = await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pump();
+        for (var frame = 0; frame < 3; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+
+        await mouse.moveTo(away);
+        var previous = boxOf(tester, 'Toast 11').bottom;
+        expect(previous, inExclusiveRange(576, 676), reason: 'mid-glide');
+        for (var elapsed = 0; elapsed <= 500; elapsed += 16) {
+          await tester.pump(const Duration(milliseconds: 16));
+          final bottom = boxOf(tester, 'Toast 11').bottom;
+          expect(
+            bottom,
+            lessThanOrEqualTo(previous + 0.5),
+            reason: 'at $elapsed ms',
+          );
+          previous = bottom;
+        }
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, 576);
+      });
+
       testWidgets('with no cap, a pointer resting just inside the far offset '
           'stays over the deck as it scrolls to the end', (tester) async {
         controller.config = controller.config.copyWith(
@@ -2999,6 +3186,7 @@ void main() {
           final place = boxOf(tester, 'Toast 6');
           final neighbour = boxOf(tester, 'Toast 7').top;
           await wheel(tester, at, const Offset(0, -50));
+          await tester.pump();
           await tester.pump(const Duration(milliseconds: 16));
           expect(boxOf(tester, 'Toast 6').top, moreOrLessEquals(place.top));
           expect(
@@ -4455,8 +4643,8 @@ void main() {
         expect(thumbRect(tester).center.dx, moreOrLessEquals(deckRight - 8));
       });
 
-      testWidgets('one not always shown shows while the deck scrolls, and '
-          'fades 600 ms after', (tester) async {
+      testWidgets('one not always shown shows while the deck glides, and '
+          'fades 600 ms after it lands', (tester) async {
         final controller = barred(
           scrollbar: const DeckScrollbar(alwaysShown: false),
         );
@@ -4478,9 +4666,14 @@ void main() {
 
         await wheel(tester, front, -60);
         await tester.pump();
-        await tester.pump(const Duration(milliseconds: 300));
+        var frames = 0;
+        while (boxOf(tester, 'Toast 11').bottom != 576 + 60 && frames < 60) {
+          await tester.pump(const Duration(milliseconds: 16));
+          frames++;
+        }
+        expect(frames, greaterThan(1), reason: 'it glided');
         expect(opacity(), 1);
-        await tester.pump(const Duration(milliseconds: 250));
+        await tester.pump(const Duration(milliseconds: 550));
         expect(opacity(), 1, reason: 'still shown at 550 ms');
         await tester.pump(const Duration(milliseconds: 100));
         await tester.pump(const Duration(milliseconds: 150));
@@ -7743,6 +7936,79 @@ void main() {
         greaterThan(before + 20),
         reason: 'the deck scrolled under a wheel turned on its control',
       );
+    });
+
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.topRight,
+    ]) {
+      testWidgets('a wheel turned over the control past the far end glides '
+          'the deck at the ${position.name}', (tester) async {
+        final controller = SonnerController(
+          config: SonnerConfig(
+            duration: null,
+            position: position,
+            deckCap: const DeckCap.pixels(200, fade: 0),
+            scrollbar: null,
+          ),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        for (var n = 0; n < 12; n++) {
+          controller.show('Toast $n');
+        }
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+        await settle(tester);
+
+        final control = tester.getRect(find.text('Hide')).center;
+        final before = boxOf(tester, 'Toast 11').top;
+        // Away from the edge: up the screen from the bottom, down from the top.
+        final shift = position.isTop ? -80.0 : 80.0;
+        final wheel = TestPointer(9, PointerDeviceKind.mouse, 9);
+        await tester.sendEventToBinding(wheel.hover(control));
+        await tester.sendEventToBinding(
+          wheel.scroll(Offset(0, position.isTop ? 80 : -80)),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        final moved = boxOf(tester, 'Toast 11').top - before;
+        expect(moved.abs(), inExclusiveRange(0, 80), reason: 'mid-glide');
+        expect(moved.sign, shift.sign);
+        await settle(tester);
+        expect(boxOf(tester, 'Toast 11').top, moreOrLessEquals(before + shift));
+      });
+    }
+
+    testWidgets('a sideways wheel over the control leaves a glide running', (
+      tester,
+    ) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          duration: null,
+          deckCap: DeckCap.pixels(200, fade: 0),
+          scrollbar: null,
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      for (var n = 0; n < 12; n++) {
+        controller.show('Toast $n');
+      }
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 11').center);
+      await settle(tester);
+
+      final control = tester.getRect(find.text('Hide')).center;
+      final before = boxOf(tester, 'Toast 11').top;
+      final wheel = TestPointer(9, PointerDeviceKind.mouse, 9);
+      await tester.sendEventToBinding(wheel.hover(control));
+      await tester.sendEventToBinding(wheel.scroll(const Offset(0, -80)));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      await tester.sendEventToBinding(wheel.scroll(const Offset(40, 0)));
+      await settle(tester);
+      expect(boxOf(tester, 'Toast 11').top, moreOrLessEquals(before + 80));
     });
 
     testWidgets('a hidden deck is out of the semantics tree', (tester) async {
