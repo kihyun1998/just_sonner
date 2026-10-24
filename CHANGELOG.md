@@ -1,13 +1,3 @@
-## 0.6.0
-
-- **Set how the deck glides under the mouse wheel** (#110). `SonnerConfig.wheelMotion` takes a
-  `WheelMotion`: `WheelMotion.spring()` by default, as in 0.5.0, or another spring, a curve, a
-  lerp, or `WheelMotion.spring(duration: Duration.zero)` to jump as before 0.5.0. A motion
-  assigned while toasts are on screen applies from the next wheel turn.
-- **`WheelMotion` is exported** from `package:just_sonner/just_sonner.dart`, so you set it
-  without adding `flutter_smooth_wheel_scroll` yourself. It is that package's type: a breaking
-  change to it there would be one here.
-
 ## 0.5.0
 
 - **The deck glides under the mouse wheel** (#107). A notch turned over a deck whose toasts do not
@@ -15,11 +5,19 @@
   and notches turned during a glide add to it. A toast arriving or leaving under a glide keeps the
   toasts you are reading in place. The same goes for a wheel over the dismiss-all and hide
   controls. A trackpad pan and a drag of the scrollbar's thumb move the deck as before.
+- **Set how the deck glides** (#110). `SonnerConfig.wheelMotion` takes a `WheelMotion`:
+  `WheelMotion.spring()` by default, or another spring, a curve, a lerp, or
+  `WheelMotion.spring(duration: Duration.zero)` to jump as in 0.4.2. A motion assigned while
+  toasts are on screen applies from the next wheel turn. Two configs with equal motions are
+  equal, even when the motions are built from runtime values (#118), so a config rebuilt every
+  build with the same motion does not read as a change.
+- **`WheelMotion` is exported** from `package:just_sonner/just_sonner.dart`, so you set it
+  without adding `flutter_smooth_wheel_scroll` yourself. It is that package's type: a breaking
+  change to it there would be one here.
 - **just_sonner now depends on
-  [`flutter_smooth_wheel_scroll`](https://pub.dev/packages/flutter_smooth_wheel_scroll)** `^0.1.4`,
-  its first dependency beyond Flutter. Nothing to set up: nothing of it is exported, and if your
-  app installs its `SmoothWheelBinding` with a wheel scale, the deck follows that scale too. No
-  public API changed.
+  [`flutter_smooth_wheel_scroll`](https://pub.dev/packages/flutter_smooth_wheel_scroll)** `^0.1.5`,
+  its first dependency beyond Flutter. Nothing to set up, and if your app installs its
+  `SmoothWheelBinding` with a wheel scale, the deck follows that scale too.
 
 ## 0.4.2
 
