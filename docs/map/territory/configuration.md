@@ -25,8 +25,10 @@ without a duration until it is dismissed.
 itself. A breaking change to that type is a breaking change here. The host hands it to the
 deck's scroll controller on every config it follows, so it reaches the next wheel turn; a
 config assigned while toasts are on screen also starts them gliding to it, so a wheel turned
-in that glide is drawn through it. `WheelMotion` has no `==`, so configs compare equal on it
-only for the same instance.
+in that glide is drawn through it. A `WheelMotion` compares by value (from the package's
+0.1.5, #118), so a config rebuilt with an equal motion is equal and the host does not follow
+it again. A curve motion compares its curve with the curve's own `==`: the `Curves` constants
+are equal, two separately built `Cubic`s are not.
 
 `offset` is an `EdgeInsets` of **physical** edges. The edge the position names holds the
 deck off it and measures `DeckCap.pixels`, the scroll track and the scrollbar from it;

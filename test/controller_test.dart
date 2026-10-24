@@ -1983,6 +1983,40 @@ void main() {
       expect(set.copyWith(wheelMotion: zero).wheelMotion, zero);
     });
 
+    test('configs built with equal runtime wheel motions are equal, and one '
+        'field apart they are not', () {
+      SonnerConfig spring(int ms, double bounce) => SonnerConfig(
+        wheelMotion: WheelMotion.spring(
+          duration: Duration(milliseconds: ms),
+          bounce: bounce,
+        ),
+      );
+      expect(spring(300, 0.1), spring(300, 0.1));
+      expect(spring(300, 0.1).hashCode, spring(300, 0.1).hashCode);
+      expect(spring(300, 0.1), isNot(spring(301, 0.1)));
+      expect(spring(300, 0.1), isNot(spring(300, 0.2)));
+
+      SonnerConfig curve(int ms, Curve curve) => SonnerConfig(
+        wheelMotion: WheelMotion.curve(
+          duration: Duration(milliseconds: ms),
+          curve: curve,
+        ),
+      );
+      expect(curve(300, Curves.easeOut), curve(300, Curves.easeOut));
+      expect(curve(300, Curves.easeOut), isNot(curve(300, Curves.easeIn)));
+      expect(
+        curve(300, Cubic(0.2, 0, 0, 1)),
+        isNot(curve(300, Cubic(0.2, 0, 0, 1))),
+        reason: 'a Cubic compares by identity',
+      );
+
+      SonnerConfig lerp(int ms) => SonnerConfig(
+        wheelMotion: WheelMotion.lerp(timeConstant: Duration(milliseconds: ms)),
+      );
+      expect(lerp(80), lerp(80));
+      expect(lerp(80), isNot(lerp(81)));
+    });
+
     test(
       'copyWith keeps the hide fields and zoneEmpty unless given them, takes the two '
       'nullable ones away, and a config with others is not equal',
