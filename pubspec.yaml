@@ -22,7 +22,7 @@ platforms:
 dependencies:
   flutter:
     sdk: flutter
-  flutter_smooth_wheel_scroll: ^0.1.4
+  flutter_smooth_wheel_scroll: ^0.1.5
 
 dev_dependencies:
   flutter_test:
