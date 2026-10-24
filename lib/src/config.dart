@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
+import 'package:flutter_smooth_wheel_scroll/flutter_smooth_wheel_scroll.dart'
+    show WheelMotion;
 
 import 'dismiss_all_view.dart';
 import 'hide_view.dart';
@@ -624,6 +626,7 @@ class SonnerConfig {
     this.hideControl = const DeckHideControl(),
     this.hideMotion = const DeckHideMotion(),
     this.zoneEmpty = const ZoneEmpty(),
+    this.wheelMotion = const WheelMotion.spring(),
   });
 
   final SonnerPosition position;
@@ -725,6 +728,11 @@ class SonnerConfig {
   /// What an open zone draws while no toast is alive, or null for nothing.
   final ZoneEmpty? zoneEmpty;
 
+  /// How the expanded deck moves to where a mouse wheel turned over it, or
+  /// over the controls past its far end, sends it. A motion of no duration
+  /// jumps there.
+  final WheelMotion wheelMotion;
+
   /// A copy with the fields given changed.
   ///
   /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
@@ -754,6 +762,7 @@ class SonnerConfig {
     ValueGetter<DeckHideControl?>? hideControl,
     DeckHideMotion? hideMotion,
     ValueGetter<ZoneEmpty?>? zoneEmpty,
+    WheelMotion? wheelMotion,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -777,6 +786,7 @@ class SonnerConfig {
     hideControl: hideControl == null ? this.hideControl : hideControl(),
     hideMotion: hideMotion ?? this.hideMotion,
     zoneEmpty: zoneEmpty == null ? this.zoneEmpty : zoneEmpty(),
+    wheelMotion: wheelMotion ?? this.wheelMotion,
   );
 
   @override
@@ -801,10 +811,11 @@ class SonnerConfig {
       other.dismissAll == dismissAll &&
       other.hideControl == hideControl &&
       other.hideMotion == hideMotion &&
-      other.zoneEmpty == zoneEmpty;
+      other.zoneEmpty == zoneEmpty &&
+      other.wheelMotion == wheelMotion;
 
   @override
-  int get hashCode => Object.hash(
+  int get hashCode => Object.hashAll([
     position,
     width,
     gap,
@@ -825,5 +836,6 @@ class SonnerConfig {
     hideControl,
     hideMotion,
     zoneEmpty,
-  );
+    wheelMotion,
+  ]);
 }

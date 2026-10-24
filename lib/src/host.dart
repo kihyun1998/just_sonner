@@ -145,7 +145,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   double get _revealTarget => _everyToast ? 1 : 0;
 
-  final ScrollController _scroll = SmoothScrollController();
+  final SmoothScrollController _scroll = SmoothScrollController();
 
   /// How far the deck was scrolled when the pointer left it; the scroll is
   /// back at the edge, and the deck is drawn this much of the way there.
@@ -218,6 +218,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _config = _controller.config;
+    _scroll.motion = _config.wheelMotion;
     _hiddenShown = _hiddenNow;
     _hide.jump(_hiddenShown ? 1 : 0);
     _empty.jump(_emptyTarget);
@@ -244,6 +245,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // hidden or drawn as that controller's zone has them rather than easing
     // there.
     _config = _controller.config;
+    _scroll.motion = _config.wheelMotion;
     _hiddenShown = _hiddenNow;
     _hide.jump(_hiddenShown ? 1 : 0);
     _empty.jump(_emptyTarget);
@@ -363,6 +365,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (config == _config) return;
     final flipped = config.position.isTop != _config.position.isTop;
     _config = config;
+    _scroll.motion = config.wheelMotion;
     for (final slot in _slots) {
       slot.windowFadeFrom = slot.windowFade;
       if (slot.exiting) {

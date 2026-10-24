@@ -1973,6 +1973,16 @@ void main() {
       },
     );
 
+    test('wheelMotion is the package\'s spring unless given one, and copyWith '
+        'keeps it unless given another', () {
+      expect(const SonnerConfig().wheelMotion, const WheelMotion.spring());
+      const linear = WheelMotion.curve(curve: Curves.linear);
+      const set = SonnerConfig(wheelMotion: linear);
+      expect(set.copyWith(gap: 20).wheelMotion, linear, reason: 'kept');
+      const zero = WheelMotion.spring(duration: Duration.zero);
+      expect(set.copyWith(wheelMotion: zero).wheelMotion, zero);
+    });
+
     test(
       'copyWith keeps the hide fields and zoneEmpty unless given them, takes the two '
       'nullable ones away, and a config with others is not equal',

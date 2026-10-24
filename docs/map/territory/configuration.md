@@ -10,6 +10,8 @@ single `show` can override, and what happens to toasts on screen when a field ch
   fields; and the rules each live field brings.
 - [spec §12](../../spec.md#12-decision-record) — `duration` nullable, and
   `SonnerConfig.configDuration` (#97).
+- [spec §12](../../spec.md#12-decision-record) — `wheelMotion` as the package's own
+  `WheelMotion`, re-exported (#110).
 - [spec §4](../../spec.md#4-api).
 
 ## Design model
@@ -17,6 +19,14 @@ A field is assigned, not rebuilt: changing one keeps the toasts on screen where 
 are. Nullable fields are given through a getter in `copyWith`, since null is a value
 they can take — `duration` among them since #97, where null keeps every toast shown
 without a duration until it is dismissed.
+
+`wheelMotion` is the one field whose type is not this package's: `WheelMotion` from
+`flutter_smooth_wheel_scroll`, re-exported so an app sets it without listing the package
+itself. A breaking change to that type is a breaking change here. The host hands it to the
+deck's scroll controller on every config it follows, so it reaches the next wheel turn; a
+config assigned while toasts are on screen also starts them gliding to it, so a wheel turned
+in that glide is drawn through it. `WheelMotion` has no `==`, so configs compare equal on it
+only for the same instance.
 
 `offset` is an `EdgeInsets` of **physical** edges. The edge the position names holds the
 deck off it and measures `DeckCap.pixels`, the scroll track and the scrollbar from it;
