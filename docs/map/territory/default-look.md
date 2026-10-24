@@ -8,7 +8,8 @@ seam a builder replaces it through.
 ## Governing decisions
 - [spec §12](../../spec.md#12-decision-record) — the time left's five looks and its
   settings; a covered toast drawing no content; `ToastFit` and `toastCardBuilder`.
-- [spec §9](../../spec.md#9-default-look).
+- [spec §9](../../spec.md#9-default-look), and the §12 row settling its values as they
+  shipped (#29).
 
 ## Design model
 One default look, with a **builder as the escape hatch** for everything it does not do —
