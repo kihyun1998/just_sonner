@@ -30,7 +30,8 @@ A published changelog entry is never rewritten, only superseded.
 **One dependency beyond Flutter**, `flutter_smooth_wheel_scroll`, hosted, with its lower bound at
 the first release carrying the fix this package relies on. Its SDK floor sits below this
 package's, so it moves no constraint; a consumer depending on it too resolves one copy. A new
-lower bound there is a release here.
+lower bound there is a release here. The barrel re-exports its `WheelMotion` (#110), so a
+breaking change to that type there is a breaking release here.
 
 ## Code
 

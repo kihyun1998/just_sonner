@@ -30,8 +30,8 @@ The pointer follows it: hit-testing reads both ends of the same report paint doe
 the hover region is cut there too.
 
 **The scroll moves through a wheel motion that layout corrections carry.** The deck's
-controller is the package's `SmoothScrollController`, so a wheel notch is a glide with a target,
-not a jump. The layout keeps the anchored toast in place and clamps a shrinking reach through
+controller is the package's `SmoothScrollController` moving by `config.wheelMotion`, so a wheel
+notch is a glide with a target, not a jump. The layout keeps the anchored toast in place and clamps a shrinking reach through
 `correctBy` as before, and from the package's 0.1.4 a correction shifts the running glide and its
 target by the same amount — on 0.1.3 the next tick undid it. A change to the anchor or the clamp
 checks against a glide under way, not only a scroll at rest. A wheel over the controls past the

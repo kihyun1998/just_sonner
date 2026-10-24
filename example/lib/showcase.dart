@@ -519,6 +519,16 @@ class _ShowcasePageState extends State<ShowcasePage> {
               duration: () => Duration(milliseconds: (value * 1000).round()),
             ),
           ),
+        _Pick<String>(
+          label: 'wheelMotion',
+          value: _wheelMotions.keys.firstWhere(
+            (name) => identical(_wheelMotions[name], c.wheelMotion),
+          ),
+          values: _wheelMotions.keys.toList(),
+          nameOf: (value) => value,
+          onChanged: (value) =>
+              _config = c.copyWith(wheelMotion: _wheelMotions[value]),
+        ),
       ],
     ),
     _Options(
@@ -616,6 +626,19 @@ class _ShowcasePageState extends State<ShowcasePage> {
 
   /// The loading indicators on offer, by name, the default read off the
   /// config.
+  static const _wheelMotions = <String, WheelMotion>{
+    'a spring over 400 ms, the default': WheelMotion.spring(),
+    'a quicker spring, 200 ms': WheelMotion.spring(
+      duration: Duration(milliseconds: 200),
+    ),
+    'a spring that bounces': WheelMotion.spring(bounce: 0.3),
+    'an ease-out curve, 300 ms': WheelMotion.curve(
+      duration: Duration(milliseconds: 300),
+    ),
+    'a lerp': WheelMotion.lerp(),
+    'a jump': WheelMotion.spring(duration: Duration.zero),
+  };
+
   static final _indicators = <String, Widget>{
     'a thin spinner, the default': const SonnerConfig().loadingIndicator,
     'a thick red spinner': const CircularProgressIndicator(

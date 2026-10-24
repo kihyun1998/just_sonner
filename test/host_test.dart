@@ -2910,17 +2910,16 @@ void main() {
         expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(576 + 180));
       });
 
-      /// Hovers 12 toasts on a fresh host with [mouse], turns the wheel by
+      /// Hovers 12 toasts on a fresh host with [mouse] and [config], turns the wheel by
       /// 100, runs [during] three frames into the glide, and returns where
       /// `Toast 6` is drawn in every 16 ms frame after that.
       Future<List<double>> glide(
         WidgetTester tester,
         TestGesture mouse, {
+        SonnerConfig config = const SonnerConfig(duration: null),
         void Function(SonnerController controller)? during,
       }) async {
-        final controller = SonnerController(
-          config: const SonnerConfig(duration: null),
-        );
+        final controller = SonnerController(config: config);
         addTearDown(controller.dispose);
         await tester.pumpWidget(const SizedBox());
         await tester.pumpWidget(app(controller: controller));
@@ -2964,6 +2963,81 @@ void main() {
           );
         }
       });
+
+      testWidgets('a toast shown under a glide on the config\'s own wheel '
+          'motion keeps the toasts being read where it alone draws them', (
+        tester,
+      ) async {
+        const config = SonnerConfig(
+          duration: null,
+          wheelMotion: WheelMotion.curve(duration: Duration(milliseconds: 300)),
+        );
+        final mouse = await mouseAt(tester, away);
+        final alone = await glide(tester, mouse, config: config);
+        final shown = await glide(
+          tester,
+          mouse,
+          config: config,
+          during: (controller) => controller.show('New'),
+        );
+        for (var frame = 0; frame < alone.length; frame++) {
+          expect(
+            shown[frame],
+            moreOrLessEquals(alone[frame], epsilon: 0.5),
+            reason: 'at ${frame * 16} ms',
+          );
+        }
+      });
+
+      testWidgets('a wheel motion on the config moves the deck by it', (
+        tester,
+      ) async {
+        controller.config = controller.config.copyWith(
+          wheelMotion: const WheelMotion.curve(
+            duration: Duration(milliseconds: 200),
+            curve: Curves.linear,
+          ),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        await showMany(tester, controller, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expect(
+          boxOf(tester, 'Toast 11').bottom,
+          moreOrLessEquals(576 + 25, epsilon: 1),
+          reason: 'a quarter of the way on a linear 200 ms curve',
+        );
+        await tester.pumpAndSettle();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
+      });
+
+      testWidgets(
+        'a wheel motion assigned while toasts are on screen moves the '
+        'deck from the next turn, and one of no duration jumps',
+        (tester) async {
+          await tester.pumpWidget(app(controller: controller));
+          await showMany(tester, controller, 12);
+          final at = boxOf(tester, 'Toast 11').center;
+          await mouseAt(tester, at);
+          await tester.pumpAndSettle();
+          await wheel(tester, at, const Offset(0, -100));
+          await tester.pumpAndSettle();
+
+          controller.config = controller.config.copyWith(
+            wheelMotion: const WheelMotion.spring(duration: Duration.zero),
+          );
+          // Past the glide an assigned config starts the toasts on.
+          await tester.pumpAndSettle();
+          await wheel(tester, at, const Offset(0, -100));
+          await tester.pump();
+          expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(776));
+        },
+      );
 
       testWidgets('a glide toward the end stops at the end a dismissed oldest '
           'toast leaves, with no frame jumping', (tester) async {
@@ -3080,6 +3154,27 @@ void main() {
         await tester.pumpWidget(app(controller: other));
         await tester.pumpAndSettle();
         expect(boxOf(tester, 'Other 13').bottom, 576);
+      });
+
+      testWidgets('a host handed another controller moves its deck by that '
+          'controller\'s wheel motion', (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        final other = SonnerController(
+          config: const SonnerConfig(
+            duration: null,
+            wheelMotion: WheelMotion.spring(duration: Duration.zero),
+          ),
+        );
+        addTearDown(other.dispose);
+        await tester.pumpWidget(app(controller: other));
+        await showMany(tester, other, 12);
+        final at = boxOf(tester, 'Toast 11').center;
+        await mouseAt(tester, at);
+        await tester.pumpAndSettle();
+
+        await wheel(tester, at, const Offset(0, -100));
+        await tester.pump();
+        expect(boxOf(tester, 'Toast 11').bottom, moreOrLessEquals(676));
       });
 
       testWidgets('a position assigned to the other edge draws a scrolled deck '
