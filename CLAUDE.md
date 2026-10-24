@@ -5,7 +5,7 @@
 | Creating, reading, labelling or closing an issue or PR (GitHub, via `gh`) | `docs/agents/issue-tracker.md` |
 | A skill names a triage role | `docs/agents/triage-labels.md` |
 | Exploring the code, or naming a domain concept | `docs/agents/domain.md` |
-| **Before** committing to a design: what else moves, and what decided this | [`docs/map/`](docs/map/README.md) — open the territory you are changing, follow its `## Blast radius` as a checklist, and read `## Governing decisions` for why. An empty section is the answer |
+| **Before** committing to a design: what else moves, and what decided this | [`docs/map/`](docs/map/README.md) — the territory you are changing |
 
 ## Where a file goes
 
@@ -21,13 +21,12 @@ docs/                         not published (.pubignore)
 ```
 
 A file belongs in `lib/src/look/` when it **draws** a part of the deck that needs a
-theme role. `config.dart` is the one exception and stays out: it imports `material` for
-a default widget (`CircularProgressIndicator`) and draws nothing itself, so putting it
-under a directory named for drawing would make the name lie.
+theme role. `config.dart` imports `material` only for a default widget
+(`CircularProgressIndicator`) and draws nothing, so it stays out.
 
-Still undecided, and deliberately left so: whether the sixteen engine files split
-further, how `test/` is laid out now that one file is three quarters of the suite, and
-whether this repo wants CI.
+Still undecided, and deliberately left so: whether the engine files under `lib/src/`
+split further, how `test/` is laid out (`wc -c test/*_test.dart`), and whether this repo
+wants CI.
 
 ## Comments
 
