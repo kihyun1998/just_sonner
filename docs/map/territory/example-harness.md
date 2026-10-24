@@ -24,6 +24,12 @@ situation worth watching whatever the options are goes under its Scenarios.
 `example/` is a separate package with its own manifest, so it resolves separately from
 the package it demonstrates and can be broken without any gate here noticing.
 
+**`flash` is pinned exactly, at 3.1.1**, because the adapter is written against that
+release's internals: `FlashBar` fades and slides itself on the controller it is handed,
+and the adapter keeps that motion at rest so the toast's own motion is the only one (#27).
+A new `flash` can move those internals with no error here, so the pin moves only by hand,
+with the adapter pressed again; Dependabot ignores it (#108).
+
 ## Code
 
 **None.** The app is `example/lib/`: `showcase.dart` the page it opens on, `harness.dart`

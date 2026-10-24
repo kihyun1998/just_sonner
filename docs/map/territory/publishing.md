@@ -33,10 +33,19 @@ package's, so it moves no constraint; a consumer depending on it too resolves on
 lower bound there is a release here. The barrel re-exports its `WheelMotion` (#110), so a
 breaking change to that type there is a breaking release here.
 
+**Dependabot watches the constraints** (`.github/dependabot.yml`, #108). The root has no
+committed lockfile, so `increase-if-necessary` opens a PR only when a release falls outside
+the caret, and at `0.x` every minor release does. Such a PR is a lower-bound decision for
+consumers rather than a chore, and for `flutter_smooth_wheel_scroll` it can be a breaking
+release here too, so root PRs stay one per dependency: each is one release decision. The
+example's PRs are grouped, because nothing ships from `example/`; its exact `flash` pin is
+ignored, for the reason [Example harness](example-harness.md) gives. `.github/` is a dot
+directory, which pub leaves out of the archive without a `.pubignore` rule.
+
 ## Code
 
 **None.** This territory is manifests and rules: `pubspec.yaml`, `.pubignore`,
-`CHANGELOG.md`. There is no Dart in it, and the symbol check stands down.
+`CHANGELOG.md`, `.github/dependabot.yml`. There is no Dart in it, and the symbol check stands down.
 
 ## Reference behaviour
 
@@ -57,7 +66,8 @@ it constrains from outside.
   what a consumer resolves.
 
 ## Known holes / open
-- **No CI.** There is no `.github/`, so nothing enforces the formatter, the analyzer,
-  the suite or `pub publish --dry-run` on a change. Every gate is run by hand.
+- **No CI.** `.github/` holds only the Dependabot configuration and no workflow, so
+  nothing enforces the formatter, the analyzer, the suite or `pub publish --dry-run` on a
+  change, a Dependabot PR included. Every gate is run by hand.
 - The platforms claimed are Windows, macOS and Linux; the package builds elsewhere and
   promises nothing there. Nothing checks that claim.
