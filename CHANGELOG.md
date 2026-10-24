@@ -1,3 +1,13 @@
+## 0.6.0
+
+- **Set how the deck glides under the mouse wheel** (#110). `SonnerConfig.wheelMotion` takes a
+  `WheelMotion`: `WheelMotion.spring()` by default, as in 0.5.0, or another spring, a curve, a
+  lerp, or `WheelMotion.spring(duration: Duration.zero)` to jump as before 0.5.0. A motion
+  assigned while toasts are on screen applies from the next wheel turn.
+- **`WheelMotion` is exported** from `package:just_sonner/just_sonner.dart`, so you set it
+  without adding `flutter_smooth_wheel_scroll` yourself. It is that package's type: a breaking
+  change to it there would be one here.
+
 ## 0.5.0
 
 - **The deck glides under the mouse wheel** (#107). A notch turned over a deck whose toasts do not

@@ -343,6 +343,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `hideControl` | `DeckHideControl()` | Null draws none |
 | `hideMotion` | `DeckHideMotion()` | A slide; not nullable |
 | `zoneEmpty` | `ZoneEmpty()` | What an open zone with no toast draws; null draws nothing |
+| `wheelMotion` | `WheelMotion.spring()` | How the deck glides under the mouse wheel; not nullable. A `Duration.zero` motion jumps |
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.
