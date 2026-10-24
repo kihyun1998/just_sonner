@@ -45,8 +45,7 @@ class DefaultToastLook extends StatelessWidget {
   /// not offered a Close that does nothing, nor told the word at all.
   final bool pressable;
 
-  /// The space between the leading slot and the title. Provisional, like the
-  /// rest of §9's dimensions: settled by feel in the example app.
+  /// The space between the leading slot and the title.
   static const _slotGap = 12.0;
 
   /// The space between the text and the action slot.
