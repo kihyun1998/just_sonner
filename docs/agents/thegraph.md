@@ -22,3 +22,7 @@ happens when…" cheaply, and it does not set this package's values.
 - **The spec drew a wrong conclusion** from an accurate citation: the spec changes in the same
   session, with a §12 row saying what was believed, what was observed and why the new rule follows.
   This case hides behind the one above, because the spec is not silent and so looks decided.
+
+## Release
+
+pub-ready

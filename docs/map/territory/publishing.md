@@ -25,7 +25,7 @@ the two share is written twice. An exclusion added to `.gitignore` alone still s
 
 This map is under `/docs/`, so it is **not published**. It is a repository artifact.
 
-A published changelog entry is never rewritten, only superseded.
+Before a release, run `pub-ready`.
 
 **One dependency beyond Flutter**, `flutter_smooth_wheel_scroll`, hosted, with its lower bound at
 the first release carrying what this package relies on: 0.1.5, where a `WheelMotion` compares
