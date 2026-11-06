@@ -67,7 +67,7 @@ states outright, so anything resting on them carries forward as needing confirma
 - [Deck controls](deck-controls.md) — `count` counts what `DeckHideView.count` counts, so a
   change to one is a question for the other.
 - [Zone](zone.md) — a new toast puts a banner up on a hidden zone, and an update or a
-  replace does not.
+  replace does not; a toast leaving a deck wholly out of sight has no exit.
 
 ## Known holes / open
 - **Nothing caps the list.** A persistent toast can never leave by the tick, and every

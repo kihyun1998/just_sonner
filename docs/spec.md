@@ -199,7 +199,7 @@ abstract interface class ToastView {
   ToastState get state;                  // title, description, isLoading, leading,
                                          // action, closeButton, dismissible, builder
   AnimationController get animation;     // enter 0→1, exit 1→0; a builder driving it to 0
-                                         // dismisses the toast
+                                         // dismisses the toast; no exit out of sight (§7)
   Animation<double> get covered;         // 0 at the front or expanded, 1 behind one fully
                                          // present (§6)
   Animation<double>? get timeLeft;       // 1 as the countdown starts, 0 as it runs out; null
@@ -802,7 +802,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 |---|---|---|---|
 | Enter | slide in from the screen edge + fade | 400 ms, `ease` | sonner `styles.css` (`transform 400ms, opacity 400ms, height 400ms`) |
 | Collapse ↔ expand | offsets, scales and heights animate | 400 ms | same transition |
-| Exit (dismiss or timeout) | slide toward the edge + fade; the rest close the gap | removed from the tree after 200 ms | sonner `TIME_BEFORE_UNMOUNT` |
+| Exit (dismiss or timeout) | slide toward the edge + fade; the rest close the gap | removed from the tree after 200 ms; at once from a deck wholly out of sight (§7) | sonner `TIME_BEFORE_UNMOUNT` |
 | Swipe out | continue in the swipe direction, a whole toast further, `easeOut` + fade | 200 ms | sonner `styles.css` (`swipe-out-*`) |
 | Swipe back | the toast eases back to its place from where the drag left it | 400 ms, `ease` | sonner (its base transform transition) |
 | Update / replace | the new content fades in over the old, linearly, while the old stays fully opaque underneath and goes once the new is in; an update arriving mid-fade makes the half-faded content the opaque base, so the card is never see-through and there are at most two layers (the two builders' output, if the builder changed). No re-enter. The new content sets the toast's height at once; the old lies over it from the top, cut to that height, and is not announced | 200 ms | just_sonner |
@@ -842,8 +842,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   `ToastContent` tell it apart from null by identity, so omitting `duration` and passing null are
   two things. It is public so a function that passes a duration on to `show` can take it as its
   own default and still let its callers omit one.
-- A toast stops counting when it is **dismissed**, not when it is **removed** — its exit takes
-  200 ms more (§6) and there is nothing left to count.
+- A toast stops counting when it is **dismissed**, not when it is **removed** — its exit, where
+  it has one, takes 200 ms more (§6) and there is nothing left to count.
 - **How the countdown runs.** One `Timer.periodic` of **100 ms**, alive only while some toast has
   a timer, subtracts a tick from every counting toast; a toast whose remainder reaches zero is
   dismissed. Pausing is not subtracting. **The controller never reads a clock**, so it needs no
@@ -896,7 +896,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   its time left stands still until the deck is brought back.
 - **Hiding changes no countdown, and neither does opening.** A toast in a hidden zone counts down
   exactly as it would on screen, and one whose time runs out there is dismissed without coming
-  back into view — the same rule as a toast pushed beyond `visibleToasts`. The frames hiding does
+  back into view — the same rule as a toast pushed beyond `visibleToasts`. Unlike that one, it has no exit: a toast
+  that leaves a deck wholly out of sight, by its timer or the app's `dismiss`, is gone at once, so
+  `reveal()`, `open()` or a banner bringing the deck back straight after does not draw it. A deck
+  part way through hiding or coming back can still draw it, and there it keeps its exit. `ToastView.animation`
+  does not run down for a toast with no exit, and `dismiss()`'s future completes as it is removed. The frames hiding does
   stop are the drawn time left's alone (above); the countdown is the controller's own `Timer` and
   never ran on them. What hiding does end is the **pointer's** hold: nothing
   drawn is hovered, so the pause the pointer had goes at once, a press the deck was under is let
@@ -1115,9 +1119,15 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   dismiss its toast; a pointer moving where the deck was holds nothing; a hidden deck is out of the
   semantics tree; a new toast shows the deck as a banner with the older toasts in it until it has
   gone and the pointer has left, the banner takes the pointer and pauses the timers under it, and
-  Hide on it takes it down; the last toast timing out while hidden leaves the deck out of sight
-  while its exit runs, and the next shows as a banner; a zone opened from hidden and closed goes
-  out of sight again
+  Hide on it takes it down; the last toast timing out while hidden leaves the deck out of sight,
+  and the next shows as a banner; a toast that runs out or is dismissed with the deck wholly out of
+  sight is out of the tree on the next frame and is not drawn in any frame when a listener's
+  `reveal()`, registered before or after the host, `open()` or a banner follows, while a toast on a
+  shown deck, by its timer or `dismiss`, a banner's toast, an older one under a banner and one
+  dismissed part way through hiding or coming back keep their exit; `dismissAll` out of sight leaves
+  none drawn, `ToastView.dismiss` out of sight completes with its animation not run down, and a
+  `show` at the id of one dismissed out of sight comes up; a zone
+  opened from hidden and closed goes out of sight again
 - An open zone with no toast draws the empty card with Hide past it, a shown one draws nothing;
   the card goes as a toast arrives and comes back as the last leaves; `zoneEmpty` null draws none
   and a builder draws its own; the pointer on the card holds the deck; a host first drawn on a
@@ -1302,7 +1312,7 @@ outside v0.1 is in §2's non-goals.
 | The sentinel is public, as `SonnerConfig.configDuration` (#97) | maintainer | shown that a private one leaves a function passing its duration on to `show` — the example app's own `_show` — unable to omit it, so every toast shown through it without a duration silently loses its timer. Chosen over keeping it private and documenting the trap |
 | `ToastId` is `extension type ToastId(Object value)`: a caller may make one, and a generated id's value is an object compared by identity | derived | sonner takes a caller's id, which §4's `show(id:)` already implies; an identity-compared value keeps a caller's `ToastId(0)` from ever colliding with a generated id, with no reserved range to document. An extension type costs nothing at runtime and keeps `==` on the value |
 | Exit runs the enter's `ease` backwards over 200 ms, and the toasts behind close the gap over the same 200 ms, driven by the exiting toast's own animation | maintainer | shown sonner contradicting itself — `TIME_BEFORE_UNMOUNT = 200` is commented "equal to exit animation duration" while the front toast keeps its 400 ms transition and is cut off about 20% opaque, and neighbours move over 400 ms — against splitting the neighbours onto 400 ms, which needs a layout animation per toast. The expanded deck keeps them on the exiting toast's clock too (row below) |
-| A toast leaves the tree when its animation reports `dismissed`, which is the first tick **past** 200 ms; it is fully transparent at 200 ms | derived | #27 needs the animation reaching `dismissed` to count as removal, and `AnimationController` reports it only when elapsed time exceeds the duration (`_InterpolationSimulation.isDone` uses `>`, Flutter 3.41.9). An exiting toast keeps the distance from the edge it had when dismissed, as sonner freezes `offsetBeforeRemove`, and the newest toast paints on top, as sonner's `z-index: toasts.length - index` |
+| A toast leaves the tree when its animation reports `dismissed`, which is the first tick **past** 200 ms; it is fully transparent at 200 ms | derived | #27 needs the animation reaching `dismissed` to count as removal, and `AnimationController` reports it only when elapsed time exceeds the duration (`_InterpolationSimulation.isDone` uses `>`, Flutter 3.41.9). An exiting toast keeps the distance from the edge it had when dismissed, as sonner freezes `offsetBeforeRemove`, and the newest toast paints on top, as sonner's `z-index: toasts.length - index` Since #123, one that leaves a deck wholly out of sight leaves the tree at once |
 | The visible window counts only toasts not yet dismissed | derived | `GLOSSARY.md`'s *dismissed* is already off screen for the API, so a dismissed toast holds no place in the window. sonner counts an exiting toast by its index until it is removed 200 ms later, so there the next toast appears only then (`isVisible = index + 1 <= visibleToasts`, `index.tsx:105`; `removeToast` after `TIME_BEFORE_UNMOUNT`) |
 | A toast crossing the window's edge fades, driven by the toast entering or leaving; outside the window it takes no taps at once, and stops being painted when fully faded | derived | §6 says only that toasts outside are not painted; sonner fades `data-visible='false'` through its 400 ms opacity transition (`styles.css:319-322`) with `pointer-events: none` at once. Driving it by the moving toast's presence follows the exit row above rather than adding a clock |
 | Toasts behind the front are laid out at the front's height, and a toast's position in the deck is counted by the presence of the toasts in front of it, so offsets, scales, the window fade and drawn heights all move with the toast entering or leaving. A toast's position only ever moves toward its place in the deck, and stops there | derived | a toast entering (400 ms) and one leaving (200 ms) at once run on different clocks, so their presences alone would carry the toasts behind them forward and back again — fading a toast inside the window and flashing one outside it — although neither ends anywhere new; letting a position move only toward its place keeps a net-zero change still, and a mixed one from wobbling, without a layout animation per toast. sonner draws them at `--front-toast-height` and transitions `height` over 400 ms. **Amended by #72:** this row first had a taller toast cut to the front's height rather than laid out at it, because just_sonner did not fade content behind the front (§6), so its overflow would show below a top deck. #45 took that premise away (a covered toast draws no content), and the cut went on removing only the bottom of the card — the row below says what replaced it. Blending the height keeps a toast from jumping when one enters or leaves (a front whose own height changes in place is the row below); a toast's natural height is measured on every layout, as §6 Expanded already requires |
@@ -1408,6 +1418,8 @@ outside v0.1 is in §2's non-goals.
 | §9's values are settled as they shipped: the `surfaceContainerHigh` card with an `outlineVariant` border, 8 px radius and 16 padding; 12 between the leading slot and the title and 12 before the action slot; a 28 px close button with a 14 px icon inside the top right corner | maintainer | #29. Shown side by side, against the same values with sonner's spacing (10 to the title, 6 before the action, a 20 px close button 35 % outside the top left corner) and against sonner itself (`styles.css` at 8e4662b), as a CSS redraw rather than the Flutter render. Chosen to keep what 0.1.0 to 0.4.2 published on pub.dev. Matching sonner is not a goal, and the larger close button suits a mouse. **Not covered**: the comparison was not drawn by Flutter, and the time left's looks were not in it |
 | An app reads how many toasts are alive through `count` on the controller, and §2's non-goal on reporting a toast's leaving does not cover it; a banner is not exposed, so a hidden zone with a banner up reads as `hidden` with toasts in the count while they are on screen, and the getter's documentation says so | maintainer | #122, at triage. Shown: §2's wording, `count` against `zone.count`, and a probe printing `state=hidden count=2 banner=true`. The non-goal is about which toast went and why, and a count is present state. The controller owns the list, and a count means something with no zone in mind. Exposing the banner would make it a contract with apps. **Not covered**: whether a dot lit during a banner reads wrong in a real app; nothing was run in one |
 | `count` counts what `DeckHideView.count` counts, not what `DeckDismissAllView.count` does; a toast leaves it as it is dismissed, not when its exit ends; a replace and an update leave it as it was; it has no listenable of its own; no list of ids goes with it | derived | #122. It is the list's length, and a dismissed toast is already off screen for the API's purposes (§4). Both uses #122 names, a dot and revealing an empty zone, need only the number |
+| A toast that leaves a deck wholly out of sight has no exit, whether it ran out or the app dismissed it and whichever of `reveal()`, `open()` or a banner brings the deck back | maintainer | #123, at triage. Shown: peak pixels over 24 frames for each way back, with and without a one-line spike, and that one test and one line of §10 pinned the exit running while hidden. Taken over keeping the 200 ms exit and not drawing it, which was not measured. It is what §7's "without coming back into view" means. **Not covered**: not seen by eye; a custom `hideMotion`; a toast beyond `visibleToasts` leaving as the pointer arrives or the zone opens (#126); a host swapped from a hidden controller to a shown one, and an exit begun part way through hiding that the deck comes back on, both open in the Zone note |
+| It is decided from the value the deck is drawn by, the hide value at 1, not from the zone's state or the host's flag | derived | #123. An app's listener can run first and call `reveal()` inside the same notification, so both already read shown while the deck is still wholly out of sight. Seen in tests: either stand-in fails the listener registered before the host, and a banner's own toast |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 
