@@ -999,7 +999,8 @@ class _HarnessPageState extends State<HarnessPage> {
           builder: (context, _) => Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: Text(
-              'state: ${_toast.zone.state.name} · held: ${_toast.zone.held}',
+              'state: ${_toast.zone.state.name} · held: ${_toast.zone.held} '
+              '· count: ${_toast.count}',
               style: Theme.of(context).textTheme.labelLarge,
             ),
           ),

@@ -7905,6 +7905,41 @@ void main() {
   group('the hidden zone', () {
     const away = Offset(40, 40);
 
+    testWidgets('a listener reading count brings the zone back as a banner\'s '
+        'last toast is closed, and the next toast shows in the deck', (
+      tester,
+    ) async {
+      final controller = SonnerController();
+      addTearDown(controller.dispose);
+      var was = controller.count;
+      controller.addListener(() {
+        final emptied = was > 0 && controller.count == 0;
+        was = controller.count;
+        if (emptied) controller.zone.reveal();
+      });
+      await tester.pumpWidget(app(controller: controller));
+
+      controller.zone.hide();
+      controller.show('Arrival', duration: null, closeButton: true);
+      await tester.pumpAndSettle();
+      expect(controller.zone.state, ZoneState.hidden);
+      expect(controller.count, 1);
+
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pump();
+      expect(controller.count, 0);
+      expect(controller.zone.state, ZoneState.shown);
+      await tester.pumpAndSettle();
+      expect(find.text('Arrival'), findsNothing);
+
+      controller.show('Next', duration: null);
+      await tester.pumpAndSettle();
+      expect(controller.zone.state, ZoneState.shown);
+      expect(find.text('Next').hitTestable(), findsOneWidget);
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
     Rect boxOf(WidgetTester tester, String title) => tester.getRect(
       find
           .ancestor(of: find.text(title), matching: find.byType(Material))

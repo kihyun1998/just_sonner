@@ -87,9 +87,9 @@ void main() {
     await pumpShowcase(tester);
 
     await press(tester, 'open()');
-    expect(find.text('state: open · held: false'), findsOneWidget);
+    expect(find.text('state: open · held: false · count: 0'), findsOneWidget);
     await press(tester, 'close()');
-    expect(find.text('state: shown · held: false'), findsOneWidget);
+    expect(find.text('state: shown · held: false · count: 0'), findsOneWidget);
     await tester.pumpAndSettle();
   });
 

@@ -11,6 +11,8 @@ the empty card an open one draws, and `toast.zone`, the app's handle on all of i
   toast, Hide on an empty open zone, opening taking the banner down, "hidden" being the
   zone's word (#97, maintainer); what #97 derived, and the #60 and #88 rows it
   supersedes.
+- [spec §12](../../spec.md#12-decision-record) — a banner not exposed to an app reading
+  `count` (#122, maintainer).
 - [spec §6](../../spec.md#6-layout-and-animation), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -31,6 +33,11 @@ host can mount into — a hidden zone with toasts, an open one with none.
 
 Opening pauses nothing, and hiding neither; both carry #88's rule that only the pointer,
 a drag or a hidden app pauses.
+
+An app that brings the zone back when it empties has to act as `count` **falls** to zero,
+not whenever it reads zero. `hide()` notifies too, so a listener testing
+`state == hidden && count == 0` undoes a hide on an empty zone at once, and the same for a
+`close()` back to hidden.
 
 ## Code
 `controller.dart` — SonnerZone, ZoneState, zoneBanner
@@ -63,3 +70,9 @@ records no equivalent. Every value here was settled in #97's design session.
   code does can only be seen through `close()`, which clears it either way; the mutation
   that keeps the banner through `open()` survives every test. Recorded in §12.
 - **Not covered**: several hosts on one zone, as for the hold.
+- **Not covered**: an app reading `zone.state == ZoneState.hidden && count > 0` as "something
+  is hidden" also reads a banner that way, since the banner is not exposed (#122). Whether a
+  dot lit during a banner reads wrong has not been seen in a real app.
+- **Open** (#123): a toast that runs out in a hidden zone is drawn for about 100 ms when the
+  app calls `reveal()` at that moment, which an app bringing the zone back as it empties does.
+  §7 says such a toast does not come back into view, and does not cover an app revealing it.

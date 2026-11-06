@@ -75,6 +75,19 @@ class SonnerController extends ChangeNotifier {
 
   final List<ToastRecord> _toasts = [];
   int _serial = 0;
+
+  /// How many toasts are alive: every one not yet dismissed or run out, those
+  /// beyond [SonnerConfig.visibleToasts] and those that are not dismissible
+  /// included. A toast leaves the count as it is dismissed, while its exit may
+  /// still be drawing.
+  ///
+  /// Listeners are the controller's, which also notifies for changes that
+  /// leave the count as it was.
+  ///
+  /// A hidden zone with a banner up has toasts in the count while they are on
+  /// screen, so `zone.state == ZoneState.hidden && count > 0` holds then too.
+  int get count => _toasts.length;
+
   Timer? _ticker;
 
   /// The zone [_ticker] runs in. A timer is bound to its zone, and one left in

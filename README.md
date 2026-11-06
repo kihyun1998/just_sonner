@@ -200,6 +200,26 @@ void closeWhenLeft() {
 }
 ```
 
+**`toast.count`** says how many toasts are alive, those beyond `visibleToasts` included, and the
+controller notifies when it changes, as it does for other changes too. The state stays yours to
+set, so a zone you hid stays hidden after its last toast has gone until you bring it back:
+
+```dart
+// A dot on your button. It is also on while a banner shows the deck.
+bool get showDot => toast.zone.state == ZoneState.hidden && toast.count > 0;
+
+// Brings a hidden zone back as its last toast leaves. A zone you hide with no
+// toast stays hidden. Call it once.
+void revealWhenEmptied() {
+  var was = toast.count;
+  toast.addListener(() {
+    final emptied = was > 0 && toast.count == 0;
+    was = toast.count;
+    if (emptied) toast.zone.reveal();
+  });
+}
+```
+
 The zone holds toasts that are still up, never ones that have gone: it is not a notification
 history.
 

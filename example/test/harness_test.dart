@@ -176,13 +176,13 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Toast 1 of 5'), findsOneWidget);
-    expect(find.text('state: open · held: false'), findsOneWidget);
+    expect(find.text('state: open · held: false · count: 5'), findsOneWidget);
 
     await tester.tap(find.widgetWithText(OutlinedButton, 'The app: close()'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Toast 1 of 5'), findsNothing);
-    expect(find.text('state: shown · held: false'), findsOneWidget);
+    expect(find.text('state: shown · held: false · count: 5'), findsOneWidget);
 
     await tester.pump(const Duration(seconds: 11));
     await tester.pumpAndSettle();
