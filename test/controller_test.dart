@@ -1345,6 +1345,144 @@ void main() {
     expect(notifications, 1);
   });
 
+  group('count', () {
+    test('rises with each new toast and falls with each way one leaves, and a '
+        'listener reads the new value in that notification', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        expect(controller.count, 0);
+
+        final seen = <int>[];
+        controller.addListener(() => seen.add(controller.count));
+
+        final first = controller.show('One', duration: null);
+        controller.show('Two', duration: null);
+        controller.show('Three', duration: null);
+        expect(seen, [1, 2, 3]);
+
+        controller.dismiss(first);
+        expect(seen, [1, 2, 3, 2], reason: 'dismiss');
+
+        controller.dismissAll();
+        expect(seen, [1, 2, 3, 2, 0], reason: 'dismissAll');
+
+        controller.show('Four', duration: const Duration(seconds: 1));
+        expect(seen, [1, 2, 3, 2, 0, 1]);
+        async.elapse(const Duration(milliseconds: 1200));
+        expect(seen, [1, 2, 3, 2, 0, 1, 0], reason: 'a timer running out');
+        controller.dispose();
+      });
+    });
+
+    test('a replace and an update leave it as it was', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('One', duration: null);
+        controller.show('Two', duration: null);
+
+        controller.show('Replaced', id: id, duration: null);
+        expect(controller.count, 2, reason: 'replace');
+
+        expect(controller.update(id, title: 'Updated'), isTrue);
+        expect(controller.count, 2, reason: 'update');
+        controller.dispose();
+      });
+    });
+
+    test('counts the toasts beyond visibleToasts and the ones that are not '
+        'dismissible', () {
+      fakeAsync((async) {
+        final controller = SonnerController(
+          config: const SonnerConfig(visibleToasts: 1),
+        );
+        controller.show('One', duration: null, dismissible: false);
+        controller.show('Two', duration: null, dismissible: false);
+        controller.show('Three', duration: null);
+
+        expect(controller.count, 3);
+        controller.dispose();
+      });
+    });
+
+    test('a listener can reveal a hidden zone as its last toast leaves, and '
+        'the next toast does not put up a banner, while a zone hidden with no '
+        'toast stays hidden', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+        var reveals = 0;
+        var was = controller.count;
+        controller.addListener(() {
+          final emptied = was > 0 && controller.count == 0;
+          was = controller.count;
+          if (emptied) {
+            reveals++;
+            zone.reveal();
+          }
+        });
+
+        zone.hide();
+        expect(zone.state, ZoneState.hidden, reason: 'hidden with no toast');
+        expect(reveals, 0);
+        zone.reveal();
+
+        final id = controller.show('One', duration: null);
+        zone.hide();
+        expect(zone.state, ZoneState.hidden, reason: 'a toast still alive');
+        expect(reveals, 0);
+
+        controller.dismiss(id);
+        expect(zone.state, ZoneState.shown);
+        expect(reveals, 1);
+
+        controller.show('Two', duration: null);
+        expect(zone.state, ZoneState.shown);
+        expect(zoneBanner(controller), isFalse);
+        controller.dispose();
+      });
+    });
+
+    test('that listener, on a zone opened from hidden whose last toast leaves, '
+        'makes close return to shown', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final zone = controller.zone;
+        var was = controller.count;
+        controller.addListener(() {
+          final emptied = was > 0 && controller.count == 0;
+          was = controller.count;
+          if (emptied) zone.reveal();
+        });
+
+        final id = controller.show('One', duration: null);
+        zone.hide();
+        zone.open();
+        controller.dismiss(id);
+        expect(zone.state, ZoneState.open, reason: 'kept by its last toast');
+
+        zone.close();
+        expect(zone.state, ZoneState.shown);
+        controller.dispose();
+      });
+    });
+
+    test('a hidden zone with a banner up reads as hidden with toasts in the '
+        'count', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        controller.show('One', duration: null);
+        controller.zone.hide();
+        expect(zoneBanner(controller), isFalse);
+
+        controller.show('Two', duration: null);
+        expect(zoneBanner(controller), isTrue);
+        expect(controller.zone.state, ZoneState.hidden);
+        expect(controller.count, 2);
+        controller.dispose();
+      });
+    });
+  });
+
   group('zone', () {
     setUp(TestWidgetsFlutterBinding.ensureInitialized);
 

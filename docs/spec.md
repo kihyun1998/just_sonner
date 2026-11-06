@@ -78,7 +78,8 @@ What just_sonner adds, in the order a real consumer needed them:
   where the maintainer asked for it (the time left, §12), rather than only replaced
 - Reporting that a toast went away and why — no callback, future or reason enum (sonner's
   `onDismiss` / `onAutoClose`, `SnackBarClosedReason`). A caller learns about its own button
-  through the `action` slot's callback, and nothing else
+  through the `action` slot's callback, and nothing else. `count` (§4) is not this: it is how many
+  toasts are alive now, and says neither which one went nor why
 - **Mobile and web.** v0.1 targets desktop only, so nothing here is specified or tested for
   touch: how a deck expands without hover, whether pause-on-hover has a touch equivalent, and
   honouring `MediaQuery.viewPadding` / `viewInsets` for notches, the status bar and the keyboard.
@@ -155,6 +156,11 @@ class SonnerController extends ChangeNotifier {
 
   void dismiss(ToastId id);
   void dismissAll();
+
+  /// How many toasts are alive, those beyond `visibleToasts` and those not dismissible included.
+  /// A toast leaves the count as it is dismissed, while its exit may still be drawing. The change
+  /// signal is the controller's listeners, which also fire for changes that leave it as it was.
+  int get count;
 
   /// The layer the deck lives in (§6). Always the same object; its listeners are the controller's.
   SonnerZone get zone;
@@ -1055,6 +1061,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   holds the deck; an update, a replace and a `promise` state on a toast on screen put up none;
   `hide` takes a banner down, and so does `open`; neither opening nor hiding pauses the timers;
   `held` reports the pointer holding the deck and notifies on each change
+- `count` rises with each new toast and falls on `dismiss`, `dismissAll` and a timer running out,
+  and a listener reads the new value in that notification; a replace and an update leave it as it
+  was; it counts toasts beyond `visibleToasts` and ones that are not dismissible; a listener can
+  `reveal()` a hidden zone as its last toast leaves, and the next toast puts up no banner, while a
+  zone hidden with no toast stays hidden under that listener; a hidden zone with a banner up reads
+  as hidden with toasts in the count
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the toasts beyond the window in the list;
   an equal config does not notify, an invalid one asserts as at construction, and a new `duration`
   leaves the countdowns under way alone
@@ -1394,6 +1406,8 @@ outside v0.1 is in §2's non-goals.
 | The deck's scroll glides under the mouse wheel through `flutter_smooth_wheel_scroll`'s `SmoothScrollController` with its default motion (spring, 400 ms, no bounce), over the deck, its gaps and the controls past its far end; the package is the first dependency beyond Flutter, hosted, from 0.1.4. A layout correction under a glide carries the glide and its target, fixed in the package rather than here. The pointer leaving, a reset, a drag of the thumb and a trackpad pan end a glide; nothing is configurable, nothing of the package is exported, and the app's `SmoothWheelBinding` applies when it installs one | maintainer; the anchor carrying is derived | #107. A notch moved the deck about 60 px in one frame on Windows (3 lines × 20 px), the one motion in the deck that did not ease. The maintainer chose their own package over writing an animation here, which drops §2's "no dependency beyond Flutter". Derived from source, then measured in kihyun1998/flutter_smooth_wheel_scroll#19: `ScrollPosition.correctBy` moves the pixels without telling the activity, so on 0.1.3 the next tick undid the anchor — `Toast 6` settled at 228 against 294 with a toast shown three frames into a glide. 0.1.4 shifts the running motion by the correction; the test of a toast shown under a glide fails on 0.1.3 and passes on 0.1.4. A workaround here (ending the glide on a correction, or a position of our own) was ruled out, since the fault is true of any scroll view that corrects its offset. Decided in the design round and open to overturning: the order (package first), clamping a shrinking reach, ending on leave, the control gliding, honouring the app's binding, the scrollbar's timer, no re-export, and 0.5.0. **Not covered**: a browser build, smoothing a scroll view inside a builder, a drag of the thumb, the keyboard and a trackpad pan, none of which glide. **Superseded in part** by #110: the motion is `config.wheelMotion`, and the barrel re-exports `WheelMotion` |
 | The app sets the deck's wheel motion through `SonnerConfig.wheelMotion`, a `WheelMotion` from `flutter_smooth_wheel_scroll` re-exported by the barrel, `WheelMotion.spring()` by default; it is not nullable and `copyWith` takes it as a value. Followed on every config assigned and every controller handed to the host, so it applies from the next wheel turn | maintainer; `copyWith` and following the config are derived | #110, out of #107. The maintainer chose the package's own type over a `Duration?` of just_sonner's (spring length only, null for a jump, keeping the package's types out of the API) and over keeping it closed, taking on that a breaking change to `WheelMotion` is one here. Then, shown that an app importing the package itself must list it in its own pubspec (`depend_on_referenced_packages`, in the core lints) and match its constraint, chose to re-export `WheelMotion` alone. This overturns #107's "the barrel re-exports nothing", which was decided when no field exposed the package. **Not covered**: the deck's other motion (the fan-out, the collapse and the ease back stay 400 ms and fixed); two configs compare their `WheelMotion`s by value from the package's 0.1.5 (#118), where `CurveWheelMotion` compares its `curve` with the curve's own `==`, so the `Curves` constants are equal and two separately built `Cubic`s are not |
 | §9's values are settled as they shipped: the `surfaceContainerHigh` card with an `outlineVariant` border, 8 px radius and 16 padding; 12 between the leading slot and the title and 12 before the action slot; a 28 px close button with a 14 px icon inside the top right corner | maintainer | #29. Shown side by side, against the same values with sonner's spacing (10 to the title, 6 before the action, a 20 px close button 35 % outside the top left corner) and against sonner itself (`styles.css` at 8e4662b), as a CSS redraw rather than the Flutter render. Chosen to keep what 0.1.0 to 0.4.2 published on pub.dev. Matching sonner is not a goal, and the larger close button suits a mouse. **Not covered**: the comparison was not drawn by Flutter, and the time left's looks were not in it |
+| An app reads how many toasts are alive through `count` on the controller, and §2's non-goal on reporting a toast's leaving does not cover it; a banner is not exposed, so a hidden zone with a banner up reads as `hidden` with toasts in the count while they are on screen, and the getter's documentation says so | maintainer | #122, at triage. Shown: §2's wording, `count` against `zone.count`, and a probe printing `state=hidden count=2 banner=true`. The non-goal is about which toast went and why, and a count is present state. The controller owns the list, and a count means something with no zone in mind. Exposing the banner would make it a contract with apps. **Not covered**: whether a dot lit during a banner reads wrong in a real app; nothing was run in one |
+| `count` counts what `DeckHideView.count` counts, not what `DeckDismissAllView.count` does; a toast leaves it as it is dismissed, not when its exit ends; a replace and an update leave it as it was; it has no listenable of its own; no list of ids goes with it | derived | #122. It is the list's length, and a dismissed toast is already off screen for the API's purposes (§4). Both uses #122 names, a dot and revealing an empty zone, need only the number |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

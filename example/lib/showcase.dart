@@ -1121,7 +1121,8 @@ class _ShowcasePageState extends State<ShowcasePage> {
         status: ListenableBuilder(
           listenable: _toast,
           builder: (context, _) => Text(
-            'state: ${_toast.zone.state.name} · held: ${_toast.zone.held}',
+            'state: ${_toast.zone.state.name} · held: ${_toast.zone.held} '
+            '· count: ${_toast.count}',
             style: Theme.of(context).textTheme.labelLarge,
           ),
         ),

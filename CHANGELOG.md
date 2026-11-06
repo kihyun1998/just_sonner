@@ -1,3 +1,10 @@
+## Unreleased
+
+- **`toast.count` says how many toasts are alive** (#122), those beyond `visibleToasts` and those
+  that are not dismissible included. The controller's listeners are its change signal. An app can
+  light a dot on its own button while a hidden zone has toasts, and bring the zone back once it is
+  empty. With a banner up, the zone reads as hidden with toasts in the count.
+
 ## 0.5.0
 
 - **The deck glides under the mouse wheel** (#107). A notch turned over a deck whose toasts do not

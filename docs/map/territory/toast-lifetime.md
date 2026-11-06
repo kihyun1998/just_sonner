@@ -12,6 +12,8 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — the two kinds of toast and `duration:
   null` (#97, maintainer); the sentinel default (derived); the sentinel made public as
   `SonnerConfig.configDuration` (maintainer).
+- [spec §12](../../spec.md#12-decision-record) — `count` on the controller, §2's non-goal
+  not covering it, a banner not exposed (#122, maintainer); what it counts (derived).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -33,6 +35,12 @@ open with nobody on it counts down, and so does a hidden one.
 `update` changes the fields passed; `show` at a live id **replaces**, taking the
 content whole and keeping only the place. Both count down again. A dismissed toast is
 already off screen for the API's purposes.
+
+`count` is the list's length: how many are alive, never which one went or why, which
+is the line §2's non-goal draws. It falls the moment a
+toast is dismissed, so it can reach zero while an exit is still drawing. It counts the
+same toasts as `DeckHideView.count`, and not the ones `DeckDismissAllView.count` does,
+which are only those its `dismiss()` removes.
 
 ## Code
 `controller.dart` — SonnerController
@@ -56,6 +64,8 @@ states outright, so anything resting on them carries forward as needing confirma
 - [Deck layout](deck-layout.md) — presence drives every placement, and it comes from here.
 - [Default look](default-look.md) — the time left is the countdown's own number filled in.
 - [Configuration](configuration.md) — `duration`, `visibleToasts` and the defaults live there.
+- [Deck controls](deck-controls.md) — `count` counts what `DeckHideView.count` counts, so a
+  change to one is a question for the other.
 - [Zone](zone.md) — a new toast puts a banner up on a hidden zone, and an update or a
   replace does not.
 
