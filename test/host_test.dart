@@ -7989,6 +7989,368 @@ void main() {
       await tester.pump(const Duration(milliseconds: 500));
     }
 
+    /// Reads every frame of what would be the toast's exit, and more.
+    Future<void> expectNeverDrawn(WidgetTester tester, String title) async {
+      for (var frame = 0; frame < 24; frame++) {
+        expect(find.text(title), findsNothing, reason: 'at frame $frame');
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    }
+
+    testWidgets('a toast that runs out with the deck wholly out of sight has '
+        'no exit, and the zone stays hidden', (tester) async {
+      final controller = deckWith(duration: const Duration(seconds: 1));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+      expect(find.text('Old'), findsOneWidget, reason: 'alive, out of sight');
+
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(controller.count, 0);
+
+      await expectNeverDrawn(tester, 'Old');
+      expect(controller.zone.state, ZoneState.hidden);
+    });
+
+    testWidgets('a toast the app dismisses with the deck wholly out of sight '
+        'has no exit, and the zone stays hidden', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(old);
+      await tester.pump();
+
+      await expectNeverDrawn(tester, 'Old');
+      expect(controller.zone.state, ZoneState.hidden);
+    });
+
+    testWidgets('dismissAll out of sight leaves none drawn when the zone is '
+        'revealed', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismissAll();
+      controller.zone.reveal();
+      await tester.pump();
+
+      for (var frame = 0; frame < 24; frame++) {
+        expect(find.textContaining('Toast'), findsNothing, reason: '$frame');
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+    });
+
+    testWidgets('ToastView.dismiss out of sight completes as the toast is '
+        'removed, with its animation not run down', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      ToastView? view;
+      final statuses = <AnimationStatus>[];
+      controller.show(
+        'Built',
+        builder: (context, toast) {
+          if (view == null) toast.animation.addStatusListener(statuses.add);
+          view = toast;
+          return const Material(child: Text('Built'));
+        },
+      );
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+      statuses.clear();
+
+      var done = false;
+      unawaited(view!.dismiss().then((_) => done = true));
+      await tester.pump();
+
+      expect(done, isTrue);
+      expect(find.text('Built'), findsNothing);
+      expect(statuses, isEmpty);
+    });
+
+    testWidgets('a toast dismissed out of sight is not drawn when the zone '
+        'opens on its empty card', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(old);
+      controller.zone.open();
+      await tester.pump();
+
+      await expectNeverDrawn(tester, 'Old');
+      expect(find.text('No notifications'), findsOneWidget);
+      controller.zone.close();
+      await tester.pumpAndSettle();
+    });
+
+    /// Calls `reveal()` as the count falls to zero.
+    void revealAsEmptied(SonnerController controller) {
+      var was = controller.count;
+      controller.addListener(() {
+        final emptied = was > 0 && controller.count == 0;
+        was = controller.count;
+        if (emptied) controller.zone.reveal();
+      });
+    }
+
+    for (final listenerFirst in [true, false]) {
+      final order = listenerFirst ? 'before' : 'after';
+
+      testWidgets('a toast that runs out out of sight is not drawn when a '
+          'listener registered $order the host reveals the zone', (
+        tester,
+      ) async {
+        final controller = deckWith(duration: const Duration(seconds: 1));
+        if (listenerFirst) revealAsEmptied(controller);
+        await tester.pumpWidget(app(controller: controller));
+        if (!listenerFirst) revealAsEmptied(controller);
+        controller.show('Old');
+        await tester.pump(const Duration(milliseconds: 100));
+        controller.zone.hide();
+        await settle(tester);
+
+        await tester.pump(const Duration(milliseconds: 600));
+        expect(controller.count, 0);
+        expect(controller.zone.state, ZoneState.shown);
+
+        await expectNeverDrawn(tester, 'Old');
+      });
+
+      testWidgets('a toast the app dismisses out of sight is not drawn when a '
+          'listener registered $order the host reveals the zone', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        if (listenerFirst) revealAsEmptied(controller);
+        await tester.pumpWidget(app(controller: controller));
+        if (!listenerFirst) revealAsEmptied(controller);
+        final old = controller.show('Old');
+        await tester.pump(const Duration(milliseconds: 100));
+        controller.zone.hide();
+        await settle(tester);
+
+        controller.dismiss(old);
+        expect(controller.zone.state, ZoneState.shown);
+        await tester.pump();
+
+        await expectNeverDrawn(tester, 'Old');
+      });
+    }
+
+    testWidgets('a toast dismissed out of sight is not drawn when the zone '
+        'opens with no empty card', (tester) async {
+      final controller = deckWith(empty: null);
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(old);
+      controller.zone.open();
+      await tester.pump();
+
+      await expectNeverDrawn(tester, 'Old');
+      expect(controller.zone.state, ZoneState.open);
+    });
+
+    testWidgets('a toast dismissed out of sight is not drawn by the banner of '
+        'the next one', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(old);
+      await tester.pump(const Duration(milliseconds: 50));
+      controller.show('Next');
+      await tester.pump();
+
+      await expectNeverDrawn(tester, 'Old');
+      expect(find.text('Next').hitTestable(), findsOneWidget);
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('a deck hidden again from part way back has no exit either', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+      controller.zone.reveal();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 111));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(old);
+      controller.zone.reveal();
+      await tester.pump();
+
+      await expectNeverDrawn(tester, 'Old');
+    });
+
+    /// Asserts [title] is on screen for the frames of its exit, then gone.
+    Future<void> expectExitDrawn(WidgetTester tester, String title) async {
+      await tester.pump();
+      for (var frame = 0; frame < 5; frame++) {
+        expect(find.text(title), findsOneWidget, reason: 'at frame $frame');
+        expect(
+          boxOf(tester, title).top,
+          lessThan(600),
+          reason: 'on screen at frame $frame',
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text(title), findsNothing, reason: 'gone once it has run');
+    }
+
+    testWidgets('a toast dismissed on a shown deck keeps its exit', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await settle(tester);
+
+      controller.dismiss(old);
+      await expectExitDrawn(tester, 'Old');
+    });
+
+    testWidgets('a toast running out on a shown deck keeps its exit', (
+      tester,
+    ) async {
+      final controller = deckWith(duration: const Duration(seconds: 1));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Old');
+      await tester.pump();
+      while (controller.count > 0) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      for (var frame = 0; frame < 5; frame++) {
+        expect(find.text('Old'), findsOneWidget, reason: 'at frame $frame');
+        expect(boxOf(tester, 'Old').top, lessThan(600), reason: '$frame');
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Old'), findsNothing);
+    });
+
+    testWidgets('a banner\'s toast keeps its exit', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      controller.zone.hide();
+      await settle(tester);
+      final arrival = controller.show('Arrival');
+      await settle(tester);
+      expect(find.text('Arrival').hitTestable(), findsOneWidget);
+
+      controller.dismiss(arrival);
+      await expectExitDrawn(tester, 'Arrival');
+      expect(controller.zone.state, ZoneState.hidden);
+    });
+
+    testWidgets('an older toast dismissed under a banner keeps its exit', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+      controller.show('Arrival');
+      await settle(tester);
+
+      controller.dismiss(old);
+      await expectExitDrawn(tester, 'Old');
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    for (final into in [50, 250]) {
+      testWidgets('a toast dismissed $into ms into the deck\'s 300 ms on its '
+          'way out keeps its exit', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        final old = controller.show('Old');
+        await settle(tester);
+        controller.zone.hide();
+        await tester.pump();
+        await tester.pump(Duration(milliseconds: into));
+
+        controller.dismiss(old);
+        await tester.pump();
+        for (var frame = 0; frame < 5; frame++) {
+          expect(find.text('Old'), findsOneWidget, reason: 'at frame $frame');
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Old'), findsNothing);
+      });
+    }
+
+    testWidgets('a toast dismissed while the deck is on its way back keeps its '
+        'exit', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final old = controller.show('Old');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+      controller.zone.reveal();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+
+      controller.dismiss(old);
+      await tester.pump();
+      for (var frame = 0; frame < 5; frame++) {
+        expect(find.text('Old'), findsOneWidget, reason: 'at frame $frame');
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.pumpAndSettle();
+      expect(find.text('Old'), findsNothing);
+    });
+
+    testWidgets('a toast dismissed out of sight and shown again at its id '
+        'comes up', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Same');
+      await tester.pump(const Duration(milliseconds: 100));
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.dismiss(id);
+      controller.show('Same', id: id);
+      await settle(tester);
+
+      expect(find.text('Same').hitTestable(), findsOneWidget);
+      expect(controller.count, 1);
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('hiding takes the deck out of sight and lets go of the '
         'pointer, and a pointer moving where it was holds nothing', (
       tester,
@@ -8198,20 +8560,12 @@ void main() {
       controller.zone.hide();
       await settle(tester);
 
-      // Stopping inside the 200 ms exit, while the toast is still drawn.
       await tester.pump(const Duration(milliseconds: 1900));
       await tester.pump(const Duration(milliseconds: 100));
       expect(toastsOf(controller), isEmpty, reason: 'it timed out');
       expect(controller.zone.state, ZoneState.hidden, reason: 'kept by it');
-      await tester.pump(const Duration(milliseconds: 100));
-      expect(find.text('Only'), findsOneWidget, reason: 'still leaving');
-      expect(
-        boxOf(tester, 'Only').top,
-        greaterThan(600),
-        reason: 'its exit runs past the edge, out of sight',
-      );
 
-      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump(const Duration(milliseconds: 400));
       controller.show('Next');
       await settle(tester);
       expect(find.text('Next').hitTestable(), findsOneWidget);

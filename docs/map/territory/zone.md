@@ -12,7 +12,8 @@ the empty card an open one draws, and `toast.zone`, the app's handle on all of i
   zone's word (#97, maintainer); what #97 derived, and the #60 and #88 rows it
   supersedes.
 - [spec §12](../../spec.md#12-decision-record) — a banner not exposed to an app reading
-  `count` (#122, maintainer).
+  `count` (#122, maintainer); no exit out of sight (#123, maintainer), decided from the hide
+  value (derived).
 - [spec §6](../../spec.md#6-layout-and-animation), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -38,6 +39,13 @@ An app that brings the zone back when it empties has to act as `count` **falls**
 not whenever it reads zero. `hide()` notifies too, so a listener testing
 `state == hidden && count == 0` undoes a hide on an empty zone at once, and the same for a
 `close()` back to hidden.
+
+A toast that leaves a deck wholly out of sight has **no exit**. Running one would draw the
+toast if `reveal()`, `open()` or a banner brought the deck back inside its 200 ms: about
+100 ms of a toast already gone, 6,838 px at its peak against 450 px for the empty app (#123).
+The test is the hide value the deck is drawn by, because a listener that runs before the
+host's calls `reveal()` first, and the state and the host's flag both then read shown with
+nothing yet on screen.
 
 ## Code
 `controller.dart` — SonnerZone, ZoneState, zoneBanner
@@ -73,6 +81,9 @@ records no equivalent. Every value here was settled in #97's design session.
 - **Not covered**: an app reading `zone.state == ZoneState.hidden && count > 0` as "something
   is hidden" also reads a banner that way, since the banner is not exposed (#122). Whether a
   dot lit during a banner reads wrong has not been seen in a real app.
-- **Open** (#123): a toast that runs out in a hidden zone is drawn for about 100 ms when the
-  app calls `reveal()` at that moment, which an app bringing the zone back as it empties does.
-  §7 says such a toast does not come back into view, and does not cover an app revealing it.
+- **Open**: a host swapped from a hidden controller to a shown one puts the hide value at 0
+  before it handles the old controller's toasts, so they run an exit that is drawn: 13 frames,
+  19,274 px at its peak, with #123's rule on or off.
+- **Open**: an exit begun part way through hiding can be drawn if the deck comes back on it.
+  Dismissed 250 ms into the 300 ms hide and revealed at 310 ms: 2 frames, 1,854 px at its peak;
+  dismissed 100 ms in: nothing. Measured with #123's rule on and off, the same.

@@ -4,6 +4,11 @@
   that are not dismissible included. The controller's listeners are its change signal. An app can
   light a dot on its own button while a hidden zone has toasts, and bring the zone back once it is
   empty. With a banner up, the zone reads as hidden with toasts in the count.
+- **A toast that leaves a hidden deck is gone at once** (#123). It kept a 200 ms exit nobody could
+  see, and if `reveal()`, `open()` or a new toast's banner brought the deck back during it, the
+  toast showed again for about 100 ms after it had gone. A toast leaving a deck that is still on
+  screen, a banner included, exits as before. A builder's `ToastView.animation` does not run down
+  for a toast with no exit, and `ToastView.dismiss`'s future completes as it is removed.
 
 ## 0.5.0
 

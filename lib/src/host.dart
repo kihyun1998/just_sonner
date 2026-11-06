@@ -571,7 +571,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   /// Matches the slots to the controller's toasts. A toast the controller no
-  /// longer holds keeps its slot, in its place, until its exit animation ends.
+  /// longer holds keeps its slot, in its place, until its exit animation ends,
+  /// where it has one: see [_exit].
   void _sync() {
     final existing = {for (final slot in _slots) slot.record: slot};
     final next = [
@@ -591,8 +592,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     _slots = next;
 
-    // After the assignment: a toast that has not entered at all reports
-    // `dismissed` synchronously, and removes itself from `_slots` as it does.
+    // After the assignment: a toast with no exit to run removes itself from
+    // `_slots` synchronously.
     for (final slot in leaving) {
       _exit(slot);
     }
@@ -689,7 +690,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   /// Runs the exit over the full [_exitDuration] from wherever the enter got
-  /// to, then removes the slot.
+  /// to, then removes the slot. A slot leaving a deck wholly out of sight is
+  /// removed at once, with no exit.
   void _exit(_Slot slot) {
     slot.exiting = true;
     slot.timeLeftFollower.stop(slot.record);
@@ -706,8 +708,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       slot.dispose();
     };
     slot.onExit = onExit;
-    // A toast already at rest at 0 reports no change of status to wait for.
-    if (slot.controller.status == AnimationStatus.dismissed) {
+    // A toast already at rest at 0 reports no change of status to wait for,
+    // and one on a deck wholly out of sight has nothing to wait for.
+    if (slot.controller.status == AnimationStatus.dismissed ||
+        _hide.value >= 1) {
       onExit(AnimationStatus.dismissed);
       return;
     }
@@ -1189,7 +1193,7 @@ final class _Slot implements ToastView {
   final AnimationController resize;
   final CurvedAnimation _resizeCurve;
 
-  /// Whether the controller has let go of this toast and its exit has started.
+  /// Whether the controller has let go of this toast.
   bool exiting = false;
 
   AnimationStatusListener? onExit;

@@ -22,7 +22,7 @@ could have carried this fact.
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — both ends of the cut are reported from drawn positions.
 - [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn.
 - [Default look](../territory/default-look.md) — the time left stands still while nothing draws it, and comes back on the number.
-- [Zone](../territory/zone.md) — a hidden zone draws no deck unless a banner is up, and the frame gate reads that.
+- [Zone](../territory/zone.md) — a hidden zone draws no deck unless a banner is up, and the frame gate reads that; whether a leaving toast has an exit reads the hide value the deck is drawn by.
 
 ## What a violation looks like
 Something keyed on the proxy is right while the deck is still and wrong for the length
@@ -39,8 +39,12 @@ which is why it survives a test suite that pumps to completion.
   probe confirmed it holds through the collapse with an exiting toast frozen past the
   edge: 0 px throughout, against ~7,400 px with the cut off.
 
-Three, the third of which reused the rule rather than rediscovering it — which is what
-this note is for.
+- **#123** — whether a leaving toast runs an exit. The zone's state and the host's flag
+  both read shown once a listener has called `reveal()`, with the deck still wholly out of
+  sight, so either one draws the toast or drops a banner's exit; the hide value does neither.
+
+Four; the third reused the rule rather than rediscovering it, which is what this note is
+for.
 
 ## Where it will recur
 Any new behaviour that asks *"is this toast still in the deck?"* — a semantics
