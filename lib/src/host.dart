@@ -6,8 +6,11 @@ import 'package:flutter/gestures.dart'
         DragStartBehavior,
         DragStartDetails,
         DragUpdateDetails,
+        GestureBinding,
         PanGestureRecognizer,
+        PointerCancelEvent,
         PointerDeviceKind,
+        PointerEvent,
         PointerScrollEvent;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart'
@@ -103,11 +106,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   bool get _hovered => _moved.isNotEmpty;
 
-  /// The pointer devices pressed on the deck. A press keeps the deck as it
+  /// The presses on the deck, by pointer. A press keeps the deck as it
   /// found it until it lets go, wherever it travels in between — dragging a
   /// toast out from under the pointer must not fold the deck up around the
   /// hand doing it.
-  final Set<int> _pressed = {};
+  final Map<int, PointerEvent> _pressed = {};
 
   /// Whether the deck is under a pointer, or under a press that started
   /// there: it is fanned out, draws every toast and keeps its scroll while
@@ -332,8 +335,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// hidden, a banner has gone up or down, or the zone has been brought back.
   ///
   /// Hiding lets go of the pointer: nothing drawn is hovered, so the hold the
-  /// pointer had on the timers goes, and a swipe under way is called off —
-  /// its toast is no longer under the hand dragging it.
+  /// pointer had on the timers goes, a press under way is cancelled, and a
+  /// swipe under way is called off — its toast is no longer under the hand
+  /// dragging it.
   void _followZone() {
     _empty.retarget(_emptyTarget, _enterDuration);
     final hide = _hiddenNow;
@@ -355,7 +359,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       slot.swipe.springBack(_springDuration);
     }
     final was = _interacting;
-    _pressed.clear();
+    _pressed
+      ..values.forEach(_cancelPress)
+      ..clear();
     _setHovered(_moved.clear);
     if (was && !_interacting) _unscrollDeck();
     _publishHold();
@@ -438,22 +444,40 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (mounted) setState(() {});
   }
 
+  /// Cancels [press], at the end of this microtask, as the kind of pointer it
+  /// is.
+  void _cancelPress(PointerEvent press) {
+    scheduleMicrotask(
+      () => GestureBinding.instance.handlePointerEvent(
+        PointerCancelEvent(
+          pointer: press.pointer,
+          kind: press.kind,
+          device: press.device,
+          position: press.position,
+        ),
+      ),
+    );
+  }
+
   /// Takes a press on the deck, or lets one go. It holds no timer of its own:
   /// a press that stays is a pointer over the deck, which pauses already, and
   /// one that becomes a swipe is held by the drag. A press on a deck hidden
-  /// by then is not taken.
-  void _setPressed(int device, {required bool down}) {
+  /// by then is not taken, and is cancelled.
+  void _setPressed(PointerEvent event, {required bool down}) {
     // The hit test a press was routed through outlives this host: a pointer
     // that went down on the deck reports going up through it even once the
     // host has left the tree, and nothing here is alive to answer with.
     if (!mounted) return;
-    if (down) _movePointer(device);
-    if (down && _hiddenShown) return;
+    if (down) _movePointer(event.device);
+    if (down && _hiddenShown) {
+      _cancelPress(event);
+      return;
+    }
     final was = _interacting;
     if (down) {
-      _pressed.add(device);
+      _pressed[event.pointer] = event;
     } else {
-      _pressed.remove(device);
+      _pressed.remove(event.pointer);
     }
     if (_interacting == was) return;
     if (!_interacting) _unscrollDeck();
@@ -547,7 +571,6 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   );
 
   void _swipeStart(_Slot slot, DragStartDetails details) {
-    if (_pressed.isEmpty) return;
     slot.drag = SwipeDrag(
       directions: _controller.config.swipeDirectionsNow,
       at: details.sourceTimeStamp ?? Duration.zero,
@@ -852,9 +875,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     Widget? control,
   ) {
     return Listener(
-      onPointerDown: (event) => _setPressed(event.device, down: true),
-      onPointerUp: (event) => _setPressed(event.device, down: false),
-      onPointerCancel: (event) => _setPressed(event.device, down: false),
+      onPointerDown: (event) => _setPressed(event, down: true),
+      onPointerUp: (event) => _setPressed(event, down: false),
+      onPointerCancel: (event) => _setPressed(event, down: false),
       onPointerSignal: (event) {
         _movePointer(event.device);
         if (event is PointerScrollEvent) _scrollFromControl(event);

@@ -26,6 +26,11 @@
 - **The dismiss-all control reads each toast as it reaches it** (#129). A listener that made a
   toast not dismissible during it, or dismissed one and showed another at its id, lost that toast
   too. Now it stays. A toast replaced at its id during the press still goes if it is dismissible.
+- **Hiding the deck cancels a click under way** (#132). A press on a toast's close button or
+  action that the deck hid under completed on release, dismissing a toast out of sight or running
+  the action. The pointer is now cancelled as the deck hides. The cancel reaches everything that
+  pointer was routed through, a tap detector wrapped around `SonnerHost` included, and hover on
+  the app's widgets catches up at the next mouse move after the release.
 
 ## 0.5.0
 
