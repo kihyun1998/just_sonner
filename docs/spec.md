@@ -692,10 +692,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   sits `gap` past the deck's far end, and on a deck that scrolls, past the cap however far the
   toasts are scrolled; it lines up with the deck's right edge at a right position, its left at a
   left one, and its centre at a centre one. Pressing it dismisses every toast whose
-  `dismissibleNow` holds, the ones beyond the window included; a loading toast and one not
-  dismissible stay, and `dismissAll()` on the controller still dismisses them all.
-  - Pressing it leaves fewer than two dismissible toasts, so it goes at once, and the deck may
-    collapse with it under the pointer.
+  `dismissibleNow` holds, the ones beyond the window included, read as each is reached; a loading
+  toast and one not dismissible stay, as does one dismissed and shown again at its id, and `dismissAll()` on the
+  controller still dismisses them all.
+  - Pressing it leaves fewer than two dismissible toasts unless a listener shows more during it,
+    so it goes at once, and the deck may collapse with it under the pointer.
   - A `pill` reads `label`; a `header` is as wide as the deck and reads `countLabel(count)` and a
     button with `label`. Both fade with the expansion. A `builder` draws the control instead,
     handed the count, `dismiss()` and the expansion, and is placed by the size it lays out at.
@@ -1118,7 +1119,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   two dismissible toasts;
   it sits a gap past the far end at a right, a left and a centre position, from the first frame,
   and at the cap on a scrolling deck, drawn past the cut; the pointer moved onto it keeps the
-  deck, and pressed it dismisses every dismissible toast beyond the window too; a header reads
+  deck, and pressed it dismisses every dismissible toast beyond the window too; a listener's change
+  in one of its dismissals, on either side of the host, is read as each toast is reached: one made
+  not dismissible or loading stays, one dismissed and shown again at its id stays, one given a new
+  title or replaced at its id goes, and so through a builder's `dismiss`; a header reads
   its count label and label; a builder replaces the look, is placed by its size and dismisses
   through its view
 - A wheel turned over a control past the far end glides the deck, at the top and at the bottom
@@ -1434,6 +1438,7 @@ outside v0.1 is in §2's non-goals.
 | A toast beyond `visibleToasts` with nothing drawing it has no exit, whichever way it left and whatever fans the deck out | maintainer | #126, at triage. Shown: pixels differing from the first pixel over 24 frames 16 ms apart, against the same fan-out once the exit was over: a dismiss 11 frames apart and 7,664 px at the peak, a timer 9 frames and 7,680 px, the same by `open()` and by a pointer; and that a one-condition spike made every frame match. Taken over keeping the 200 ms exit undrawn, which was not measured, and over leaving it as it was. It is what §7's "without coming back into view" means. **Not covered**: not seen by eye; a custom `hideMotion` |
 | It is decided from `_Slot.hidden`, what the last build kept offstage, not from its place in the window | derived | #126. The place alone removes at once a toast crossing the window's edge, one a lowered window is fading out and one leaving a deck fanned out or folding, all of which are on screen. Seen by mutation: each of those tests fails with the place alone |
 | A press and a hover ask whether the host draws the deck hidden, not the zone's state; a swipe asks whether its press is still held | derived | #128, from §7's "a press the deck was under is let go of". A banner is a hidden zone whose deck is drawn and takes the pointer, so the state turns its press away. A press let go of can still win its gesture after the deck has come back, so asking whether the deck is hidden starts that swipe. Seen by mutation: each stand-in fails its test |
+| The dismiss-all control re-reads each toast as it reaches it, on `dismissibleNow` and on being the same toast | maintainer | #129, at triage. Shown: what is left of three toasts when a listener changes the other two in the first dismissal, now and with a spike, and the alternatives of leaving any toast changed since the build, which also leaves one whose title alone changed and keeps the built state, and of leaving it as it was. **Not covered**: a toast replaced at its id during the press is dismissed if it is dismissible, content the user has not seen |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

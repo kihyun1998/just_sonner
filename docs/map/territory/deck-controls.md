@@ -8,7 +8,8 @@ share when both ask for one.
 ## Governing decisions
 - [spec §12](../../spec.md#12-decision-record) — the dismiss-all control and its look
   or builder; what it leaves alone; the stow, its motion and its handle, renamed `hide*`
-  by #97, which removed the handle; Hide on an empty open zone.
+  by #97, which removed the handle; Hide on an empty open zone; each toast re-read as it
+  is reached (#129, maintainer).
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -25,7 +26,9 @@ no vertical part moves nothing, rather than stopping a glide under way.
 
 Dismiss-all leaves toasts that are loading or not dismissible, and counts the ones
 beyond the window, because **Dismissible** governs what the *user* may dismiss and this
-is the user's control.
+is the user's control. It reads each toast as it reaches it (#129). Every dismissal notifies,
+so a listener can make the next one not dismissible, or dismiss it and show another at its id,
+and the list was built before any of that.
 
 Hiding keeps the toasts and their countdowns; what a hidden zone draws is
 [Zone](zone.md)'s.

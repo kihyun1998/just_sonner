@@ -23,6 +23,9 @@
   that a host carried to a hidden controller, left `zone.held` true on a deck nothing drew, and a
   swipe from it dismissed a toast out of sight. It is now let go of, as hiding lets go of any other
   press, and no swipe starts from it. A banner takes a press and a swipe as before.
+- **The dismiss-all control reads each toast as it reaches it** (#129). A listener that made a
+  toast not dismissible during it, or dismissed one and showed another at its id, lost that toast
+  too. Now it stays. A toast replaced at its id during the press still goes if it is dismissible.
 
 ## 0.5.0
 

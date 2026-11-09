@@ -832,7 +832,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       onHide: _controller.zone.hide,
       onDismissAll: () {
         for (final slot in dismissible) {
-          _controller.dismiss(slot.id);
+          if (slot.record.state.dismissibleNow) {
+            dismissRecord(_controller, slot.record);
+          }
         }
       },
     );
