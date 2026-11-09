@@ -50,6 +50,7 @@ records the absence. Every value here was settled from spikes in the example app
 - [A clip survives a transform applied outside it](../invariant/a-clip-survives-an-outside-transform.md)
 - [Distances are measured from the position's own edge](../invariant/distances-from-the-positions-edge.md)
 - [Hit-testing follows paint](../invariant/hit-testing-follows-paint.md)
+- [A notification can re-enter its sender](../invariant/a-notification-can-re-enter-its-sender.md)
 
 ## Blast radius
 - [Deck reach and cut](deck-reach-and-cut.md) — the far end these sit against is the cap.

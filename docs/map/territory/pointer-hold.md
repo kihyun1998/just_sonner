@@ -50,6 +50,7 @@ nothing about a region over a deck that scrolls, because sonner's deck never scr
 
 ## Cross-cutting invariants
 - [Hit-testing follows paint](../invariant/hit-testing-follows-paint.md)
+- [A notification can re-enter its sender](../invariant/a-notification-can-re-enter-its-sender.md)
 
 ## Blast radius
 - [Deck reach and cut](deck-reach-and-cut.md) — the region is cut where the deck is,

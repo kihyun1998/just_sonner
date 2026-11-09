@@ -344,6 +344,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _hideReach = _controller.config.position.isTop
         ? _deck.bottom
         : height - _deck.top;
+    _hide.retarget(1, _hideDuration);
     for (final slot in _slots) {
       if (slot.drag == null) continue;
       slot.endDrag();
@@ -354,7 +355,6 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _setHovered(_moved.clear);
     if (was && !_interacting) _unscrollDeck();
     _publishHold();
-    _hide.retarget(1, _hideDuration);
   }
 
   /// Starts the toasts on their way to a config assigned since the last
