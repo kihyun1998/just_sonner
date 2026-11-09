@@ -726,8 +726,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   handle on how much of it there is. Both follow the expansion, so a collapsed deck draws
   neither. A `blur` of 0 draws no filter and a `dim` of 0 no cover, so the default draws the blur
   alone.
-  - It is laid out to **the deck's own box** — the hover region, so the toasts, the gaps between
-    them, and the controls and scrollbar that region takes in — and drawn before every toast, so it
+  - It is laid out to **the deck's own box** — at rest the hover region, so the toasts, the gaps
+    between them, and the controls and scrollbar that region takes in, a toast still entering
+    counted as the hover region may not — and drawn before every toast, so it
     sits under all of them. It reaches `padding` further, with `radius`'s corners.
   - **It is drawn outside the deck's cut**, under it, with a hard cut of its own at the same place.
     A cut that fades is a `ShaderMask`, which the engine draws as a save layer, and a
@@ -758,8 +759,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   It fades in over 400 ms as the last toast leaves an open zone and out as a toast arrives or the
   zone closes. It is in the hover region, so the pointer on it holds the deck. A `builder` draws
   the app's own, handed the fade; null draws nothing. A shown zone with no toast draws nothing.
-- While the deck moves back into place, a hidden zone's banner included, the hover region is what
-  of the deck is hit as drawn. At rest it is the box around the toasts in the deck — the window, or every toast while the
+- A toast still entering is not in the hover region's box until it has arrived, unless the pointer
+  holds the deck, which a toast arriving under it must not make it let go of; it takes the pointer
+  only where it is itself hit. While the deck moves back into place, a hidden zone's banner
+  included, the hover region is what of the deck is hit as drawn. At rest it is the box around the toasts in the deck — the window, or every toast while the
   pointer is over it or the zone is open — and the empty card, gaps included, cut where the deck
   is cut and to the layer, with a draggable scrollbar's thumb and the controls past the far end in
   it, so moving the pointer between two toasts does not collapse the deck. A toast exiting from the window stays in
@@ -1140,7 +1143,10 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   detector around the host, and a mouse press cancelled leaves the focus highlight as it was; a
   pointer moving where the deck was holds nothing; on its way back, or coming up as a banner, the
   deck takes a pointer only where it is drawn, for the three looks and a builder, so a click where
-  nothing is drawn yet is the app's and one on the toast as drawn is the toast's; a hidden deck is out of the
+  nothing is drawn yet is the app's and one on the toast as drawn is the toast's; while a toast enters, on a top or a
+  bottom deck, a click where it has not reached is the app's, one on it as drawn is its own, a hover
+  the same, a click on an older toast at rest holds the deck, and a deck the pointer holds stays
+  held; a hidden deck is out of the
   semantics tree; a new toast shows the deck as a banner with the older toasts in it until it has
   gone and the pointer has left, the banner takes the pointer and pauses the timers under it, and
   Hide on it takes it down; the last toast timing out while hidden leaves the deck out of sight,
@@ -1448,6 +1454,7 @@ outside v0.1 is in §2's non-goals.
 | A toast beyond `visibleToasts` with nothing drawing it has no exit, whichever way it left and whatever fans the deck out | maintainer | #126, at triage. Shown: pixels differing from the first pixel over 24 frames 16 ms apart, against the same fan-out once the exit was over: a dismiss 11 frames apart and 7,664 px at the peak, a timer 9 frames and 7,680 px, the same by `open()` and by a pointer; and that a one-condition spike made every frame match. Taken over keeping the 200 ms exit undrawn, which was not measured, and over leaving it as it was. It is what §7's "without coming back into view" means. **Not covered**: not seen by eye; a custom `hideMotion` |
 | It is decided from `_Slot.hidden`, what the last build kept offstage, not from its place in the window | derived | #126. The place alone removes at once a toast crossing the window's edge, one a lowered window is fading out and one leaving a deck fanned out or folding, all of which are on screen. Seen by mutation: each of those tests fails with the place alone |
 | A press and a hover ask whether the host draws the deck hidden, not the zone's state | derived | #128, from §7's "a press the deck was under is let go of". A banner is a hidden zone whose deck is drawn and takes the pointer, so the state turns its press away. Seen by mutation: the stand-in fails a banner's test. A swipe needs no check of its own since #132 cancels the press |
+| A toast still entering is out of the box the deck takes the pointer by, while the pointer does not hold the deck; that box is kept apart from the one the scrollbar, the cut, the backdrop, the controls and the hide reach read | maintainer | #137, at triage and again while working it. Shown at triage: a press where the toast had not reached held by the deck, a spike that moved the one box and failed a scrollbar test, and the alternative of recording the enter as an exception. It was also told an exiting toast's reason for staying in the region had no counterpart, which was wrong: a toast arriving under a resting pointer would make it let go of a held deck, which is what the scrollbar test had caught. Shown that, and that keeping the toast in the box while the deck is held passes, against recording the exception after all; kept. **Not covered**: not seen by eye; the part of an entering toast drawn past its resting place takes no pointer, since the boxes around it are at that place |
 | While the hide value is above 0 the deck takes a pointer where something of it is hit, not by its box | derived | #133, from "Hit-testing follows paint". The box is where the deck rests and the hide motion draws it elsewhere until then. Hit-testing the child already goes through the motion's transforms, so a `hideMotion` builder reports nothing. Taking no pointer until at rest was measured and lets a click on a drawn toast through to the app. A banner coming up is the same motion and follows the same rule |
 | Hiding cancels the pointers pressed on the deck, so a click under way does not complete | maintainer | #132, at triage. Shown: a close button dismissing a toast out of sight and a builder's button firing, the result of cancelling the pointer with no unmounting, that the cancel also reaches a tap detector the app wraps around the host, and the alternatives of letting the click finish with §7 reworded, or leaving it. Then shown, after review: that the SDK's `cancelPointer` sends a touch-kind cancel, which turned the whole app's focus highlight to touch mode until the next key, that a cancel of the pointer's own kind does not, and that hover on the app's widgets is stale until the next move after the release; kept. **Not covered**: not seen on a device; touch; a builder's own drag recognizer |
 | The dismiss-all control re-reads each toast as it reaches it, on `dismissibleNow` and on being the same toast | maintainer | #129, at triage. Shown: what is left of three toasts when a listener changes the other two in the first dismissal, now and with a spike, and the alternatives of leaving any toast changed since the build, which also leaves one whose title alone changed and keeps the built state, and of leaving it as it was. **Not covered**: a toast replaced at its id during the press is dismissed if it is dismissible, content the user has not seen. A listener's `hide()` during the press does not stop the rest, and one made dismissible during it is not reached; both reproduced and left so by the maintainer, the press being for what the control showed |

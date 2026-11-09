@@ -32,8 +32,9 @@ import 'toast_fit.dart' show ClipsOverflow;
 ///
 /// The box around the toasts [inDeck] names, and the gaps between them, cut
 /// where the deck is cut and to the layer, is reported through [onDeck]; it
-/// takes in a draggable [scrollbar] and the dismiss-all control. A child with
-/// the id [backdrop], if any, is laid out over that box.
+/// takes in a draggable [scrollbar] and the dismiss-all control. The same box
+/// without the toasts [arriving] names is reported through [onPointerBox], and
+/// a child with the id [backdrop], if any, is laid out over it.
 ///
 /// With a [scroll], the toasts [inDeck] names scroll between the edge and the
 /// cap — [DeckOffsets.farOffset] from the far side, or nearer where
@@ -86,8 +87,10 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     required this.covering,
     required this.pinned,
     required this.inDeck,
+    required this.arriving,
     required this.onPlaced,
     required this.onDeck,
+    required this.onPointerBox,
     this.glide = 1,
     this.glideFrom,
     this.screenPinned,
@@ -118,6 +121,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   Function(T id)
   pinned;
   final bool Function(T id) inDeck;
+  final bool Function(T id) arriving;
   final void Function(
     T id,
     double height,
@@ -127,6 +131,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
   )
   onPlaced;
   final ValueChanged<Rect> onDeck;
+  final ValueChanged<Rect> onPointerBox;
   final double glide;
   final Rect? Function(T id)? glideFrom;
   final Rect? Function(T id)? screenPinned;
@@ -228,6 +233,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     final scrolled = pixels + unscrolled;
 
     Rect? around;
+    Rect? settled;
     var drawnReach = 0.0;
     var drawnNear = double.infinity;
     for (final toast in placed) {
@@ -262,7 +268,12 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       positionChild(toast.id, drawn.topLeft);
       onDrawn?.call(toast.id, drawn);
 
-      if (inDeck(toast.id)) around = around?.expandToInclude(drawn) ?? drawn;
+      if (inDeck(toast.id)) {
+        around = around?.expandToInclude(drawn) ?? drawn;
+        if (!arriving(toast.id)) {
+          settled = settled?.expandToInclude(drawn) ?? drawn;
+        }
+      }
     }
 
     final empty = this.empty;
@@ -277,6 +288,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       final drawn = Rect.fromLTWH(left, top, config.width, card.height);
       positionChild(empty, drawn.topLeft);
       around = around?.expandToInclude(drawn) ?? drawn;
+      settled = settled?.expandToInclude(drawn) ?? drawn;
     }
 
     // Both ends are keyed on where toasts are drawn rather than on the scroll
@@ -325,22 +337,28 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
         : _placeDismissAll(size, around, far, control);
     onDismissAll?.call(dismissAll);
 
-    var deck = Rect.zero;
-    if (around != null) {
-      around = _cutBox(size, around, nearEnd, farEnd);
+    Rect finish(Rect? box) {
+      var whole = box == null ? null : _cutBox(size, box, nearEnd, farEnd);
       if (thumb != null && config.scrollbar!.draggable) {
-        around = around.expandToInclude(thumb);
+        whole = whole?.expandToInclude(thumb) ?? thumb;
       }
-      if (dismissAll != null) around = around.expandToInclude(dismissAll);
-      deck = around.intersect(Offset.zero & size);
-      if (deck.isEmpty) deck = Rect.zero;
+      if (dismissAll != null) {
+        whole = whole?.expandToInclude(dismissAll) ?? dismissAll;
+      }
+      if (whole == null) return Rect.zero;
+      final onLayer = whole.intersect(Offset.zero & size);
+      return onLayer.isEmpty ? Rect.zero : onLayer;
     }
+
+    final deck = finish(around);
+    final pointerBox = finish(settled);
     onDeck(deck);
+    onPointerBox(pointerBox);
 
     final backdrop = this.backdrop;
     if (backdrop != null && hasChild(backdrop)) {
-      layoutChild(backdrop, BoxConstraints.tight(deck.size));
-      positionChild(backdrop, deck.topLeft);
+      layoutChild(backdrop, BoxConstraints.tight(pointerBox.size));
+      positionChild(backdrop, pointerBox.topLeft);
     }
   }
 

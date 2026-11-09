@@ -29,6 +29,12 @@ hit as drawn (#133): `DeckHitBox` is under the hide motion, so a gap counts. The
 deck will rest, and the motion draws it elsewhere until then. An overflowing deck's band past the
 far cut is the deck's at rest and the app's during the move.
 
+A toast still entering is out of the box the region and `DeckHitBox` read, `_pointerBox`, until it
+has arrived (#137), unless the pointer holds the deck: a toast arriving under a resting pointer
+takes the place that pointer is on, and leaving it out would let go of the deck. A toast that has
+never arrived stays out even once it is dismissed. The backdrop and the hide reach read `_deck`,
+which always counts it, and the cut, the scrollbar and the controls are laid out without asking.
+
 A pointer counts once it **moves, presses or turns the wheel** there — a toast that
 lands under a pointer nobody moved counts down as usual.
 
@@ -85,6 +91,11 @@ nothing about a region over a deck that scrolls, because sonner's deck never scr
   being dragged holds the timers.
 
 ## Known holes / open
+- **Open**: the part of an entering toast drawn past its resting place takes no pointer, since
+  the boxes around the slide are at that place (#137).
+- **Open**, reported by a read and not reproduced: the first frame after `reveal()` with the fade
+  or shrink look, where the deck takes a press with nothing drawn; and a wheel on a control as
+  drawn during a slide, read against the control's resting place.
 - **Not covered** by any decision: a deck gliding past a resting pointer elsewhere on
   screen, which would expand and pause it mid-glide. Not measured.
 - Touch is outside v0.1, so nothing here says how a deck expands without hover; an app
