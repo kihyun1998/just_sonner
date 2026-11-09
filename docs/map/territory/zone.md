@@ -73,6 +73,7 @@ records no equivalent. Every value here was settled in #97's design session.
 ## Cross-cutting invariants
 - [Drawnness is the key](../invariant/drawnness-is-the-key.md)
 - [Distances are measured from the position's own edge](../invariant/distances-from-the-positions-edge.md)
+- [A notification can re-enter its sender](../invariant/a-notification-can-re-enter-its-sender.md)
 
 ## Blast radius
 - [Deck controls](deck-controls.md) — the hide control shows on an open zone with no

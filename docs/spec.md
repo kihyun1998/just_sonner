@@ -1126,8 +1126,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   shown deck, by its timer or `dismiss`, a banner's toast, an older one under a banner and one
   dismissed part way through hiding or coming back keep their exit; `dismissAll` out of sight leaves
   none drawn, `ToastView.dismiss` out of sight completes with its animation not run down, and a
-  `show` at the id of one dismissed out of sight comes up; a zone
-  opened from hidden and closed goes out of sight again
+  `show` at the id of one dismissed out of sight comes up; a `reveal()`, `open()` or new toast from
+  a listener in the notification a hide under the pointer sends, on the state or on `held` falling,
+  brings the deck back within reach; a zone opened from hidden and closed goes out of sight again
 - An open zone with no toast draws the empty card with Hide past it, a shown one draws nothing;
   the card goes as a toast arrives and comes back as the last leaves; `zoneEmpty` null draws none
   and a builder draws its own; the pointer on the card holds the deck; a host first drawn on a

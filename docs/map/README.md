@@ -102,7 +102,8 @@ Territories: [Toast lifetime](territory/toast-lifetime.md) ·
 Invariants: [Distances are measured from the position's own edge](invariant/distances-from-the-positions-edge.md) ·
 [Drawnness is the key](invariant/drawnness-is-the-key.md) ·
 [A clip survives a transform applied outside it](invariant/a-clip-survives-an-outside-transform.md) ·
-[Hit-testing follows paint](invariant/hit-testing-follows-paint.md)
+[Hit-testing follows paint](invariant/hit-testing-follows-paint.md) ·
+[A notification can re-enter its sender](invariant/a-notification-can-re-enter-its-sender.md)
 
 ## Asking the map instead of storing the answer
 
