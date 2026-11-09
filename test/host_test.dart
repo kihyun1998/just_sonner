@@ -9127,6 +9127,218 @@ void main() {
       );
     });
 
+    group('a pointer on a deck on its way back', () {
+      final movesAway = <String, DeckHideMotion>{
+        'slide': const DeckHideMotion(),
+        'shrink': const DeckHideMotion(look: DeckHideMotionLook.shrink),
+        'a builder': DeckHideMotion(
+          builder: (context, view, deck) => AnimatedBuilder(
+            animation: view.hidden,
+            builder: (context, child) => Transform.translate(
+              offset: Offset(view.hidden.value * 300, 0),
+              child: child,
+            ),
+            child: deck,
+          ),
+        ),
+      };
+      final motions = <String, DeckHideMotion>{
+        ...movesAway,
+        'fade': const DeckHideMotion(look: DeckHideMotionLook.fade),
+      };
+
+      /// A toast's card and the app behind it, each counting its taps, on a
+      /// deck hidden and just revealed.
+      Future<
+        ({
+          SonnerController controller,
+          Rect rest,
+          int Function() app,
+          int Function() toast,
+        })
+      >
+      comingBack(
+        WidgetTester tester,
+        DeckHideMotion motion,
+        Duration after,
+      ) async {
+        final controller = deckWith(motion: motion);
+        var app = 0;
+        var toast = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        controller.show(
+          'Card',
+          builder: (context, view) => GestureDetector(
+            onTap: () => toast++,
+            child: const Material(
+              child: SizedBox(width: 300, height: 60, child: Text('Card')),
+            ),
+          ),
+        );
+        await settle(tester);
+        final rest = boxOf(tester, 'Card');
+        controller.zone.hide();
+        await settle(tester);
+        controller.zone.reveal();
+        await tester.pump();
+        await tester.pump(after);
+        return (
+          controller: controller,
+          rest: rest,
+          app: () => app,
+          toast: () => toast,
+        );
+      }
+
+      Future<TestGesture> click(WidgetTester tester, Offset at) async {
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: at);
+        addTearDown(mouse.removePointer);
+        await mouse.down(at);
+        await tester.pump(const Duration(milliseconds: 16));
+        return mouse;
+      }
+
+      for (final MapEntry(key: name, value: motion) in movesAway.entries) {
+        testWidgets('with $name, a click where nothing is drawn yet is the '
+            "app's", (tester) async {
+          final deck = await comingBack(
+            tester,
+            motion,
+            const Duration(milliseconds: 32),
+          );
+          final drawn = boxOf(tester, 'Card');
+          expect(drawn.contains(deck.rest.center), isFalse);
+
+          final mouse = await click(tester, deck.rest.center);
+          expect(deck.controller.zone.held, isFalse);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.app(), 1);
+          expect(deck.toast(), 0);
+        });
+      }
+
+      for (final MapEntry(key: name, value: motion) in motions.entries) {
+        testWidgets('with $name, a click on the toast as drawn is the '
+            "toast's", (tester) async {
+          final deck = await comingBack(
+            tester,
+            motion,
+            const Duration(milliseconds: 200),
+          );
+
+          final mouse = await click(tester, boxOf(tester, 'Card').center);
+          expect(deck.controller.zone.held, isTrue);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.toast(), 1);
+          expect(deck.app(), 0);
+        });
+      }
+
+      testWidgets('a click where a banner has not come up to yet is the '
+          "app's", (tester) async {
+        final controller = deckWith();
+        var app = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        controller.show('Old');
+        await settle(tester);
+        final rest = boxOf(tester, 'Old');
+        controller.zone.hide();
+        await settle(tester);
+
+        controller.show('Banner');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 32));
+        expect(zoneBanner(controller), isTrue);
+        expect(boxOf(tester, 'Banner').contains(rest.center), isFalse);
+        final mouse = await click(tester, rest.center);
+        expect(controller.zone.held, isFalse);
+        await mouse.up();
+        await settle(tester);
+
+        expect(app, 1);
+      });
+
+      testWidgets('a hover where nothing is drawn yet holds nothing, and one '
+          'on the toast as drawn holds the deck', (tester) async {
+        final deck = await comingBack(
+          tester,
+          const DeckHideMotion(),
+          const Duration(milliseconds: 32),
+        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(40, 40));
+        addTearDown(mouse.removePointer);
+
+        await mouse.moveTo(deck.rest.center);
+        await tester.pump();
+        expect(deck.controller.zone.held, isFalse);
+
+        await tester.pump(const Duration(milliseconds: 170));
+        await mouse.moveTo(boxOf(tester, 'Card').center + const Offset(1, 0));
+        await tester.pump();
+        expect(deck.controller.zone.held, isTrue);
+        await mouse.moveTo(const Offset(40, 40));
+        await settle(tester);
+      });
+
+      testWidgets('at rest, a click in a gap between toasts of a fanned-out '
+          'deck is still the deck\'s', (tester) async {
+        final controller = deckWith();
+        var app = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        showToasts(controller, 2);
+        controller.zone.open();
+        await settle(tester);
+        final newer = boxOf(tester, 'Toast 1');
+        final older = boxOf(tester, 'Toast 0');
+        expect(older.bottom, lessThan(newer.top));
+        final gap = Offset(newer.center.dx, (older.bottom + newer.top) / 2);
+
+        final mouse = await click(tester, gap);
+        await mouse.up();
+        await settle(tester);
+
+        expect(app, 0);
+        controller.zone.close();
+        await settle(tester);
+      });
+    });
+
     group('a pointer and a hidden deck', () {
       const at = Offset(600, 560);
 

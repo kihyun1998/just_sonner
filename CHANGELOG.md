@@ -31,6 +31,10 @@
   the action. The pointer is now cancelled as the deck hides. The cancel reaches everything that
   pointer was routed through, a tap detector wrapped around `SonnerHost` included, and hover on
   the app's widgets catches up at the next mouse move after the release.
+- **A deck on its way back takes the pointer only where it is drawn** (#133). For the 300 ms after
+  `zone.reveal()`, or while a banner comes up, a click at the deck's resting place was held by the
+  deck with nothing drawn there and never reached the app. It now reaches the app unless the deck
+  is drawn under it.
 
 ## 0.5.0
 

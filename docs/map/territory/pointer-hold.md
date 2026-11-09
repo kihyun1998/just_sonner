@@ -17,12 +17,17 @@ without one.
 - [spec §6](../../spec.md#6-layout-and-animation), [spec §7](../../spec.md#7-timers).
 
 ## Design model
-The region is the box around the toasts in the deck, gaps included, **cut where the
+At rest the region is the box around the toasts in the deck, gaps included, **cut where the
 deck is cut** and to the layer, with the controls past the far end and a draggable
 scrollbar's thumb: what is drawn. A deck scrolling under a resting pointer cannot slide
 out from under it, since both ends are cut and the toasts that do not fit cover the
 whole band between them whatever the scroll. The `offset` band and the band past the
 cap are the app's, and a pointer moved into either has left the deck.
+
+While the deck moves back from hidden or comes up as a banner, the region is what of the deck is
+hit as drawn (#133): `DeckHitBox` is under the hide motion, so a gap counts. The box is where the
+deck will rest, and the motion draws it elsewhere until then. An overflowing deck's band past the
+far cut is the deck's at rest and the app's during the move.
 
 A pointer counts once it **moves, presses or turns the wheel** there — a toast that
 lands under a pointer nobody moved counts down as usual.

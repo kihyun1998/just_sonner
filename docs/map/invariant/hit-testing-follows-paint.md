@@ -46,6 +46,11 @@ band the deck should have cut, which is the paint half of the same gap.
   report at the other end; with a 200 px cap, a tap 12 px past the far cut did not
   reach the app. Cutting the far end with no cap too removed the only case the stretch
   had been for, and hit-testing took the cut.
+- **#133** — the box is where the deck rests, and the hide motion moves the deck inside it, so
+  on the way back the deck held a click on nothing drawn: 32 ms after `reveal()` the toast was at
+  y 613 and a press at its resting place reached no app. While the hide value is above 0 the region
+  answers from whether anything of the deck was hit, which goes through the motion's own
+  transforms and so needs nothing from a `hideMotion` builder.
 
 Each change that cut the deck (#62, #86, #101) had to be kept from disagreeing with the
 stretch; that recurrence is what this note replaces.
