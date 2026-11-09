@@ -83,3 +83,8 @@ states outright, so anything resting on them carries forward as needing confirma
   toast is built and laid out however few are drawn. The cost has never been measured,
   so it is a shape rather than a defect.
 - **Not covered**: a mode-2 host first mounted while the app is hidden.
+- **Open**: a toast already inside the window at a window fade of exactly 0 is not `_Slot.hidden`,
+  so it runs an exit that is drawn if the deck fans out. With a window of 1, dismissing the front
+  toast, the one behind it on exactly the next frame, then `open()`: 12 frames on stage. A frame
+  later it is fading in and its exit is right. A timer cannot reach this, since toasts running
+  out in one tick share one notification (#126).
