@@ -9411,33 +9411,36 @@ void main() {
         expect(taps, 0);
       });
 
-      testWidgets('a mouse press cancelled by hiding leaves the focus '
-          'highlight as it was', variant: TargetPlatformVariant.only(TargetPlatform.windows), (tester) async {
-        final controller = deckWith();
-        await tester.pumpWidget(app(controller: controller));
-        controller.show('Old');
-        await settle(tester);
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.pump();
-        expect(
-          FocusManager.instance.highlightMode,
-          FocusHighlightMode.traditional,
-        );
-        final centre = boxOf(tester, 'Old').center;
-        final mouse = await mouseAt(tester, centre);
-        await mouse.down(centre);
-        await tester.pump();
+      testWidgets(
+        'a mouse press cancelled by hiding leaves the focus highlight as it was',
+        (tester) async {
+          final controller = deckWith();
+          await tester.pumpWidget(app(controller: controller));
+          controller.show('Old');
+          await settle(tester);
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+          expect(
+            FocusManager.instance.highlightMode,
+            FocusHighlightMode.traditional,
+          );
+          final centre = boxOf(tester, 'Old').center;
+          final mouse = await mouseAt(tester, centre);
+          await mouse.down(centre);
+          await tester.pump();
 
-        controller.zone.hide();
-        await settle(tester);
-        await mouse.up();
-        await settle(tester);
+          controller.zone.hide();
+          await settle(tester);
+          await mouse.up();
+          await settle(tester);
 
-        expect(
-          FocusManager.instance.highlightMode,
-          FocusHighlightMode.traditional,
-        );
-      });
+          expect(
+            FocusManager.instance.highlightMode,
+            FocusHighlightMode.traditional,
+          );
+        },
+        variant: TargetPlatformVariant.only(TargetPlatform.windows),
+      );
 
       testWidgets('a click on a banner\'s close button completes', (
         tester,
