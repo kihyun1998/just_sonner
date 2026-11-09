@@ -9,6 +9,10 @@
   toast showed again for about 100 ms after it had gone. A toast leaving a deck that is still on
   screen, a banner included, exits as before. A builder's `ToastView.animation` does not run down
   for a toast with no exit, and `ToastView.dismiss`'s future completes as it is removed.
+- **A deck brought back while it hides comes back** (#124). With the pointer holding the deck, a
+  listener that called `zone.reveal()`, `zone.open()` or showed a toast in the notification
+  `zone.hide()` sends left the deck out of sight and out of reach, with the zone reading as shown
+  or open, or a banner up. The deck now ends where the zone's state says.
 
 ## 0.5.0
 

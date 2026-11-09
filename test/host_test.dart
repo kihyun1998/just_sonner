@@ -3482,6 +3482,114 @@ void main() {
           await tester.pumpAndSettle();
         });
 
+        for (final press in [false, true]) {
+          final hold = press ? 'a press carried off' : 'a hover';
+
+          /// One toast on the deck, held by [hold].
+          Future<TestGesture> holdDeck(WidgetTester tester) async {
+            await tester.pumpWidget(app(controller: controller));
+            await showMany(tester, controller, 1);
+            final at = boxOf(tester, 'Toast 0').center;
+            final mouse = await mouseAt(tester, at);
+            if (press) {
+              await mouse.down(at);
+              await tester.pump();
+              await mouse.moveTo(const Offset(400, 100));
+              await tester.pump();
+            }
+            expect(controller.zone.held, isTrue);
+            return mouse;
+          }
+
+          testWidgets('hiding under $hold takes the deck out of reach', (
+            tester,
+          ) async {
+            final mouse = await holdDeck(tester);
+
+            controller.zone.hide();
+            await tester.pumpAndSettle();
+
+            expect(controller.zone.state, ZoneState.hidden);
+            expect(controller.zone.held, isFalse);
+            expect(find.text('Toast 0').hitTestable(), findsNothing);
+            expect(boxOf(tester, 'Toast 0').top, greaterThanOrEqualTo(600));
+            if (press) await mouse.up();
+            await tester.pumpAndSettle();
+          });
+
+          for (final (call, state, front, act)
+              in <(String, ZoneState, String, void Function())>[
+                (
+                  'reveal()',
+                  ZoneState.shown,
+                  'Toast 0',
+                  () => controller.zone.reveal(),
+                ),
+                (
+                  'open()',
+                  ZoneState.open,
+                  'Toast 0',
+                  () => controller.zone.open(),
+                ),
+                (
+                  'show()',
+                  ZoneState.hidden,
+                  'Late',
+                  () => controller.show('Late'),
+                ),
+              ]) {
+            testWidgets('$call in the notification a hide under $hold sends '
+                'brings the deck back within reach', (tester) async {
+              final mouse = await holdDeck(tester);
+              var acted = false;
+              controller.addListener(() {
+                if (acted || controller.zone.state != ZoneState.hidden) return;
+                acted = true;
+                act();
+              });
+
+              controller.zone.hide();
+              await tester.pumpAndSettle();
+
+              expect(acted, isTrue);
+              expect(controller.zone.state, state);
+              expect(zoneBanner(controller), state == ZoneState.hidden);
+              expect(controller.zone.held, isFalse);
+              expect(find.text(front).hitTestable(), findsOneWidget);
+              expect(boxOf(tester, front).bottom, moreOrLessEquals(576));
+              if (press) await mouse.up();
+              await tester.pumpAndSettle();
+            });
+          }
+
+          testWidgets('reveal() as held falls, from a listener registered '
+              'before the host, in a hide under $hold brings the deck back '
+              'within reach', (tester) async {
+            var wasHeld = false;
+            var acted = false;
+            controller.addListener(() {
+              final held = controller.zone.held;
+              if (wasHeld && !held && !acted) {
+                acted = true;
+                controller.zone.reveal();
+              }
+              wasHeld = held;
+            });
+            final mouse = await holdDeck(tester);
+
+            controller.zone.hide();
+            await tester.pumpAndSettle();
+
+            expect(acted, isTrue);
+            expect(controller.zone.state, ZoneState.shown);
+            expect(controller.zone.held, isFalse);
+            expect(find.text('Toast 0').hitTestable(), findsOneWidget);
+            expect(boxOf(tester, 'Toast 0').bottom, moreOrLessEquals(576));
+            if (press) await mouse.up();
+            await tester.pumpAndSettle();
+          });
+        }
+
         testWidgets('an app collapsing its expansion once held falls folds the '
             'deck up when the pointer leaves', (tester) async {
           await tester.pumpWidget(app(controller: controller));

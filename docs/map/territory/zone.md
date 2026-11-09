@@ -47,6 +47,16 @@ The test is the hide value the deck is drawn by, because a listener that runs be
 host's calls `reveal()` first, and the state and the host's flag both then read shown with
 nothing yet on screen.
 
+Hiding sets the hide target **before** it lets go of the pointer. Letting go notifies through
+`held`, and a listener can bring the deck back in that notification with `reveal()`, `open()` or
+a new toast's banner. That change is the later one and has to stand. With the target set after
+the notification, the outer call put it back to 1 and the deck settled out of sight while the
+state read shown: the toast's text at 682 against 540 in an 800x600 window, until the next hide
+and reveal (#124). A listener acting on `held` falling reaches this whichever side of the host's
+it is registered on. One acting on the state reaches it only when registered after the host's,
+since from before it acts before the host starts hiding. With nothing holding the deck `held`
+does not change, so nothing notifies part way through.
+
 ## Code
 `controller.dart` — SonnerZone, ZoneState, zoneBanner
 `host.dart` — ToastLayer
