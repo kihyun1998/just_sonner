@@ -247,6 +247,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _config = _controller.config;
     _scroll.motion = _config.wheelMotion;
     _hiddenShown = _hiddenNow;
+    if (_hiddenShown) {
+      _pressed.clear();
+      _setHovered(_moved.clear);
+    }
     _hide.jump(_hiddenShown ? 1 : 0);
     _empty.jump(_emptyTarget);
     _glide.jump(1);
@@ -404,7 +408,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// under a pointer that stays where it is — a toast shown under it, or the
   /// deck closing a gap.
   void _movePointer(int device) {
-    if (!_pointers.contains(device)) return;
+    if (_hiddenShown || !_pointers.contains(device)) return;
     _setHovered(() => _moved.add(device));
   }
 
@@ -436,13 +440,15 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
 
   /// Takes a press on the deck, or lets one go. It holds no timer of its own:
   /// a press that stays is a pointer over the deck, which pauses already, and
-  /// one that becomes a swipe is held by the drag.
+  /// one that becomes a swipe is held by the drag. A press on a deck hidden
+  /// by then is not taken.
   void _setPressed(int device, {required bool down}) {
     // The hit test a press was routed through outlives this host: a pointer
     // that went down on the deck reports going up through it even once the
     // host has left the tree, and nothing here is alive to answer with.
     if (!mounted) return;
     if (down) _movePointer(device);
+    if (down && _hiddenShown) return;
     final was = _interacting;
     if (down) {
       _pressed.add(device);
@@ -541,6 +547,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   );
 
   void _swipeStart(_Slot slot, DragStartDetails details) {
+    if (_pressed.isEmpty) return;
     slot.drag = SwipeDrag(
       directions: _controller.config.swipeDirectionsNow,
       at: details.sourceTimeStamp ?? Duration.zero,

@@ -1124,7 +1124,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - A wheel turned over a control past the far end glides the deck, at the top and at the bottom
 - Hiding takes the deck out of sight and lets go of the pointer as it goes — the timers run
   again, a press no longer holds the deck open when it comes back, and a swipe under way does not
-  dismiss its toast; a pointer moving where the deck was holds nothing; a hidden deck is out of the
+  dismiss its toast; a press that hides the deck from a listener, on either side of the host, and one a
+  host carries to a hidden controller are let go of and no swipe starts from them, while a banner
+  still takes a press and its swipe; a pointer moving where the deck was holds nothing; a hidden deck is out of the
   semantics tree; a new toast shows the deck as a banner with the older toasts in it until it has
   gone and the pointer has left, the banner takes the pointer and pauses the timers under it, and
   Hide on it takes it down; the last toast timing out while hidden leaves the deck out of sight,
@@ -1431,6 +1433,7 @@ outside v0.1 is in §2's non-goals.
 | It is decided from the value the deck is drawn by, the hide value at 1, not from the zone's state or the host's flag | derived | #123. An app's listener can run first and call `reveal()` inside the same notification, so both already read shown while the deck is still wholly out of sight. Seen in tests: either stand-in fails the listener registered before the host, and a banner's own toast |
 | A toast beyond `visibleToasts` with nothing drawing it has no exit, whichever way it left and whatever fans the deck out | maintainer | #126, at triage. Shown: pixels differing from the first pixel over 24 frames 16 ms apart, against the same fan-out once the exit was over: a dismiss 11 frames apart and 7,664 px at the peak, a timer 9 frames and 7,680 px, the same by `open()` and by a pointer; and that a one-condition spike made every frame match. Taken over keeping the 200 ms exit undrawn, which was not measured, and over leaving it as it was. It is what §7's "without coming back into view" means. **Not covered**: not seen by eye; a custom `hideMotion` |
 | It is decided from `_Slot.hidden`, what the last build kept offstage, not from its place in the window | derived | #126. The place alone removes at once a toast crossing the window's edge, one a lowered window is fading out and one leaving a deck fanned out or folding, all of which are on screen. Seen by mutation: each of those tests fails with the place alone |
+| A press and a hover ask whether the host draws the deck hidden, not the zone's state; a swipe asks whether its press is still held | derived | #128, from §7's "a press the deck was under is let go of". A banner is a hidden zone whose deck is drawn and takes the pointer, so the state turns its press away. A press let go of can still win its gesture after the deck has come back, so asking whether the deck is hidden starts that swipe. Seen by mutation: each stand-in fails its test |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

@@ -8988,6 +8988,275 @@ void main() {
       );
     });
 
+    group('a pointer and a hidden deck', () {
+      const at = Offset(600, 560);
+
+      /// Carries [mouse] 360 px to the right, past the swipe's threshold.
+      Future<void> swipeRight(WidgetTester tester, TestGesture mouse) async {
+        for (var step = 0; step < 6; step++) {
+          await mouse.moveBy(const Offset(60, 0));
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+      }
+
+      for (final listenerFirst in [true, false]) {
+        final order = listenerFirst ? 'before' : 'after';
+
+        /// A toast under a mouse that has not moved, and a listener that
+        /// hides the zone as `held` rises.
+        Future<(SonnerController, TestGesture)> hiddenByThePress(
+          WidgetTester tester,
+        ) async {
+          final controller = deckWith();
+          var acted = false;
+          void hideAsHeld() {
+            if (acted || !controller.zone.held) return;
+            acted = true;
+            controller.zone.hide();
+          }
+
+          if (listenerFirst) controller.addListener(hideAsHeld);
+          await tester.pumpWidget(app(controller: controller));
+          if (!listenerFirst) controller.addListener(hideAsHeld);
+          final mouse = await tester.createGesture(
+            kind: PointerDeviceKind.mouse,
+          );
+          await mouse.addPointer(location: at);
+          addTearDown(mouse.removePointer);
+          controller.show('Old');
+          await settle(tester);
+          expect(boxOf(tester, 'Old').contains(at), isTrue);
+          expect(controller.zone.held, isFalse);
+
+          await mouse.down(at);
+          await settle(tester);
+          expect(acted, isTrue);
+          expect(controller.zone.state, ZoneState.hidden);
+          return (controller, mouse);
+        }
+
+        testWidgets('a press that hides the deck, from a listener registered '
+            '$order the host, is let go of', (tester) async {
+          final (controller, mouse) = await hiddenByThePress(tester);
+
+          expect(controller.zone.held, isFalse);
+          expect(timersPaused(controller), isFalse);
+
+          await mouse.up();
+          await settle(tester);
+        });
+
+        testWidgets('a swipe from a press that hides the deck, from a listener '
+            'registered $order the host, dismisses nothing', (tester) async {
+          final (controller, mouse) = await hiddenByThePress(tester);
+
+          await swipeRight(tester, mouse);
+          expect(controller.zone.held, isFalse);
+          await mouse.up();
+          await settle(tester);
+
+          expect(controller.count, 1);
+          controller.zone.reveal();
+          await settle(tester);
+          expect(find.text('Old').hitTestable(), findsOneWidget);
+        });
+      }
+
+      for (final carried in [true, false]) {
+        final how = carried ? 'a press carried off the deck' : 'a press on it';
+
+        testWidgets('$how goes with a host handed a hidden controller', (
+          tester,
+        ) async {
+          final drawn = deckWith();
+          final hidden = deckWith();
+          await tester.pumpWidget(app(controller: drawn));
+          drawn.show('Drawn');
+          hidden.show('Hidden away');
+          hidden.zone.hide();
+          await settle(tester);
+          final centre = boxOf(tester, 'Drawn').center;
+          final mouse = await mouseAt(tester, centre);
+          await mouse.down(centre);
+          await tester.pump();
+          if (carried) {
+            await mouse.moveTo(const Offset(400, 100));
+            await tester.pump();
+          }
+          expect(drawn.zone.held, isTrue);
+          var heardHeld = false;
+          hidden.addListener(() => heardHeld |= hidden.zone.held);
+
+          await tester.pumpWidget(app(controller: hidden));
+          await settle(tester);
+
+          expect(heardHeld, isFalse);
+          expect(hidden.zone.state, ZoneState.hidden);
+          expect(hidden.zone.held, isFalse);
+          expect(timersPaused(hidden), isFalse);
+          expect(drawn.zone.held, isFalse);
+
+          await mouse.up();
+          await settle(tester);
+          expect(hidden.count, 1);
+        });
+      }
+
+      testWidgets('a press a builder hides the deck under is not held for a '
+          'frame', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show(
+          'Built',
+          builder: (context, toast) => Listener(
+            onPointerDown: (_) => controller.zone.hide(),
+            child: const Material(child: Text('Built')),
+          ),
+        );
+        await settle(tester);
+        final centre = boxOf(tester, 'Built').center;
+        final mouse = await mouseAt(tester, centre);
+        var heardHeld = false;
+        controller.addListener(() {
+          if (controller.zone.state != ZoneState.hidden) return;
+          heardHeld |= controller.zone.held;
+        });
+
+        await mouse.down(centre);
+
+        expect(controller.zone.state, ZoneState.hidden);
+        expect(heardHeld, isFalse);
+        expect(controller.zone.held, isFalse);
+        expect(timersPaused(controller), isFalse);
+        await mouse.up();
+        await settle(tester);
+      });
+
+      for (final banner in [false, true]) {
+        final back = banner ? 'a banner' : 'reveal()';
+
+        testWidgets('a press let go of by hiding starts no swipe when $back '
+            'brings the deck back', (tester) async {
+          final controller = deckWith();
+          await tester.pumpWidget(app(controller: controller));
+          controller.show(
+            'Built',
+            builder: (context, toast) => GestureDetector(
+              onTap: () {},
+              child: const Material(child: Text('Built')),
+            ),
+          );
+          await settle(tester);
+          final centre = boxOf(tester, 'Built').center;
+          final mouse = await mouseAt(tester, centre);
+          await mouse.down(centre);
+          await tester.pump();
+
+          controller.zone.hide();
+          await settle(tester);
+          if (banner) {
+            controller.show('Late');
+          } else {
+            controller.zone.reveal();
+          }
+          await settle(tester);
+          final count = controller.count;
+
+          await swipeRight(tester, mouse);
+          await mouse.up();
+          await settle(tester);
+
+          expect(controller.count, count);
+        });
+      }
+
+      testWidgets('a press on a banner holds the deck, and its swipe '
+          'dismisses', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.zone.hide();
+        await settle(tester);
+        controller.show('Banner');
+        await settle(tester);
+        expect(zoneBanner(controller), isTrue);
+        final centre = boxOf(tester, 'Banner').center;
+        final mouse = await mouseAt(tester, centre);
+
+        await mouse.down(centre);
+        await tester.pump();
+        expect(controller.zone.held, isTrue);
+
+        await swipeRight(tester, mouse);
+        await mouse.up();
+        await settle(tester);
+        expect(controller.count, 0);
+      });
+
+      testWidgets('a press on a banner holds the deck carried off it', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.zone.hide();
+        await settle(tester);
+        controller.show('Banner');
+        await settle(tester);
+        final centre = boxOf(tester, 'Banner').center;
+        final mouse = await mouseAt(tester, centre);
+
+        await mouse.down(centre);
+        await tester.pump();
+        await mouse.moveTo(const Offset(400, 100));
+        await tester.pump();
+        expect(controller.zone.held, isTrue, reason: 'the press, not a hover');
+
+        await mouse.up();
+        await settle(tester);
+        expect(controller.zone.held, isFalse);
+      });
+
+      testWidgets('a press on a shown deck, hidden by the app before its '
+          'swipe, dismisses nothing', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Old');
+        await settle(tester);
+        final centre = boxOf(tester, 'Old').center;
+        final mouse = await mouseAt(tester, centre);
+        await mouse.down(centre);
+        await tester.pump();
+
+        controller.zone.hide();
+        await settle(tester);
+        await swipeRight(tester, mouse);
+        await mouse.up();
+        await settle(tester);
+
+        expect(controller.zone.held, isFalse);
+        expect(controller.count, 1);
+      });
+
+      testWidgets('a press on a shown deck holds it, and its swipe dismisses', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Old');
+        await settle(tester);
+        final centre = boxOf(tester, 'Old').center;
+        final mouse = await mouseAt(tester, centre);
+
+        await mouse.down(centre);
+        await tester.pump();
+        expect(controller.zone.held, isTrue);
+
+        await swipeRight(tester, mouse);
+        await mouse.up();
+        await settle(tester);
+        expect(controller.count, 0);
+      });
+    });
+
     testWidgets('a press held through hiding does not hold the deck open '
         'when it comes back', (tester) async {
       final controller = deckWith();

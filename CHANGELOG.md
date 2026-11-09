@@ -19,6 +19,10 @@
   leaving a deck that is fanned out, exits as before. As for a hidden deck, `ToastView.animation`
   does not run down for a toast with no exit, and `ToastView.dismiss`'s future completes as it is
   removed.
+- **A press does not hold a hidden deck** (#128). A press that hid the deck from a listener, or
+  that a host carried to a hidden controller, left `zone.held` true on a deck nothing drew, and a
+  swipe from it dismissed a toast out of sight. It is now let go of, as hiding lets go of any other
+  press, and no swipe starts from it. A banner takes a press and a swipe as before.
 
 ## 0.5.0
 

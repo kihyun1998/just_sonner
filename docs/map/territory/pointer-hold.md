@@ -37,6 +37,16 @@ arriving moves no animation.
 another controller, the host's own dispose. Two of those run mid-frame, so a change
 there reaches listeners at the frame's end, and never a controller disposed in it.
 
+Hiding lets go of the pointer once, so what takes it afterwards checks for itself: a pointer
+moving or pressing on a deck already hidden, a press landing as a listener hides the deck, and a
+press or hover a host carries to a hidden controller (#128). The check is the host's
+`_hiddenShown`, what `IgnorePointer` reads, and not the zone's state, since a banner is a hidden
+zone taking the pointer. A swipe asks instead whether its press is still in `_pressed`. A drag alone
+in the gesture arena starts on the press, but one sharing it with a tap wins only past the slop,
+which can be after the deck has come back, with the press let go of and nothing hidden any more.
+A wheel turned as a listener hides the deck takes no further check: the deck scrolls to no effect
+and is back at its edge when it is opened again, 542 either way against 782 scrolled.
+
 ## Code
 `host.dart` — DeckHitBox, _DeckRegion, _RenderDeckRegion, ToastLayer
 `controller.dart` — SonnerController, holdDeck, releaseDeck
