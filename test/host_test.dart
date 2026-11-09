@@ -3,9 +3,10 @@ import 'dart:ui' as ui;
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart' show PointerDeviceKind, kPressTimeout;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
@@ -9239,6 +9240,224 @@ void main() {
           expect(hidden.count, 1);
         });
       }
+
+      for (final byListener in [false, true]) {
+        final by = byListener ? 'a listener on held' : 'the app';
+
+        for (final back in [
+          'stays hidden',
+          'is revealed',
+          'puts a banner up',
+        ]) {
+          testWidgets('a click on the close button, the deck hidden by $by, '
+              'dismisses nothing when it $back before the release', (
+            tester,
+          ) async {
+            final controller = deckWith();
+            await tester.pumpWidget(app(controller: controller));
+            controller.show('Old', closeButton: true);
+            await settle(tester);
+            final close = tester.getCenter(find.byIcon(Icons.close));
+            final TestGesture mouse;
+            if (byListener) {
+              mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+              await mouse.addPointer(location: close);
+              addTearDown(mouse.removePointer);
+              await tester.pump();
+              var acted = false;
+              controller.addListener(() {
+                if (acted || !controller.zone.held) return;
+                acted = true;
+                controller.zone.hide();
+              });
+            } else {
+              mouse = await mouseAt(tester, close);
+            }
+
+            await mouse.down(close);
+            await tester.pump();
+            if (!byListener) controller.zone.hide();
+            await settle(tester);
+            expect(controller.zone.state, ZoneState.hidden);
+            final before = controller.count;
+            if (back == 'is revealed') controller.zone.reveal();
+            if (back == 'puts a banner up') controller.show('Late');
+            await settle(tester);
+            final expected = controller.count;
+            await mouse.up();
+            await settle(tester);
+
+            expect(before, 1);
+            expect(controller.count, expected);
+          });
+        }
+      }
+
+      testWidgets("a click on a builder's control is cancelled by hiding, and "
+          'the next one lands', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        var taps = 0;
+        var cancels = 0;
+        controller.show(
+          'Built',
+          builder: (context, toast) => GestureDetector(
+            onTap: () => taps++,
+            onTapCancel: () => cancels++,
+            child: const Material(child: Text('Built')),
+          ),
+        );
+        await settle(tester);
+        final centre = boxOf(tester, 'Built').center;
+        final mouse = await mouseAt(tester, centre);
+        await mouse.down(centre);
+        await tester.pump(kPressTimeout * 2);
+
+        controller.zone.hide();
+        await settle(tester);
+        await mouse.up();
+        await settle(tester);
+        expect(taps, 0);
+        expect(cancels, 1);
+
+        controller.zone.reveal();
+        await settle(tester);
+        await mouse.moveTo(centre);
+        await tester.pump();
+        await mouse.down(centre);
+        await tester.pump();
+        await mouse.up();
+        await settle(tester);
+        expect(taps, 1);
+      });
+
+      testWidgets('a control whose own click hides the deck completes once', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        var taps = 0;
+        controller.show(
+          'Built',
+          builder: (context, toast) => GestureDetector(
+            onTap: () {
+              taps++;
+              controller.zone.hide();
+            },
+            child: const Material(child: Text('Built')),
+          ),
+        );
+        await settle(tester);
+        final centre = boxOf(tester, 'Built').center;
+        final mouse = await mouseAt(tester, centre);
+
+        await mouse.down(centre);
+        await tester.pump();
+        await mouse.up();
+        await settle(tester);
+
+        expect(taps, 1);
+        expect(controller.zone.state, ZoneState.hidden);
+        expect(controller.count, 1);
+      });
+
+      testWidgets('a click on a banner\'s close button is cancelled when the '
+          'app hides over it', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.zone.hide();
+        await settle(tester);
+        controller.show('Banner', closeButton: true);
+        await settle(tester);
+        final close = tester.getCenter(find.byIcon(Icons.close));
+        final mouse = await mouseAt(tester, close);
+        await mouse.down(close);
+        await tester.pump();
+
+        controller.zone.hide();
+        await settle(tester);
+        await mouse.up();
+        await settle(tester);
+
+        expect(controller.count, 1);
+      });
+
+      testWidgets('the cancel reaches a tap detector around the host', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        var taps = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) => GestureDetector(
+              onTap: () => taps++,
+              child: SonnerHost(controller: controller, child: child!),
+            ),
+            home: const SizedBox.expand(),
+          ),
+        );
+        controller.show('Old');
+        await settle(tester);
+        final centre = boxOf(tester, 'Old').center;
+        final mouse = await mouseAt(tester, centre);
+        await mouse.down(centre);
+        await tester.pump();
+
+        controller.zone.hide();
+        await settle(tester);
+        await mouse.up();
+        await settle(tester);
+
+        expect(taps, 0);
+      });
+
+      testWidgets('a mouse press cancelled by hiding leaves the focus '
+          'highlight as it was', variant: TargetPlatformVariant.only(TargetPlatform.windows), (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Old');
+        await settle(tester);
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+        expect(
+          FocusManager.instance.highlightMode,
+          FocusHighlightMode.traditional,
+        );
+        final centre = boxOf(tester, 'Old').center;
+        final mouse = await mouseAt(tester, centre);
+        await mouse.down(centre);
+        await tester.pump();
+
+        controller.zone.hide();
+        await settle(tester);
+        await mouse.up();
+        await settle(tester);
+
+        expect(
+          FocusManager.instance.highlightMode,
+          FocusHighlightMode.traditional,
+        );
+      });
+
+      testWidgets('a click on a banner\'s close button completes', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.zone.hide();
+        await settle(tester);
+        controller.show('Banner', closeButton: true);
+        await settle(tester);
+        final close = tester.getCenter(find.byIcon(Icons.close));
+        final mouse = await mouseAt(tester, close);
+
+        await mouse.down(close);
+        await tester.pump();
+        await mouse.up();
+        await settle(tester);
+
+        expect(controller.count, 0);
+      });
 
       testWidgets('a press a builder hides the deck under is not held for a '
           'frame', (tester) async {

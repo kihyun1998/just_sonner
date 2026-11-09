@@ -908,7 +908,9 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   stop are the drawn time left's alone (above); the countdown is the controller's own `Timer` and
   never ran on them. What hiding does end is the **pointer's** hold: nothing
   drawn is hovered, so the pause the pointer had goes at once, a press the deck was under is let
-  go of, and a swipe under way is called off and springs back. A toast with no timer, or loading,
+  go of and cancelled, so that a click on a toast's control does not complete out of sight, and a
+  swipe under way is called off and springs back. The cancel is the pointer's, and reaches
+  everything it was routed through. A toast with no timer, or loading,
   waits in the zone until it is dismissed, which is why the zone is not the §2 notification
   centre: it holds live toasts only, and nothing outlives its own duration.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
@@ -1130,7 +1132,12 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   again, a press no longer holds the deck open when it comes back, and a swipe under way does not
   dismiss its toast; a press that hides the deck from a listener, on either side of the host, and one a
   host carries to a hidden controller are let go of and no swipe starts from them, while a banner
-  still takes a press and its swipe; a pointer moving where the deck was holds nothing; a hidden deck is out of the
+  still takes a press and its swipe; a click on the close button or a builder's control is cancelled
+  by a hide from the app or a listener, whether the deck stays hidden, comes back or a banner goes
+  up before the release, the next click lands and a control whose own click hides the deck
+  completes, a press on a banner the app hides over is cancelled too, the cancel reaches a tap
+  detector around the host, and a mouse press cancelled leaves the focus highlight as it was; a
+  pointer moving where the deck was holds nothing; a hidden deck is out of the
   semantics tree; a new toast shows the deck as a banner with the older toasts in it until it has
   gone and the pointer has left, the banner takes the pointer and pauses the timers under it, and
   Hide on it takes it down; the last toast timing out while hidden leaves the deck out of sight,
@@ -1437,7 +1444,8 @@ outside v0.1 is in §2's non-goals.
 | It is decided from the value the deck is drawn by, the hide value at 1, not from the zone's state or the host's flag | derived | #123. An app's listener can run first and call `reveal()` inside the same notification, so both already read shown while the deck is still wholly out of sight. Seen in tests: either stand-in fails the listener registered before the host, and a banner's own toast |
 | A toast beyond `visibleToasts` with nothing drawing it has no exit, whichever way it left and whatever fans the deck out | maintainer | #126, at triage. Shown: pixels differing from the first pixel over 24 frames 16 ms apart, against the same fan-out once the exit was over: a dismiss 11 frames apart and 7,664 px at the peak, a timer 9 frames and 7,680 px, the same by `open()` and by a pointer; and that a one-condition spike made every frame match. Taken over keeping the 200 ms exit undrawn, which was not measured, and over leaving it as it was. It is what §7's "without coming back into view" means. **Not covered**: not seen by eye; a custom `hideMotion` |
 | It is decided from `_Slot.hidden`, what the last build kept offstage, not from its place in the window | derived | #126. The place alone removes at once a toast crossing the window's edge, one a lowered window is fading out and one leaving a deck fanned out or folding, all of which are on screen. Seen by mutation: each of those tests fails with the place alone |
-| A press and a hover ask whether the host draws the deck hidden, not the zone's state; a swipe asks whether its press is still held | derived | #128, from §7's "a press the deck was under is let go of". A banner is a hidden zone whose deck is drawn and takes the pointer, so the state turns its press away. A press let go of can still win its gesture after the deck has come back, so asking whether the deck is hidden starts that swipe. Seen by mutation: each stand-in fails its test |
+| A press and a hover ask whether the host draws the deck hidden, not the zone's state | derived | #128, from §7's "a press the deck was under is let go of". A banner is a hidden zone whose deck is drawn and takes the pointer, so the state turns its press away. Seen by mutation: the stand-in fails a banner's test. A swipe needs no check of its own since #132 cancels the press |
+| Hiding cancels the pointers pressed on the deck, so a click under way does not complete | maintainer | #132, at triage. Shown: a close button dismissing a toast out of sight and a builder's button firing, the result of cancelling the pointer with no unmounting, that the cancel also reaches a tap detector the app wraps around the host, and the alternatives of letting the click finish with §7 reworded, or leaving it. Then shown, after review: that the SDK's `cancelPointer` sends a touch-kind cancel, which turned the whole app's focus highlight to touch mode until the next key, that a cancel of the pointer's own kind does not, and that hover on the app's widgets is stale until the next move after the release; kept. **Not covered**: not seen on a device; touch; a builder's own drag recognizer |
 | The dismiss-all control re-reads each toast as it reaches it, on `dismissibleNow` and on being the same toast | maintainer | #129, at triage. Shown: what is left of three toasts when a listener changes the other two in the first dismissal, now and with a spike, and the alternatives of leaving any toast changed since the build, which also leaves one whose title alone changed and keeps the built state, and of leaving it as it was. **Not covered**: a toast replaced at its id during the press is dismissed if it is dismissible, content the user has not seen. A listener's `hide()` during the press does not stop the rest, and one made dismissible during it is not reached; both reproduced and left so by the maintainer, the press being for what the control showed |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
