@@ -17,7 +17,8 @@ class DeckDismissAllView {
   /// the ones beyond the window included.
   final int count;
 
-  /// Dismisses those toasts. Toasts loading or not dismissible stay.
+  /// Dismisses those toasts. Toasts loading or not dismissible stay, read as
+  /// each is reached.
   final VoidCallback dismiss;
 
   /// How far the deck is fanned out, from 0 collapsed to 1 expanded, which a

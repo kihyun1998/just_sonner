@@ -37,7 +37,7 @@ it on both the state and `held`, since they are told apart by when they fire.
 - **#128** — a press adds itself after the notification `_movePointer` sends, so a `hide()` in
   it is followed by a new hold. Fixed by asking again after it.
 - **#129** — dismiss-all walks a list read at build, past a listener's `update` in the first
-  dismissal. Open.
+  dismissal. Fixed by reading each toast as it is reached.
 
 Three, none calling another.
 
@@ -45,4 +45,4 @@ Three, none calling another.
 Any new line after something that can notify: a call to `_publishHold`, `dismiss`, `show`,
 `update` or a zone method, in the host or in a control's callback. `_onToastsChanged` and
 `_setHeld` defer to the end of a frame only during a build, layout or paint; a pointer event
-and an app's own call are neither.
+and an app's own call outside its build are neither.

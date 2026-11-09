@@ -18,7 +18,7 @@ class DeckDismissAllButton extends StatelessWidget {
 
   final DeckDismissAll control;
 
-  /// How many toasts [onDismiss] dismisses.
+  /// How many toasts [onDismiss] would dismiss as the deck stood when built.
   final int count;
   final VoidCallback onDismiss;
 

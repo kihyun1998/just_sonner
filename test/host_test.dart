@@ -10,7 +10,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/content_fade.dart';
 import 'package:just_sonner/src/controller.dart'
-    show timersPaused, toastsOf, zoneBanner;
+    show ToastRecord, timersPaused, toastsOf, zoneBanner;
 import 'package:just_sonner/src/look/deck_backdrop.dart' show DeckBackdropBox;
 import 'package:just_sonner/src/host.dart' show DeckHitBox;
 import 'package:just_sonner/src/deck_layout.dart' show ToastHeight;
@@ -5140,6 +5140,144 @@ void main() {
         );
         image.dispose();
         expect(alpha, greaterThan(0));
+      });
+
+      group('a listener changing toasts while it dismisses them', () {
+        /// Runs [change] on each toast left, once, as the count first falls.
+        void changeTheRest(
+          SonnerController controller,
+          void Function(ToastRecord) change,
+        ) {
+          var was = controller.count;
+          var changed = false;
+          controller.addListener(() {
+            final fell = controller.count < was;
+            was = controller.count;
+            if (!fell || changed) return;
+            changed = true;
+            toastsOf(controller).toList().forEach(change);
+            was = controller.count;
+          });
+        }
+
+        List<String> titles(SonnerController controller) => [
+          for (final record in toastsOf(controller)) record.state.title,
+        ];
+
+        for (final listenerFirst in [true, false]) {
+          final order = listenerFirst ? 'before' : 'after';
+
+          for (final (name, change, left)
+              in <
+                (
+                  String,
+                  void Function(SonnerController, ToastRecord),
+                  List<String>,
+                )
+              >[
+                (
+                  'made not dismissible stays',
+                  (c, r) => c.update(r.id, dismissible: false),
+                  ['Toast 0', 'Toast 1'],
+                ),
+                (
+                  'made loading stays',
+                  (c, r) => c.update(r.id, isLoading: true),
+                  ['Toast 0', 'Toast 1'],
+                ),
+                (
+                  'dismissed and shown again at its id stays, as the new one',
+                  (c, r) {
+                    c.dismiss(r.id);
+                    c.show('${r.state.title} again', id: r.id);
+                  },
+                  ['Toast 0 again', 'Toast 1 again'],
+                ),
+                (
+                  'given a new title goes',
+                  (c, r) => c.update(r.id, title: '${r.state.title} edited'),
+                  <String>[],
+                ),
+                (
+                  'replaced at its id goes',
+                  (c, r) => c.show('${r.state.title} replaced', id: r.id),
+                  <String>[],
+                ),
+              ]) {
+            testWidgets('with the listener registered $order the host, a toast '
+                '$name', (tester) async {
+              final controller = deckWith();
+              void listen() =>
+                  changeTheRest(controller, (r) => change(controller, r));
+              if (listenerFirst) listen();
+              await tester.pumpWidget(app(controller: controller));
+              if (!listenerFirst) listen();
+              showToasts(controller, 3);
+              controller.zone.open();
+              await settle(tester);
+
+              await tester.tap(find.text('Clear all'));
+              await settle(tester);
+
+              expect(titles(controller), unorderedEquals(left));
+            });
+          }
+
+          testWidgets('with the listener registered $order the host, a new '
+              'toast stays', (tester) async {
+            final controller = deckWith();
+            var shown = false;
+            void listen() {
+              controller.addListener(() {
+                if (shown || controller.count != 2) return;
+                if (titles(controller).length != 2) return;
+                if (controller.zone.state != ZoneState.open) return;
+                shown = true;
+                controller.show('New');
+              });
+            }
+
+            if (listenerFirst) listen();
+            await tester.pumpWidget(app(controller: controller));
+            showToasts(controller, 3);
+            controller.zone.open();
+            if (!listenerFirst) listen();
+            await settle(tester);
+
+            await tester.tap(find.text('Clear all'));
+            await settle(tester);
+
+            expect(shown, isTrue);
+            expect(titles(controller), ['New']);
+          });
+        }
+
+        testWidgets("a builder's dismiss re-reads each toast too", (
+          tester,
+        ) async {
+          DeckDismissAllView? seen;
+          final controller = deckWith(
+            dismissAll: DeckDismissAll(
+              builder: (context, view) {
+                seen = view;
+                return const SizedBox(width: 50, height: 20);
+              },
+            ),
+          );
+          await tester.pumpWidget(app(controller: controller));
+          changeTheRest(
+            controller,
+            (r) => controller.update(r.id, dismissible: false),
+          );
+          showToasts(controller, 3);
+          controller.zone.open();
+          await settle(tester);
+
+          seen!.dismiss();
+          await settle(tester);
+
+          expect(titles(controller), unorderedEquals(['Toast 0', 'Toast 1']));
+        });
       });
 
       testWidgets('keeps the deck while the pointer moves onto it, and pressed '
