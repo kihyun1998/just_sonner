@@ -8459,6 +8459,279 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    group('a toast beyond the window', () {
+      /// A deck whose window holds one toast.
+      SonnerController windowOfOne() {
+        final controller = deckWith();
+        controller.config = controller.config.copyWith(visibleToasts: 1);
+        return controller;
+      }
+
+      /// 'Old' at rest beyond the window, behind 'Middle' and 'New', counting
+      /// down when [timer].
+      Future<ToastId> showOldBeyond(
+        WidgetTester tester,
+        SonnerController controller, {
+        bool timer = false,
+      }) async {
+        final old = controller.show(
+          'Old',
+          duration: timer ? const Duration(seconds: 1) : null,
+        );
+        controller.show('Middle');
+        controller.show('New');
+        await settle(tester);
+        expect(find.text('Old', skipOffstage: false), findsOneWidget);
+        expect(find.text('Old'), findsNothing, reason: 'not drawn');
+        return old;
+      }
+
+      /// Takes 'Old' out by [timer] or by a dismiss, and pumps the frame that
+      /// handles it.
+      Future<void> leave(
+        WidgetTester tester,
+        SonnerController controller,
+        ToastId old, {
+        required bool timer,
+      }) async {
+        if (timer) {
+          while (controller.count > 2) {
+            await tester.pump(const Duration(milliseconds: 100));
+          }
+        } else {
+          controller.dismiss(old);
+        }
+        expect(controller.count, 2);
+        await tester.pump();
+      }
+
+      for (final timer in [false, true]) {
+        final way = timer ? 'its timer' : 'a dismiss';
+
+        testWidgets('leaving by $way is out of the tree on the next frame', (
+          tester,
+        ) async {
+          final controller = windowOfOne();
+          await tester.pumpWidget(app(controller: controller));
+          final old = await showOldBeyond(tester, controller, timer: timer);
+
+          await leave(tester, controller, old, timer: timer);
+
+          expect(find.text('Old', skipOffstage: false), findsNothing);
+        });
+
+        for (final pointer in [false, true]) {
+          final fan = pointer ? 'a pointer' : 'open()';
+
+          testWidgets('leaving by $way is not drawn when $fan fans the deck '
+              'out', (tester) async {
+            final controller = windowOfOne();
+            await tester.pumpWidget(app(controller: controller));
+            final old = await showOldBeyond(tester, controller, timer: timer);
+
+            await leave(tester, controller, old, timer: timer);
+            if (pointer) {
+              await mouseAt(tester, boxOf(tester, 'New').center);
+            } else {
+              controller.zone.open();
+            }
+
+            await expectNeverDrawn(tester, 'Old');
+            expect(
+              find.text('Middle'),
+              findsOneWidget,
+              reason: 'the deck fanned out',
+            );
+            if (!pointer) controller.zone.close();
+            await tester.pumpAndSettle();
+          });
+
+          testWidgets('leaving by $way, $fan draws frame by frame what it '
+              'draws once the exit would have ended', (tester) async {
+            const away = Offset(40, 40);
+            final mouse = await mouseAt(tester, away);
+
+            /// What is drawn over 24 frames of the deck fanning out, [wait]
+            /// after the toast has left.
+            Future<List<String>> framesAfter(Duration wait) async {
+              final controller = windowOfOne();
+              await tester.pumpWidget(app(controller: controller));
+              final old = await showOldBeyond(tester, controller, timer: timer);
+              await leave(tester, controller, old, timer: timer);
+              await tester.pump(wait);
+              if (pointer) {
+                await mouse.moveTo(boxOf(tester, 'New').center);
+              } else {
+                controller.zone.open();
+              }
+
+              final frames = <String>[];
+              for (var frame = 0; frame < 24; frame++) {
+                await tester.pump(const Duration(milliseconds: 16));
+                final drawn = [
+                  for (final title in ['Old', 'Middle', 'New'])
+                    if (find.text(title).evaluate().isNotEmpty)
+                      '$title ${boxOf(tester, title)}',
+                ];
+                frames.add(drawn.join('; '));
+              }
+
+              await mouse.moveTo(away);
+              if (!pointer) controller.zone.close();
+              await tester.pumpAndSettle();
+              await tester.pumpWidget(const SizedBox());
+              return frames;
+            }
+
+            final straightAfter = await framesAfter(Duration.zero);
+            final exitOver = await framesAfter(
+              const Duration(milliseconds: 500),
+            );
+
+            expect(straightAfter, exitOver);
+          });
+        }
+      }
+
+      for (final listenerFirst in [true, false]) {
+        final order = listenerFirst ? 'before' : 'after';
+
+        /// Opens the zone as the count falls from three to two.
+        void openAsItGoes(SonnerController controller) {
+          var was = controller.count;
+          controller.addListener(() {
+            final fell = was == 3 && controller.count == 2;
+            was = controller.count;
+            if (fell) controller.zone.open();
+          });
+        }
+
+        testWidgets('leaving is not drawn when a listener registered $order '
+            'the host opens the zone', (tester) async {
+          final controller = windowOfOne();
+          if (listenerFirst) openAsItGoes(controller);
+          await tester.pumpWidget(app(controller: controller));
+          if (!listenerFirst) openAsItGoes(controller);
+          final old = await showOldBeyond(tester, controller);
+
+          controller.dismiss(old);
+          expect(controller.zone.state, ZoneState.open);
+          await tester.pump();
+
+          await expectNeverDrawn(tester, 'Old');
+          expect(find.text('Middle'), findsOneWidget);
+          controller.zone.close();
+          await tester.pumpAndSettle();
+        });
+      }
+
+      testWidgets('ToastView.dismiss completes as it is removed, with its '
+          'animation not run down', (tester) async {
+        final controller = windowOfOne();
+        await tester.pumpWidget(app(controller: controller));
+        ToastView? view;
+        final statuses = <AnimationStatus>[];
+        controller.show(
+          'Built',
+          builder: (context, toast) {
+            if (view == null) toast.animation.addStatusListener(statuses.add);
+            view = toast;
+            return const Material(child: Text('Built'));
+          },
+        );
+        controller.show('Middle');
+        controller.show('New');
+        await settle(tester);
+        statuses.clear();
+
+        var done = false;
+        unawaited(view!.dismiss().then((_) => done = true));
+        await tester.pump();
+
+        expect(done, isTrue);
+        expect(find.text('Built', skipOffstage: false), findsNothing);
+        expect(statuses, isEmpty);
+      });
+
+      /// That [title] is drawn part way through its exit.
+      Future<void> expectPartWayOut(WidgetTester tester, String title) async {
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(find.text(title), findsOneWidget);
+        expect(
+          presenceOf(tester, title),
+          allOf(greaterThan(0), lessThan(1)),
+          reason: 'on its way out',
+        );
+        await tester.pumpAndSettle();
+        expect(find.text(title, skipOffstage: false), findsNothing);
+      }
+
+      testWidgets('one crossing the edge of the window as it leaves keeps its '
+          'exit', (tester) async {
+        final controller = windowOfOne();
+        await tester.pumpWidget(app(controller: controller));
+        final old = controller.show('Old');
+        await settle(tester);
+        controller.show('New');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        controller.dismiss(old);
+        await expectPartWayOut(tester, 'Old');
+      });
+
+      testWidgets('one a lowered window is fading out keeps its exit', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        final old = controller.show('Old');
+        controller.show('New');
+        await settle(tester);
+        expect(find.text('Old'), findsOneWidget, reason: 'in the window');
+
+        controller.config = controller.config.copyWith(visibleToasts: 1);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        controller.dismiss(old);
+        await expectPartWayOut(tester, 'Old');
+      });
+
+      testWidgets('one leaving a fanned out deck keeps its exit', (
+        tester,
+      ) async {
+        final controller = windowOfOne();
+        await tester.pumpWidget(app(controller: controller));
+        final old = await showOldBeyond(tester, controller);
+        controller.zone.open();
+        await tester.pumpAndSettle();
+
+        controller.dismiss(old);
+        await expectPartWayOut(tester, 'Old');
+        controller.zone.close();
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('one leaving a deck on its way to folding keeps its exit', (
+        tester,
+      ) async {
+        final controller = windowOfOne();
+        await tester.pumpWidget(app(controller: controller));
+        final old = await showOldBeyond(tester, controller);
+        controller.zone.open();
+        await tester.pumpAndSettle();
+        controller.zone.close();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.text('Old'), findsOneWidget, reason: 'still drawn');
+
+        controller.dismiss(old);
+        await expectPartWayOut(tester, 'Old');
+      });
+    });
+
     testWidgets('hiding takes the deck out of sight and lets go of the '
         'pointer, and a pointer moving where it was holds nothing', (
       tester,

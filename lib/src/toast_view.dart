@@ -18,7 +18,8 @@ abstract interface class ToastView {
 
   /// Runs 0 → 1 as the toast enters and 1 → 0 as it leaves. A builder that
   /// drives it to 0 itself dismisses the toast. A toast that leaves a deck
-  /// wholly out of sight is removed with it where it stands.
+  /// wholly out of sight, or beyond the window with nothing drawing it, is
+  /// removed with it where it stands.
   AnimationController get animation;
 
   /// How much the deck covers the toast: 0 at the front or with the deck
