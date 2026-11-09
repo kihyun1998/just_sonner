@@ -13,6 +13,12 @@
   listener that called `zone.reveal()`, `zone.open()` or showed a toast in the notification
   `zone.hide()` sends left the deck out of sight and out of reach, with the zone reading as shown
   or open, or a banner up. The deck now ends where the zone's state says.
+- **A toast leaving beyond `visibleToasts` is gone at once** (#126). It kept a 200 ms exit nobody
+  could see, and if `zone.open()` or the pointer fanned the deck out during it, the toast showed
+  for up to about 180 ms after it had gone. A toast crossing the edge of the window as it leaves, or
+  leaving a deck that is fanned out, exits as before. As for a hidden deck, `ToastView.animation`
+  does not run down for a toast with no exit, and `ToastView.dismiss`'s future completes as it is
+  removed.
 
 ## 0.5.0
 

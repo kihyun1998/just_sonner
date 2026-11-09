@@ -14,6 +14,8 @@ tick that serves every counting toast.
   `SonnerConfig.configDuration` (maintainer).
 - [spec §12](../../spec.md#12-decision-record) — `count` on the controller, §2's non-goal
   not covering it, a banner not exposed (#122, maintainer); what it counts (derived).
+- [spec §12](../../spec.md#12-decision-record) — no exit for a toast beyond the window with
+  nothing drawing it (#126, maintainer), decided from what the last build kept offstage (derived).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -42,8 +44,15 @@ toast is dismissed, so it can reach zero while an exit is still drawing. It coun
 same toasts as `DeckHideView.count`, and not the ones `DeckDismissAllView.count` does,
 which are only those its `dismiss()` removes.
 
+A toast beyond the window with nothing drawing it has **no exit**. Running one would draw it if
+`open()` or a pointer fanned the deck out inside its 200 ms: 9 to 11 frames of a toast already
+gone, about 7,700 px at the peak (#126). The test is `_Slot.hidden`, what the last build kept
+offstage, and not the toast's place in the window. A toast crossing the window's edge, one a lowered window is
+fading out and one leaving a deck fanned out or folding are all beyond the window and on screen.
+
 ## Code
 `controller.dart` — SonnerController
+`host.dart` — ToastLayer
 `toast_id.dart` — ToastId
 `toast_state.dart` — ToastState
 `toast_content.dart` — ToastContent

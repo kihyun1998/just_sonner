@@ -20,7 +20,7 @@ could have carried this fact.
 
 ## Territories it holds in
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — both ends of the cut are reported from drawn positions.
-- [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn.
+- [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn; a toast beyond the window has an exit only if it is drawn.
 - [Default look](../territory/default-look.md) — the time left stands still while nothing draws it, and comes back on the number.
 - [Zone](../territory/zone.md) — a hidden zone draws no deck unless a banner is up, and the frame gate reads that; whether a leaving toast has an exit reads the hide value the deck is drawn by.
 
@@ -42,8 +42,11 @@ which is why it survives a test suite that pumps to completion.
 - **#123** — whether a leaving toast runs an exit. The zone's state and the host's flag
   both read shown once a listener has called `reveal()`, with the deck still wholly out of
   sight, so either one draws the toast or drops a banner's exit; the hide value does neither.
+- **#126** — whether a toast beyond the window runs an exit. Its place in the window says beyond
+  for a toast still fading out at the edge and for one on a fanned-out deck, so the place would
+  take their exit; `_Slot.hidden` does not.
 
-Four; the third reused the rule rather than rediscovering it, which is what this note is
+Five; the third reused the rule rather than rediscovering it, which is what this note is
 for.
 
 ## Where it will recur

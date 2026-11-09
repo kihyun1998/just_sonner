@@ -49,7 +49,7 @@ The group of visible toasts, in one of two states: collapsed (front toast in ful
 _Avoid_: stack (for the visible group), collapsed stack
 
 **Dismissed**:
-A toast the controller has let go of, whose exit has started or which has none, its deck being wholly out of sight. It is no longer on screen for the API's purposes: `update` on it fails and `show` with its id creates a new toast.
+A toast the controller has let go of, whose exit has started or which has none, nothing being drawn of it as it left: its deck wholly out of sight, or itself beyond the window. It is no longer on screen for the API's purposes: `update` on it fails and `show` with its id creates a new toast.
 _Avoid_: closed, hidden (that is the **Zone**'s)
 
 **Removed**:
