@@ -9127,6 +9127,344 @@ void main() {
       );
     });
 
+    group('a pointer on a toast entering', () {
+      /// Where the card is drawn, the enter's slide included.
+      Rect cardOf(WidgetTester tester) => tester.getRect(
+        find
+            .ancestor(of: find.text('Card'), matching: find.byType(SizedBox))
+            .first,
+      );
+
+      /// An app counting its taps behind a deck at [position], and a builder
+      /// toast counting its own, shown [after] ago.
+      Future<
+        ({
+          SonnerController controller,
+          Rect drawn,
+          int Function() app,
+          int Function() toast,
+        })
+      >
+      entering(
+        WidgetTester tester, {
+        SonnerPosition position = SonnerPosition.bottomRight,
+        required Duration after,
+        bool older = false,
+      }) async {
+        final controller = deckWith(position: position);
+        var app = 0;
+        var toast = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        if (older) {
+          controller.show('Older');
+          await settle(tester);
+        }
+        controller.show(
+          'Card',
+          builder: (context, view) => GestureDetector(
+            onTap: () => toast++,
+            child: const Material(
+              child: SizedBox(width: 300, height: 60, child: Text('Card')),
+            ),
+          ),
+        );
+        await tester.pump();
+        await tester.pump(after);
+        return (
+          controller: controller,
+          drawn: cardOf(tester),
+          app: () => app,
+          toast: () => toast,
+        );
+      }
+
+      Future<TestGesture> press(WidgetTester tester, Offset at) async {
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: at);
+        addTearDown(mouse.removePointer);
+        await mouse.down(at);
+        await tester.pump(const Duration(milliseconds: 16));
+        return mouse;
+      }
+
+      for (final position in [
+        SonnerPosition.bottomRight,
+        SonnerPosition.topRight,
+      ]) {
+        testWidgets('on a ${position.name} deck, a click where it has not '
+            "reached yet is the app's", (tester) async {
+          final deck = await entering(
+            tester,
+            position: position,
+            after: const Duration(milliseconds: 32),
+          );
+          final at = deck.drawn.center.translate(
+            0,
+            position.isTop
+                ? deck.drawn.height / 2 + 15
+                : -deck.drawn.height / 2 - 15,
+          );
+          expect(deck.drawn.contains(at), isFalse);
+
+          final mouse = await press(tester, at);
+          expect(deck.controller.zone.held, isFalse);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.app(), 1);
+          expect(deck.toast(), 0);
+          expect(
+            cardOf(tester).contains(at),
+            isTrue,
+            reason: 'where it was headed',
+          );
+        });
+
+        testWidgets('on a ${position.name} deck, a click on it as drawn is '
+            'its own', (tester) async {
+          final deck = await entering(
+            tester,
+            position: position,
+            after: const Duration(milliseconds: 100),
+          );
+
+          final mouse = await press(
+            tester,
+            position.isTop
+                ? deck.drawn.bottomCenter.translate(0, -10)
+                : deck.drawn.topCenter.translate(0, 10),
+          );
+          expect(deck.controller.zone.held, isTrue);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.toast(), 1);
+          expect(deck.app(), 0);
+        });
+      }
+
+      testWidgets('a hover where it has not reached yet holds nothing, and one '
+          'on it as drawn holds the deck', (tester) async {
+        final deck = await entering(
+          tester,
+          after: const Duration(milliseconds: 32),
+        );
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(40, 40));
+        addTearDown(mouse.removePointer);
+
+        await mouse.moveTo(deck.drawn.topCenter.translate(0, -15));
+        await tester.pump();
+        expect(deck.controller.zone.held, isFalse);
+
+        await tester.pump(const Duration(milliseconds: 70));
+        await mouse.moveTo(cardOf(tester).topCenter.translate(0, 10));
+        await tester.pump();
+        expect(deck.controller.zone.held, isTrue);
+        await mouse.moveTo(const Offset(40, 40));
+        await settle(tester);
+      });
+
+      testWidgets('a toast fading out of the window takes no click while '
+          'another enters', (tester) async {
+        final controller = deckWith();
+        controller.config = controller.config.copyWith(visibleToasts: 1);
+        var app = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        controller.show('Old');
+        await settle(tester);
+        final at = boxOf(tester, 'Old').topCenter.translate(0, 6);
+
+        controller.show('New');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 32));
+        final mouse = await press(tester, at);
+        await mouse.up();
+        await settle(tester);
+
+        expect(app, 1);
+      });
+
+      testWidgets('dismissed before it has arrived, a click where it had not '
+          "reached is still the app's", (tester) async {
+        final deck = await entering(
+          tester,
+          after: const Duration(milliseconds: 32),
+        );
+        final at = deck.drawn.topCenter.translate(0, -15);
+
+        deck.controller.dismissAll();
+        await tester.pump();
+        final mouse = await press(tester, at);
+        expect(deck.controller.zone.held, isFalse);
+        await mouse.up();
+        await settle(tester);
+
+        expect(deck.app(), 1);
+      });
+
+      testWidgets('a toast exiting where a new position has pinned it does not '
+          'take the hold', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        final old = controller.show('Old');
+        await settle(tester);
+        final at = boxOf(tester, 'Old').center;
+
+        controller.dismiss(old);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 16));
+        controller.config = controller.config.copyWith(
+          position: SonnerPosition.topLeft,
+        );
+        await tester.pump();
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        await mouse.addPointer(location: const Offset(400, 300));
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(at);
+        await tester.pump();
+
+        expect(controller.zone.held, isFalse);
+        await mouse.moveTo(const Offset(400, 300));
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a control past the far end is the deck\'s while the first '
+          'toast enters', (tester) async {
+        final controller = deckWith(
+          control: const DeckHideControl(look: DeckHideLook.icon),
+          empty: null,
+        );
+        var app = 0;
+        await tester.pumpWidget(
+          MaterialApp(
+            builder: (context, child) =>
+                SonnerHost(controller: controller, child: child!),
+            home: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => app++,
+              child: const SizedBox.expand(),
+            ),
+          ),
+        );
+        controller.zone.open();
+        await settle(tester);
+
+        controller.show('Card');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 32));
+        final mouse = await press(
+          tester,
+          tester.getCenter(find.byType(Spacer).first),
+        );
+        await mouse.up();
+        await settle(tester);
+
+        expect(app, 0);
+        controller.zone.close();
+        await settle(tester);
+      });
+
+      testWidgets('the backdrop counts a toast while it enters', (
+        tester,
+      ) async {
+        final controller = deckWith();
+        controller.config = controller.config.copyWith(
+          deckBackdrop: () => const DeckBackdrop(blur: 0, dim: 0.2),
+        );
+        await tester.pumpWidget(app(controller: controller));
+
+        Rect? box() => tester
+            .widget<DeckBackdropBox>(find.byType(DeckBackdropBox))
+            .at
+            .value;
+
+        controller.show('Card');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 32));
+        final whileEntering = box();
+        await settle(tester);
+
+        expect(whileEntering, isNotNull);
+        expect(whileEntering, box());
+      });
+
+      testWidgets('a deck the pointer holds stays held when a toast arrives '
+          'under it', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Older');
+        await settle(tester);
+        final mouse = await mouseAt(tester, boxOf(tester, 'Older').center);
+        await settle(tester);
+        expect(controller.zone.held, isTrue);
+        var heardLetGo = false;
+        controller.addListener(() => heardLetGo |= !controller.zone.held);
+
+        controller.show('New');
+        for (var frame = 0; frame < 30; frame++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+
+        expect(heardLetGo, isFalse);
+        expect(controller.zone.held, isTrue);
+        await mouse.moveTo(const Offset(40, 40));
+        await settle(tester);
+      });
+
+      testWidgets('a click on an older toast at rest holds the deck while '
+          'another enters', (tester) async {
+        final deck = await entering(
+          tester,
+          older: true,
+          after: const Duration(milliseconds: 32),
+        );
+
+        final mouse = await press(tester, boxOf(tester, 'Older').center);
+        expect(deck.controller.zone.held, isTrue);
+        await mouse.up();
+        await settle(tester);
+
+        expect(deck.app(), 0);
+      });
+
+      testWidgets('once it has arrived, its whole place is the deck\'s', (
+        tester,
+      ) async {
+        final deck = await entering(
+          tester,
+          after: const Duration(milliseconds: 500),
+        );
+
+        final mouse = await press(tester, deck.drawn.topLeft.translate(2, 2));
+        expect(deck.controller.zone.held, isTrue);
+        await mouse.up();
+        await settle(tester);
+
+        expect(deck.app(), 0);
+      });
+    });
+
     group('a pointer on a deck on its way back', () {
       final movesAway = <String, DeckHideMotion>{
         'slide': const DeckHideMotion(),

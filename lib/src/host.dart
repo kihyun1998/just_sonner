@@ -126,10 +126,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// the zone is open.
   bool get _everyToast => _interacting || _zoneOpen;
 
-  /// Where the deck is, for hit testing: the toasts in the window, or every
-  /// toast while they are all drawn, and those exiting, and the gaps
-  /// between them, as last laid out and cut to the layer.
+  /// Where the deck is: the toasts in the window, or every toast while they
+  /// are all drawn, and those exiting, and the gaps between them, as last laid
+  /// out and cut to the layer.
   Rect _deck = Rect.zero;
+
+  /// [_deck] without the toasts still entering, for what takes the pointer.
+  Rect _pointerBox = Rect.zero;
 
   /// How far the deck is fanned out, from 0 collapsed to 1 expanded.
   late final _Eased _expand = _Eased(this, _expandTarget);
@@ -444,11 +447,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (mounted) setState(() {});
   }
 
-  /// Whether the deck takes a pointer at [position]: in its box at rest, and
-  /// otherwise only on what [hitChild] says is there.
+  /// Whether [slot] is left out of the box for the pointer: on its way in for
+  /// the first time, with the pointer not holding the deck.
+  bool _arriving(_Slot slot) => !_interacting && !slot.arrived;
+
+  /// Whether the deck takes a pointer at [position]: what [hitChild] says while
+  /// it is hidden or moving, in its box at rest, and in either while a toast
+  /// is arriving.
   bool _regionTakes(Offset position, {required bool hitChild}) {
     if (_hiddenShown || _hide.value > 0) return hitChild;
-    return _deck.contains(position);
+    if (hitChild && _slots.any(_arriving)) return true;
+    return _pointerBox.contains(position);
   }
 
   /// Cancels [press], at the end of this microtask, as the kind of pointer it
@@ -719,6 +728,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // A builder may take its toast out itself, flinging the animation to 0
     // as flash's swipe does before it says anything.
     controller.addStatusListener((status) {
+      if (status == AnimationStatus.completed) slot.arrived = true;
       if (status == AnimationStatus.dismissed && !slot.exiting) {
         slot.owner.dismiss(record.id);
       }
@@ -967,6 +977,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                             covering: (slot) => slot.covering,
                             pinned: (slot) => slot.pinned,
                             inDeck: (slot) => slot.inDeck,
+                            arriving: _arriving,
                             onPlaced:
                                 (slot, height, covering, distance, place) =>
                                     slot
@@ -978,6 +989,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                               _deck = deck;
                               _deckAt.value = deck;
                             },
+                            onPointerBox: (box) => _pointerBox = box,
                             glide: _glide.value,
                             glideFrom: (slot) => slot.glideFrom,
                             screenPinned: (slot) => slot.screenPin,
@@ -1270,6 +1282,9 @@ final class _Slot implements ToastView {
   /// region only then. Frozen once it is [exiting].
   bool inDeck = true;
 
+  /// Whether its enter has ever run to its end.
+  bool arrived = false;
+
   /// How much of it the window draws, 0 outside to 1 inside, and what that was
   /// when the config last assigned was.
   double windowFade = 1;
@@ -1504,7 +1519,7 @@ class _Eased extends ChangeNotifier {
 }
 
 /// What the deck takes the pointer with in the gaps between its toasts, laid
-/// out to the deck's own box and drawing nothing.
+/// out to the box for the pointer and drawing nothing.
 ///
 /// Public so a test can measure the box the deck claims, which the backdrop
 /// deliberately does not widen.

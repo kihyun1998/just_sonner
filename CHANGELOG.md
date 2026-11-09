@@ -35,6 +35,9 @@
   `zone.reveal()`, or while a banner comes up, a click at the deck's resting place was held by the
   deck with nothing drawn there and never reached the app. It now reaches the app unless the deck
   is drawn under it.
+- **A toast entering takes the pointer only where it is drawn** (#137). For the 400 ms of its
+  enter, a click at the place it was headed went to the deck with nothing drawn there. It now
+  reaches the app until the toast has arrived, unless the pointer already holds the deck.
 
 ## 0.5.0
 

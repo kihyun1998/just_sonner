@@ -1,7 +1,8 @@
 # Hit-testing follows paint
 
 ## The fact
-The deck takes the pointer where it is **drawn**, and nowhere else: the box around its
+The deck takes the pointer where it is **drawn**, and nowhere else, except that a deck the
+pointer already holds keeps the place of a toast still arriving under it: the box around its
 toasts cut where the deck is cut, plus the controls past the far end and a draggable
 scrollbar's thumb. A band the deck leaves empty — the `offset` band at the near end,
 the band past the cap at the far end — is the app's, for a click and for the hold,
@@ -17,8 +18,9 @@ It is a single box read by several questions that otherwise have nothing to do w
 other: whether the pointer is still on the deck, whether a click reaches the app, and
 whether the timers stay paused. The layout reports that box and the cut clips and
 hit-tests from one report, so a change that cuts the deck somewhere new moves all three
-at once — and a change that reports one box for paint and another for the pointer
-reopens the gap this closes.
+at once. The box for the backdrop and the hide reach differs from it in one way only, and
+on purpose: it counts a toast still arriving (#137). Any other difference between a box for
+paint and a box for the pointer reopens the gap this closes.
 
 ## Territories it holds in
 - [Pointer hold](../territory/pointer-hold.md) — the region is the drawn box.
@@ -51,6 +53,11 @@ band the deck should have cut, which is the paint half of the same gap.
   y 613 and a press at its resting place reached no app. While the hide value is above 0 the region
   answers from whether anything of the deck was hit, which goes through the motion's own
   transforms and so needs nothing from a `hideMotion` builder.
+- **#137** — an entering toast's resting place was in the box while its slide drew it elsewhere,
+  and `DeckHitBox` sits outside the slide, so a child hit could not tell. The box for the pointer
+  is now its own, without the toasts still entering. A deck the pointer holds keeps them in it:
+  a toast arriving under a resting pointer takes that pointer's place, and leaving it out let go
+  of the deck.
 
 Each change that cut the deck (#62, #86, #101) had to be kept from disagreeing with the
 stretch; that recurrence is what this note replaces.
