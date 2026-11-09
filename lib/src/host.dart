@@ -444,6 +444,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     if (mounted) setState(() {});
   }
 
+  /// Whether the deck takes a pointer at [position]: in its box at rest, and
+  /// otherwise only on what [hitChild] says is there.
+  bool _regionTakes(Offset position, {required bool hitChild}) {
+    if (_hiddenShown || _hide.value > 0) return hitChild;
+    return _deck.contains(position);
+  }
+
   /// Cancels [press], at the end of this microtask, as the kind of pointer it
   /// is.
   void _cancelPress(PointerEvent press) {
@@ -883,7 +890,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         if (event is PointerScrollEvent) _scrollFromControl(event);
       },
       child: _DeckRegion(
-        deck: () => _hiddenShown ? Rect.zero : _deck,
+        takes: _regionTakes,
         onEnter: (event) => _setPointer(event.device, over: true),
         onExit: (event) => _setPointer(event.device, over: false),
         onHover: (event) => _movePointer(event.device),
@@ -1563,18 +1570,18 @@ class _Progress extends Simulation {
   bool isDone(double time) => time > _seconds;
 }
 
-/// A [MouseRegion] over the part of its child that [deck] names, gaps
-/// included. It takes the taps that land there.
+/// A [MouseRegion] over the part of its child that [takes] says. It takes the
+/// taps that land there.
 class _DeckRegion extends SingleChildRenderObjectWidget {
   const _DeckRegion({
-    required this.deck,
+    required this.takes,
     required this.onEnter,
     required this.onExit,
     required this.onHover,
     super.child,
   });
 
-  final Rect Function() deck;
+  final bool Function(Offset position, {required bool hitChild}) takes;
   final PointerEnterEventListener onEnter;
   final PointerExitEventListener onExit;
   final PointerHoverEventListener onHover;
@@ -1582,7 +1589,7 @@ class _DeckRegion extends SingleChildRenderObjectWidget {
   @override
   _RenderDeckRegion createRenderObject(BuildContext context) =>
       _RenderDeckRegion(
-        deck,
+        takes,
         onEnter: onEnter,
         onExit: onExit,
         onHover: onHover,
@@ -1593,22 +1600,22 @@ class _DeckRegion extends SingleChildRenderObjectWidget {
     BuildContext context,
     _RenderDeckRegion renderObject,
   ) => renderObject
-    ..deck = deck
+    ..takes = takes
     ..onEnter = onEnter
     ..onExit = onExit
     ..onHover = onHover;
 }
 
 class _RenderDeckRegion extends RenderMouseRegion {
-  _RenderDeckRegion(this.deck, {super.onEnter, super.onExit, super.onHover});
+  _RenderDeckRegion(this.takes, {super.onEnter, super.onExit, super.onHover});
 
-  Rect Function() deck;
+  bool Function(Offset position, {required bool hitChild}) takes;
 
   @override
   bool hitTest(BoxHitTestResult result, {required Offset position}) {
     final hitChild = hitTestChildren(result, position: position);
-    final inDeck = deck().contains(position);
-    if (inDeck) result.add(BoxHitTestEntry(this, position));
-    return hitChild || inDeck;
+    final taken = takes(position, hitChild: hitChild);
+    if (taken) result.add(BoxHitTestEntry(this, position));
+    return hitChild || taken;
   }
 }
