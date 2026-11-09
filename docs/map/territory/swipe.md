@@ -20,6 +20,7 @@ drag away.
 A two-finger trackpad pan scrolls the deck rather than swiping a toast; a mouse drag on
 a toast swipes rather than scrolling. Only a toast **being dragged** holds the timers —
 a press that merely stays put is a pointer over the deck, which [Pointer hold](pointer-hold.md) owns.
+No swipe starts from a press hiding let go of.
 
 ## Code
 `swipe.dart` — SwipeDrag, SwipeStep

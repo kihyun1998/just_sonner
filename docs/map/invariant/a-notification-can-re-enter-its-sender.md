@@ -35,7 +35,7 @@ it on both the state and `held`, since they are told apart by when they fire.
   `reveal()` in it was overwritten: the toast's text at 682 against 540. Fixed by setting the
   target first.
 - **#128** — a press adds itself after the notification `_movePointer` sends, so a `hide()` in
-  it is followed by a new hold. Open.
+  it is followed by a new hold. Fixed by asking again after it.
 - **#129** — dismiss-all walks a list read at build, past a listener's `update` in the first
   dismissal. Open.
 
