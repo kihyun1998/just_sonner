@@ -1,4 +1,4 @@
-## Unreleased
+## 0.5.1
 
 - **`toast.count` says how many toasts are alive** (#122), those beyond `visibleToasts` and those
   that are not dismissible included. The controller's listeners are its change signal. An app can
