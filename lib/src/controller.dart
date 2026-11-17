@@ -174,9 +174,9 @@ class SonnerController extends ChangeNotifier {
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
   /// navigator [navigatorKey] names, above its dialogs and pages.
   ///
-  /// Nothing is inserted until the first [show], so it can be called before
-  /// the app is built. Once attached, a [show] with no navigator to draw in is
-  /// an error in debug and drops the toast in release.
+  /// Nothing is inserted until the first [show] or [SonnerZone.open], so it
+  /// can be called before the app is built. Once attached, a [show] with no
+  /// navigator to draw in is an error in debug and drops the toast in release.
   void attach(GlobalKey<NavigatorState> navigatorKey) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (identical(_mount?.navigatorKey, navigatorKey)) return;

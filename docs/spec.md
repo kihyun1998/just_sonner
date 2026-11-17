@@ -473,7 +473,7 @@ Also:
 
 | Mode | Setup | Behaviour |
 |---|---|---|
-| **1. Root overlay** (default) | `toast.attach(navigatorKey)` once, e.g. after `runApp` | The host is inserted into `navigatorKey.currentState!.overlay` on the first toast |
+| **1. Root overlay** (default) | `toast.attach(navigatorKey)` once, e.g. after `runApp` | The host is inserted into `navigatorKey.currentState!.overlay` on the first toast, or the first `zone.open()` |
 | 2. Wrapper | `MaterialApp(builder: (context, child) => SonnerHost(child: child!))` | The host sits above the `Navigator` for the life of the app |
 
 ### The z-order rule (mode 1)
