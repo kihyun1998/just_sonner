@@ -454,6 +454,21 @@ class SonnerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Pauses every timer of this controller until the returned hold is
+  /// released: for a signal the controller does not watch itself, such as the
+  /// window losing focus or being covered by another.
+  ///
+  /// Each call takes a hold of its own, and releasing one leaves the others.
+  /// The pointer over the deck, a drag, [ToastView.holdTimer] and a hidden app
+  /// pause the timers apart from any hold; they resume, with the time that was
+  /// left, once nothing pauses them.
+  TimerHold holdTimers() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    final hold = TimerHold._(this);
+    _setPaused(() => _holders.add(hold));
+    return hold;
+  }
+
   @override
   void dispose() {
     _disposed = true;
@@ -616,6 +631,18 @@ bool zoneBanner(SonnerController controller) =>
 /// `detached`. For the host, which has a binding; not exported.
 void watchLifecycle(SonnerController controller) =>
     controller._watchLifecycle();
+
+/// A pause on a [SonnerController]'s timers, taken with
+/// [SonnerController.holdTimers] and ended with [release].
+class TimerHold {
+  TimerHold._(this._controller);
+
+  final SonnerController _controller;
+
+  /// Ends this hold. The timers resume once nothing else pauses them.
+  /// Releasing it again, or once the controller is disposed, does nothing.
+  void release() => releaseTimers(_controller, this);
+}
 
 /// Reports the app's lifecycle state to [onChange], once with the state it is
 /// in and again on each change.

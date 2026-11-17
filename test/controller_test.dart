@@ -440,6 +440,113 @@ void main() {
     });
   });
 
+  group('the app\'s hold', () {
+    test('holdTimers pauses until its hold is released, and the countdown '
+        'resumes with the time left', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        async.elapse(const Duration(seconds: 1));
+        final hold = controller.holdTimers();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'held, so nothing is subtracted');
+
+        hold.release();
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(notifications, 0, reason: '3 s were left, not 4 and not 0');
+        async.elapse(const Duration(milliseconds: 101));
+        expect(notifications, 1, reason: 'gone within a tick of the 3 s left');
+        controller.dispose();
+      });
+    });
+
+    test('a hold released between ticks never runs a toast short', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Short', duration: const Duration(seconds: 1));
+        controller.addListener(() => notifications++);
+
+        // 50 ms counted, then held over no tick, then released 10 ms before
+        // the next one: 1 s of unheld time is not over until 1040 ms.
+        async.elapse(const Duration(milliseconds: 50));
+        final hold = controller.holdTimers();
+        async.elapse(const Duration(milliseconds: 40));
+        hold.release();
+
+        async.elapse(const Duration(milliseconds: 949));
+        expect(notifications, 0, reason: 'a full unheld second has not passed');
+        async.elapse(const Duration(milliseconds: 111));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('each call takes a hold of its own, and releasing one twice does '
+        'not release another', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        final first = controller.holdTimers();
+        final second = controller.holdTimers();
+        expect(identical(first, second), isFalse);
+        first.release();
+        first.release();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the second hold still holds');
+
+        second.release();
+        async.elapse(const Duration(milliseconds: 4100));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('the app\'s hold and the package\'s own holds do not release each '
+        'other', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        final hold = controller.holdTimers();
+        holdTimers(controller, #pointer);
+        hold.release();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the pointer still holds');
+
+        final again = controller.holdTimers();
+        releaseTimers(controller, #pointer);
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the app still holds');
+
+        again.release();
+        async.elapse(const Duration(milliseconds: 4100));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('a hold released after its controller is disposed does nothing', () {
+      final controller = SonnerController();
+      final hold = controller.holdTimers();
+      controller.dispose();
+      expect(hold.release, returnsNormally);
+    });
+
+    test('holdTimers on a disposed controller asserts', () {
+      final controller = SonnerController()..dispose();
+      expect(controller.holdTimers, throwsFlutterError);
+    });
+  });
+
   group('loading', () {
     test('a loading toast has no timer, and keeps its duration for later', () {
       fakeAsync((async) {

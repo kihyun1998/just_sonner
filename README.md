@@ -163,9 +163,10 @@ scrolls, and the toasts being read keep their place as others come and go. The p
 it moves, presses or turns the wheel there. A toast that lands under a pointer nobody moves counts
 down as usual.
 
-**Every timer pauses** while the pointer is over the deck, while a toast is being dragged, and
-while the app is hidden. Each resumes with the time it had left. A window that only lost focus
-does not pause them.
+**Every timer pauses** while the pointer is over the deck, while a toast is being dragged, while
+the app is hidden, and while your app holds them. Each resumes with the time it had left. A window
+that lost focus does not pause them, nor, on Windows and Linux, one covered by another window; see
+[Pausing the timers](#pausing-the-timers).
 
 **`expandByDefault`** fans the deck out with no pointer. It draws only `visibleToasts` and does not
 pause the timers.
@@ -290,7 +291,7 @@ The builder is handed a `ToastView`:
 | `covered` | How much the deck covers the toast: 0 at the front or expanded, 1 behind the front |
 | `timeLeft` | 1 → 0 over the toast's countdown, or null while it has no timer |
 | `dismiss()` | Dismisses the toast, whatever `dismissible` says |
-| `holdTimer()` | Pauses the timers until the toast is dismissed or changed, for a gesture of your own |
+| `holdTimer()` | Pauses every timer until the toast is dismissed or changed, for a gesture of your own |
 
 **Read `covered`.** The default look draws no content while a toast is covered and keeps its card,
 so the deck reads as a pile of cards with only the front one written on. A builder does that only if
@@ -329,6 +330,32 @@ toast.config = toast.config.copyWith(
 - **None:** `copyWith(timeLeft: () => null)`.
 - **A builder** reads `ToastView.timeLeft` whatever `config.timeLeft` says. It stands still while the
   timers are paused, and eases back up when an update or a replace starts the countdown again.
+
+## Pausing the timers
+
+The timers pause while the pointer is on the deck, while a toast is dragged, and while the app is
+hidden. They do not pause while the app is `inactive`. On Windows and Linux a window covered by
+another reports `inactive`, not `hidden`, so its toasts run out while the user is in another
+window. To pause on a signal of your own, take a hold and release it:
+
+```dart
+TimerHold? hold;
+void pause() => hold ??= toast.holdTimers();
+void resume() {
+  hold?.release();
+  hold = null;
+}
+
+final listener = AppLifecycleListener(onInactive: pause, onResume: resume);
+if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.inactive) pause();
+```
+
+A listener hears changes only, so the last line covers an app already inactive when it is made,
+such as a window shown without focus. A window minimised and restored comes back through
+`onShow`, not `onInactive`, so this hold lasts through that too. `inactive` also covers a window
+that is visible but not focused, so this pauses toasts the user can still see. Each `holdTimers()` is a hold of its own: the timers resume, with
+the time that was left, once every hold is released and nothing else pauses them. Releasing a hold
+twice does nothing.
 
 ## Configuration
 

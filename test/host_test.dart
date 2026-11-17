@@ -7568,6 +7568,104 @@ void main() {
       expect(toastsOf(controller), isEmpty);
       await tester.pumpAndSettle();
     });
+
+    testWidgets('a hold the app takes outlasts the app being hidden and '
+        'coming back', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration(seconds: 1)),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pump(const Duration(milliseconds: 500));
+
+      final hold = controller.holdTimers();
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(seconds: 10));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump(const Duration(seconds: 10));
+      expect(toastsOf(controller), hasLength(1), reason: 'the app still holds');
+
+      hold.release();
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(toastsOf(controller), hasLength(1), reason: 'time was left');
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(toastsOf(controller), isEmpty);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets(
+      'the README recipe pauses an inactive app, one already inactive '
+      'when the listener is made and one minimised and restored included',
+      (tester) async {
+        final controller = SonnerController(
+          config: const SonnerConfig(duration: Duration(seconds: 1)),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+
+        TimerHold? hold;
+        void pause() => hold ??= controller.holdTimers();
+        void resume() {
+          hold?.release();
+          hold = null;
+        }
+
+        final listener = AppLifecycleListener(
+          onInactive: pause,
+          onResume: resume,
+        );
+        addTearDown(listener.dispose);
+        if (WidgetsBinding.instance.lifecycleState ==
+            AppLifecycleState.inactive) {
+          pause();
+        }
+
+        controller.show('Saved');
+        await tester.pump(const Duration(seconds: 10));
+        expect(
+          toastsOf(controller),
+          hasLength(1),
+          reason: 'inactive before the listener was made',
+        );
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump(const Duration(seconds: 10));
+        expect(
+          toastsOf(controller),
+          hasLength(1),
+          reason: 'held on onInactive',
+        );
+
+        // Minimised and restored: hidden comes back through inactive, which
+        // calls onShow rather than onInactive.
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(seconds: 10));
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump(const Duration(seconds: 10));
+        expect(toastsOf(controller), hasLength(1), reason: 'still held');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(toastsOf(controller), hasLength(1), reason: 'time was left');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(toastsOf(controller), isEmpty);
+        await tester.pumpAndSettle();
+      },
+    );
   });
 
   testWidgets('a toast is announced as a live region', (tester) async {

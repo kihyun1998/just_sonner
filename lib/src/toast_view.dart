@@ -55,8 +55,9 @@ abstract interface class ToastView {
   /// leaves a new toast shown at the same id standing.
   Future<void> dismiss();
 
-  /// Pauses the timers until this toast is dismissed, updated or replaced, for
-  /// a widget running a gesture of its own.
+  /// Pauses every timer of the controller, not only this toast's, until this
+  /// toast is dismissed, updated or replaced, for a widget running a gesture
+  /// of its own.
   void holdTimer();
 }
 

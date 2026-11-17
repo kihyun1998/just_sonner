@@ -83,7 +83,9 @@ nothing about a region over a deck that scrolls, because sonner's deck never scr
 ## Blast radius
 - [Deck reach and cut](deck-reach-and-cut.md) — the region is cut where the deck is,
   and hit-testing reads both ends of that cut.
-- [Toast lifetime](toast-lifetime.md) — the hold is what pauses every countdown.
+- [Toast lifetime](toast-lifetime.md) — the hold is what pauses every countdown. The pointer's
+  hold is one key in the controller's set of holders, beside a drag, `holdTimer` and the app's
+  `TimerHold` (#149); releasing one never releases another.
 - [Deck controls](deck-controls.md) — the region must take in the controls past the
   far end, or moving the pointer onto one collapses the deck before it can be pressed.
 - [Zone](zone.md) — the hold falling is what ends a banner.

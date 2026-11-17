@@ -16,6 +16,9 @@ tick that serves every counting toast.
   not covering it, a banner not exposed (#122, maintainer); what it counts (derived).
 - [spec §12](../../spec.md#12-decision-record) — no exit for a toast beyond the window with
   nothing drawing it (#126, maintainer), decided from what the last build kept offstage (derived).
+- [spec §12](../../spec.md#12-decision-record) — the timers pausing on the pointer, a drag and a
+  hidden app and not on `inactive` (maintainer), amended with what `inactive` means on desktop
+  (#149); the app's `TimerHold` (#149, maintainer for the API and names, derived for the rest).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -34,6 +37,15 @@ would otherwise subtract a whole one.
 Nothing the app does to the zone pauses: neither hiding nor opening it. A deck left
 open with nobody on it counts down, and so does a hidden one.
 
+What does pause every timer: the pointer on the deck, a drag, `ToastView.holdTimer`, a
+hidden app, and a `TimerHold` the app took with `holdTimers()`. A hidden app is a flag of
+its own; each of the others is a separate key in the controller's set of holders. The
+`TimerHold` object is its own key, so each call is a hold apart from every other and a
+release is idempotent. `inactive` does not pause, and on
+Windows and Linux it covers a window fully covered by another as well as one beside the
+user's work (#149), so an app that wants the covered case paused holds the timers itself.
+A `release()` once the controller is disposed does nothing; `holdTimers()` then asserts.
+
 `update` changes the fields passed; `show` at a live id **replaces**, taking the
 content whole and keeping only the place. Both count down again. A dismissed toast is
 already off screen for the API's purposes.
@@ -51,7 +63,7 @@ offstage, and not the toast's place in the window. A toast crossing the window's
 fading out and one leaving a deck fanned out or folding are all beyond the window and on screen.
 
 ## Code
-`controller.dart` — SonnerController
+`controller.dart` — SonnerController, TimerHold, holdTimers, releaseTimers
 `host.dart` — ToastLayer
 `toast_id.dart` — ToastId
 `toast_state.dart` — ToastState
@@ -83,6 +95,8 @@ states outright, so anything resting on them carries forward as needing confirma
   toast is built and laid out however few are drawn. The cost has never been measured,
   so it is a shape rather than a defect.
 - **Not covered**: a mode-2 host first mounted while the app is hidden.
+- **Not covered**: a `TimerHold` the app never releases keeps every timer paused for the
+  controller's life, and nothing reports it (#149).
 - **Open**: a toast already inside the window at a window fade of exactly 0 is not `_Slot.hidden`,
   so it runs an exit that is drawn if the deck fans out. With a window of 1, dismissing the front
   toast, the one behind it on exactly the next frame, then `open()`: 12 frames on stage. A frame
