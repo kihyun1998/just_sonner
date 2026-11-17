@@ -1042,6 +1042,61 @@ void main() {
 
       expect(toastRect(tester, 'Saved').bottom, 24);
     });
+
+    for (final (motion, step) in [
+      (ToastEnterMotion.left, -1.0),
+      (ToastEnterMotion.right, 1.0),
+    ]) {
+      testWidgets('from the ${motion.name}, slides in one own width and fades '
+          'in over 400 ms, ease', (tester) async {
+        final controller = SonnerController(
+          config: SonnerConfig(duration: null, enterMotion: motion),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+
+        controller.show('Saved');
+        await tester.pump();
+        final start = toastRect(tester, 'Saved');
+        expect(presenceOf(tester, 'Saved'), 0);
+        expect(start.width, 356);
+        expect(
+          start.right,
+          776 + step * 356,
+          reason: 'starts a full width to the ${motion.name} of its place',
+        );
+        expect(start.bottom, 576, reason: 'and not below it');
+
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(presenceOf(tester, 'Saved'), closeTo(0.8024, 0.001));
+        final midway = toastRect(tester, 'Saved');
+        expect((midway.right - 776) * step, inExclusiveRange(0, 356));
+        expect(midway.bottom, 576);
+
+        await tester.pump(const Duration(milliseconds: 200));
+        expect(presenceOf(tester, 'Saved'), 1);
+        expect(toastRect(tester, 'Saved').right, 776);
+        expect(toastRect(tester, 'Saved').bottom, 576);
+      });
+    }
+
+    testWidgets('a toast still entering as a new enter motion is assigned '
+        'comes in by the new one', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      controller.config = controller.config.copyWith(
+        enterMotion: ToastEnterMotion.right,
+      );
+      await tester.pump();
+      final now = toastRect(tester, 'Saved');
+      expect(now.right, greaterThan(776), reason: 'from the right');
+      expect(now.bottom, 576);
+      await tester.pumpAndSettle();
+      expect(toastRect(tester, 'Saved').right, 776);
+    });
   });
 
   group('exit', () {
@@ -1072,6 +1127,72 @@ void main() {
         expect(find.text('Saved'), findsNothing);
       },
     );
+
+    for (final (motion, step) in [
+      (ToastEnterMotion.left, -1.0),
+      (ToastEnterMotion.right, 1.0),
+    ]) {
+      testWidgets('a toast that entered from the ${motion.name} leaves toward '
+          'it, fading out by 200 ms', (tester) async {
+        final controller = SonnerController(
+          config: SonnerConfig(duration: null, enterMotion: motion),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pumpAndSettle();
+        final resting = toastRect(tester, 'Saved');
+
+        controller.dismiss(id);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        final going = toastRect(tester, 'Saved');
+        expect((going.left - resting.left) * step, inExclusiveRange(0, 356));
+        expect(going.top, resting.top, reason: 'and not toward the edge');
+        expect(presenceOf(tester, 'Saved'), inExclusiveRange(0, 1));
+
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(presenceOf(tester, 'Saved'), 0);
+        expect(toastRect(tester, 'Saved').left, resting.left + step * 356);
+        await tester.pump(const Duration(milliseconds: 1));
+        await tester.pump();
+        expect(find.text('Saved'), findsNothing);
+      });
+    }
+
+    for (final (from, to) in [
+      (ToastEnterMotion.edge, ToastEnterMotion.right),
+      (ToastEnterMotion.right, ToastEnterMotion.edge),
+    ]) {
+      testWidgets('a toast leaving from the ${from.name} as ${to.name} is '
+          'assigned keeps leaving the way it was going', (tester) async {
+        final controller = SonnerController(
+          config: SonnerConfig(duration: null, enterMotion: from),
+        );
+        addTearDown(controller.dispose);
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pumpAndSettle();
+        final resting = toastRect(tester, 'Saved');
+
+        controller.dismiss(id);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        controller.config = controller.config.copyWith(enterMotion: to);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        final going = toastRect(tester, 'Saved');
+        if (from == ToastEnterMotion.edge) {
+          expect(going.left, resting.left);
+          expect(going.top, greaterThan(resting.top));
+        } else {
+          expect(going.left, greaterThan(resting.left));
+          expect(going.top, resting.top);
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Saved'), findsNothing);
+      });
+    }
 
     testWidgets('a toast dismissed mid-enter still takes 200 ms to leave', (
       tester,
@@ -6429,6 +6550,26 @@ void main() {
       expect(find.text('Saved'), findsNothing);
     });
 
+    for (final motion in [ToastEnterMotion.left, ToastEnterMotion.right]) {
+      testWidgets('a swiped toast leaves the way it was swiped, whichever '
+          'side it entered from: ${motion.name}', (tester) async {
+        controller.config = controller.config.copyWith(enterMotion: motion);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Saved');
+        await tester.pumpAndSettle();
+        final at = toastRect(tester, 'Saved');
+
+        await swipe(tester, 'Saved', const Offset(0, 60));
+
+        await tester.pump(const Duration(milliseconds: 100));
+        final going = toastRect(tester, 'Saved');
+        expect(going.top, greaterThan(at.top + 60));
+        expect(going.left, at.left, reason: 'and not toward its side');
+        await tester.pumpAndSettle();
+        expect(find.text('Saved'), findsNothing);
+      });
+    }
+
     testWidgets('a drag the position does not allow is damped, not blocked', (
       tester,
     ) async {
@@ -8209,11 +8350,13 @@ void main() {
       SonnerPosition position = SonnerPosition.bottomRight,
       Duration? duration,
       ZoneEmpty? empty = const ZoneEmpty(),
+      ToastEnterMotion enter = ToastEnterMotion.edge,
     }) {
       final controller = SonnerController(
         config: SonnerConfig(
           duration: duration,
           position: position,
+          enterMotion: enter,
           scrollbar: null,
           dismissAll: dismissAll,
           hideControl: control,
@@ -9148,10 +9291,11 @@ void main() {
       entering(
         WidgetTester tester, {
         SonnerPosition position = SonnerPosition.bottomRight,
+        ToastEnterMotion enter = ToastEnterMotion.edge,
         required Duration after,
         bool older = false,
       }) async {
-        final controller = deckWith(position: position);
+        final controller = deckWith(position: position, enter: enter);
         var app = 0;
         var toast = 0;
         await tester.pumpWidget(
@@ -9243,6 +9387,60 @@ void main() {
             position.isTop
                 ? deck.drawn.bottomCenter.translate(0, -10)
                 : deck.drawn.topCenter.translate(0, 10),
+          );
+          expect(deck.controller.zone.held, isTrue);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.toast(), 1);
+          expect(deck.app(), 0);
+        });
+      }
+
+      for (final (motion, step) in [
+        (ToastEnterMotion.left, -1.0),
+        (ToastEnterMotion.right, 1.0),
+      ]) {
+        testWidgets('entering from the ${motion.name}, a click where it has '
+            "not reached yet is the app's", (tester) async {
+          final deck = await entering(
+            tester,
+            enter: motion,
+            after: const Duration(milliseconds: 32),
+          );
+          final at = deck.drawn.center.translate(
+            -step * (deck.drawn.width / 2 + 100),
+            0,
+          );
+          expect(deck.drawn.contains(at), isFalse);
+
+          final mouse = await press(tester, at);
+          expect(deck.controller.zone.held, isFalse);
+          await mouse.up();
+          await settle(tester);
+
+          expect(deck.app(), 1);
+          expect(deck.toast(), 0);
+          expect(
+            cardOf(tester).contains(at),
+            isTrue,
+            reason: 'where it was headed',
+          );
+        });
+
+        testWidgets('entering from the ${motion.name}, a click on it as drawn '
+            'is its own', (tester) async {
+          final deck = await entering(
+            tester,
+            enter: motion,
+            after: const Duration(milliseconds: 100),
+          );
+
+          final mouse = await press(
+            tester,
+            step < 0
+                ? deck.drawn.centerRight.translate(-10, 0)
+                : deck.drawn.centerLeft.translate(10, 0),
           );
           expect(deck.controller.zone.held, isTrue);
           await mouse.up();
@@ -9469,6 +9667,8 @@ void main() {
       final movesAway = <String, DeckHideMotion>{
         'slide': const DeckHideMotion(),
         'shrink': const DeckHideMotion(look: DeckHideMotionLook.shrink),
+        'slideLeft': const DeckHideMotion(look: DeckHideMotionLook.slideLeft),
+        'slideRight': const DeckHideMotion(look: DeckHideMotionLook.slideRight),
         'a builder': DeckHideMotion(
           builder: (context, view, deck) => AnimatedBuilder(
             animation: view.hidden,
@@ -10232,6 +10432,72 @@ void main() {
         expect(find.text('Toast 1').hitTestable(), findsOneWidget);
         expect(boxOf(tester, 'Toast 1'), resting);
       });
+    }
+
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.topLeft,
+      SonnerPosition.bottomCenter,
+    ]) {
+      for (final (look, step) in [
+        (DeckHideMotionLook.slideLeft, -1.0),
+        (DeckHideMotionLook.slideRight, 1.0),
+      ]) {
+        testWidgets('$look carries a ${position.name} deck wholly out of the '
+            'layer that way, fading, and brings it back', (tester) async {
+          final controller = deckWith(
+            motion: DeckHideMotion(look: look),
+            position: position,
+          );
+          await tester.pumpWidget(app(controller: controller));
+          showToasts(controller, 2);
+          await settle(tester);
+          final resting = boxOf(tester, 'Toast 1');
+
+          controller.zone.hide();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 150));
+          final moving = boxOf(tester, 'Toast 1');
+          expect(
+            (moving.left - resting.left) * step,
+            greaterThan(20),
+            reason: 'carried toward the side',
+          );
+          expect(
+            moving.top,
+            moreOrLessEquals(resting.top),
+            reason: 'and not toward the edge',
+          );
+          expect(moving.width, moreOrLessEquals(resting.width));
+          expect(moving.height, moreOrLessEquals(resting.height));
+          final fade = tester
+              .widgetList<Opacity>(
+                find.descendant(
+                  of: find.byType(DeckHideMotionBox),
+                  matching: find.byType(Opacity),
+                ),
+              )
+              .first;
+          expect(fade.opacity, lessThan(1), reason: 'fading');
+
+          await settle(tester);
+          final hidden = boxOf(tester, 'Toast 1');
+          // The 800 px wide layer, left by the deck's right side and 24 px
+          // more, right by the distance from its left side to the layer's
+          // right and 24 px more.
+          if (step < 0) {
+            expect(hidden.right, moreOrLessEquals(-24));
+          } else {
+            expect(hidden.left, moreOrLessEquals(824));
+          }
+          expect(find.text('Toast 1').hitTestable(), findsNothing);
+
+          controller.zone.reveal();
+          await settle(tester);
+          expect(find.text('Toast 1').hitTestable(), findsOneWidget);
+          expect(boxOf(tester, 'Toast 1'), resting);
+        });
+      }
     }
 
     testWidgets('a motion builder is handed the deck and an animation that '

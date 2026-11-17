@@ -529,6 +529,13 @@ class _ShowcasePageState extends State<ShowcasePage> {
           onChanged: (value) =>
               _config = c.copyWith(wheelMotion: _wheelMotions[value]),
         ),
+        _Pick<ToastEnterMotion>(
+          label: 'enterMotion',
+          value: c.enterMotion,
+          values: ToastEnterMotion.values,
+          nameOf: (value) => value.name,
+          onChanged: (value) => _config = c.copyWith(enterMotion: value),
+        ),
       ],
     ),
     _Options(

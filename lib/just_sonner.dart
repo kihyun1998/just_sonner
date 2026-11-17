@@ -19,6 +19,7 @@ export 'src/config.dart'
         SwipeDirection,
         TimeLeftLook,
         TimeLeftStart,
+        ToastEnterMotion,
         ToastTimeLeft,
         ZoneEmpty;
 export 'src/controller.dart'

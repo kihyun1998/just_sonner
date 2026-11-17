@@ -42,5 +42,7 @@ once the bound trapped a filter.
 ## Where it will recur
 Any new layer, mask or filter put in the deck's paint path, and any new transform put
 around it. The test: **does this survive being translated or scaled by something that
-does not know about it?** §12 records that transforms an app puts around the host may
+does not know about it?** A move along the cut's band cannot expose it, since the band spans
+the whole width: under #141's `slideLeft` and `slideRight` nothing laid out past the far edge
+comes on, and a test row for each stayed green with the clip removed, so none was kept. §12 records that transforms an app puts around the host may
 expose the same thing, and that this has **not** been probed.

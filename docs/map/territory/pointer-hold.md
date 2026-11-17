@@ -91,8 +91,9 @@ nothing about a region over a deck that scrolls, because sonner's deck never scr
   being dragged holds the timers.
 
 ## Known holes / open
-- **Open**: the part of an entering toast drawn past its resting place takes no pointer, since
-  the boxes around the slide are at that place (#137).
+- **Open**: the part of an entering toast drawn past its resting place, or beside it on a
+  sideways enter (#141), takes no pointer, since the boxes around the slide are at that place
+  (#137).
 - **Open**, reported by a read and not reproduced: the first frame after `reveal()` with the fade
   or shrink look, where the deck takes a press with nothing drawn; and a wheel on a control as
   drawn during a slide, read against the control's resting place.

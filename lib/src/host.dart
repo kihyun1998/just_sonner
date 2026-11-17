@@ -212,6 +212,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// slide carries it past.
   double _hideReach = 0;
 
+  /// How far the deck reached from the layer's left and right sides when it
+  /// was hidden, which a slide to that side carries it past.
+  ({double left, double right}) _hideSideReach = (left: 0, right: 0);
+
   static const _hideDuration = Duration(milliseconds: 300);
 
   /// How far the empty card is drawn, from 0 gone to 1 in full.
@@ -351,10 +355,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       return;
     }
     final box = context.findRenderObject() as RenderBox?;
-    final height = (box?.hasSize ?? false) ? box!.size.height : 0.0;
+    final size = (box?.hasSize ?? false) ? box!.size : Size.zero;
     _hideReach = _controller.config.position.isTop
         ? _deck.bottom
-        : height - _deck.top;
+        : size.height - _deck.top;
+    _hideSideReach = (left: _deck.right, right: size.width - _deck.left);
     _hide.retarget(1, _hideDuration);
     for (final slot in _slots) {
       if (slot.drag == null) continue;
@@ -924,6 +929,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                 position: config.position,
                 reach: _hideReach,
               ),
+              sideReach: _hideSideReach,
               deck: DeckLayers(
                 at: _dismissAllAt,
                 onControlSize: (size) => _dismissAllSize = size,
@@ -1101,9 +1107,13 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
             opacity: slot.presence,
             child: SlideTransition(
               // A toast swiped away leaves the way the swipe took it, and not
-              // toward the edge every other toast enters and leaves by.
+              // toward the edge or side every other toast enters and leaves
+              // by.
               position: slot.swipedOut == null
-                  ? slot.slide(fromTop: config.position.isTop)
+                  ? slot.slide(
+                      fromTop: config.position.isTop,
+                      motion: config.enterMotion,
+                    )
                   : _still,
               // The swipe and the deck's scale in one transform: where a
               // toast is drawn is one answer.
@@ -1403,16 +1413,28 @@ final class _Slot implements ToastView {
   }
 
   Animation<Offset>? _slide;
-  bool? _slideFromTop;
+  (bool, ToastEnterMotion)? _slideFrom;
 
-  /// Its enter and exit slide, from the edge [fromTop] names.
-  Animation<Offset> slide({required bool fromTop}) {
-    // An exiting toast leaves toward the edge it entered from.
+  /// Its enter and exit slide: from the edge [fromTop] names, or from the
+  /// side [motion] names.
+  Animation<Offset> slide({
+    required bool fromTop,
+    required ToastEnterMotion motion,
+  }) {
+    // An exiting toast leaves toward the edge or side it entered from.
     if (exiting && _slide != null) return _slide!;
-    if (_slideFromTop != fromTop) {
-      _slideFromTop = fromTop;
+    final from = (fromTop, motion);
+    if (_slideFrom != from) {
+      _slideFrom = from;
       _slide = animation.drive(
-        Tween(begin: Offset(0, fromTop ? -1 : 1), end: Offset.zero),
+        Tween(
+          begin: switch (motion) {
+            ToastEnterMotion.edge => Offset(0, fromTop ? -1 : 1),
+            ToastEnterMotion.left => const Offset(-1, 0),
+            ToastEnterMotion.right => const Offset(1, 0),
+          },
+          end: Offset.zero,
+        ),
       );
     }
     return _slide!;

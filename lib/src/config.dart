@@ -43,6 +43,19 @@ enum SwipeDirection {
   bool get isHorizontal => this == left || this == right;
 }
 
+/// The way a toast slides in as it enters, and back out as it leaves.
+enum ToastEnterMotion {
+  /// From the edge the position names, one toast's height: up from below at
+  /// a bottom position, down from above at a top one.
+  edge,
+
+  /// From the left, one toast's width.
+  left,
+
+  /// From the right, one toast's width.
+  right,
+}
+
 /// How the default look draws a toast's time left.
 enum TimeLeftLook {
   /// The card's outline, running out round the card from [ToastTimeLeft.start].
@@ -509,6 +522,12 @@ enum DeckHideMotionLook {
   /// Past the edge it sits at, fading.
   slide,
 
+  /// Past the layer's left side, fading.
+  slideLeft,
+
+  /// Past the layer's right side, fading.
+  slideRight,
+
   /// Fading where it is.
   fade,
 
@@ -627,6 +646,7 @@ class SonnerConfig {
     this.hideMotion = const DeckHideMotion(),
     this.zoneEmpty = const ZoneEmpty(),
     this.wheelMotion = const WheelMotion.spring(),
+    this.enterMotion = ToastEnterMotion.edge,
   });
 
   final SonnerPosition position;
@@ -733,6 +753,10 @@ class SonnerConfig {
   /// jumps there.
   final WheelMotion wheelMotion;
 
+  /// The way every toast slides in as it enters, and back out as it leaves.
+  /// A toast swiped away leaves the way the swipe took it instead.
+  final ToastEnterMotion enterMotion;
+
   /// A copy with the fields given changed.
   ///
   /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
@@ -763,6 +787,7 @@ class SonnerConfig {
     DeckHideMotion? hideMotion,
     ValueGetter<ZoneEmpty?>? zoneEmpty,
     WheelMotion? wheelMotion,
+    ToastEnterMotion? enterMotion,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -787,6 +812,7 @@ class SonnerConfig {
     hideMotion: hideMotion ?? this.hideMotion,
     zoneEmpty: zoneEmpty == null ? this.zoneEmpty : zoneEmpty(),
     wheelMotion: wheelMotion ?? this.wheelMotion,
+    enterMotion: enterMotion ?? this.enterMotion,
   );
 
   @override
@@ -812,7 +838,8 @@ class SonnerConfig {
       other.hideControl == hideControl &&
       other.hideMotion == hideMotion &&
       other.zoneEmpty == zoneEmpty &&
-      other.wheelMotion == wheelMotion;
+      other.wheelMotion == wheelMotion &&
+      other.enterMotion == enterMotion;
 
   @override
   int get hashCode => Object.hashAll([
@@ -837,5 +864,6 @@ class SonnerConfig {
     hideMotion,
     zoneEmpty,
     wheelMotion,
+    enterMotion,
   ]);
 }

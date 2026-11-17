@@ -2121,6 +2121,33 @@ void main() {
       expect(set.copyWith(wheelMotion: zero).wheelMotion, zero);
     });
 
+    test('enterMotion is the slide from the edge unless given one, copyWith '
+        'keeps it unless given another, and a config with another is not '
+        'equal', () {
+      expect(const SonnerConfig().enterMotion, ToastEnterMotion.edge);
+      const set = SonnerConfig(enterMotion: ToastEnterMotion.left);
+      expect(set.copyWith(gap: 20).enterMotion, ToastEnterMotion.left);
+      expect(
+        set.copyWith(enterMotion: ToastEnterMotion.right).enterMotion,
+        ToastEnterMotion.right,
+      );
+      expect(
+        const SonnerConfig().copyWith(enterMotion: ToastEnterMotion.left),
+        set,
+      );
+      expect(
+        const SonnerConfig()
+            .copyWith(enterMotion: ToastEnterMotion.left)
+            .hashCode,
+        set.hashCode,
+      );
+      for (final motion in [ToastEnterMotion.left, ToastEnterMotion.right]) {
+        final one = SonnerConfig(enterMotion: motion);
+        expect(one == const SonnerConfig(), isFalse, reason: '$motion');
+        expect(one.hashCode, isNot(const SonnerConfig().hashCode));
+      }
+    });
+
     test('configs built with equal runtime wheel motions are equal, and one '
         'field apart they are not', () {
       SonnerConfig spring(int ms, double bounce) => SonnerConfig(
