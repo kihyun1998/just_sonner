@@ -9,7 +9,8 @@ share when both ask for one.
 - [spec §12](../../spec.md#12-decision-record) — the dismiss-all control and its look
   or builder; what it leaves alone; the stow, its motion and its handle, renamed `hide*`
   by #97, which removed the handle; Hide on an empty open zone; each toast re-read as it
-  is reached (#129, maintainer); the two sideways hide looks (#141).
+  is reached (#129, maintainer); the two sideways hide looks (#141); the reach the deck
+  comes back from (#143).
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -36,15 +37,33 @@ Hiding keeps the toasts and their countdowns; what a hidden zone draws is
 The built-in hide motions are one transform around the whole deck — toasts, controls,
 backdrop and scrollbar — inside `DeckHideMotionBox`. A `slide` reads how far the deck
 reached from its edge, and `slideLeft` and `slideRight` how far it reached from that side of
-the layer to its far side; the host measures all three from the deck's box as it is hidden,
-and each slide adds 24 px, so the deck ends wholly outside the layer. Only the vertical reach
-is on `DeckHideMotionView`: a builder is handed the position and that reach, and the side
-reaches stay the built-in looks' (#141). The side is the app's and is never read from the
-position. The outside scrollbar ends 12 px past the deck, inside the 24 px; a backdrop padding
-wider than 24 px is left partly inside the layer at opacity 0, under `slide` as under the
-sideways looks. A deck hidden before it was laid out, or while empty, is measured as an empty
-box, so all three slides then bring a banner in from the wrong distance (#141 measured it; open
-below).
+the layer to its far side; the host measures all three from the deck's box as it is hidden for
+the way out, and from the deck as it is laid out for the way back (#143), and each slide adds
+24 px, so the deck ends wholly outside the layer. Only the vertical reach as hidden is on
+`DeckHideMotionView`: a builder is handed the position and that reach, and the side reaches
+and the way back's reach stay the built-in looks' (#141, #143). The side is the app's and is
+never read from the position. The outside scrollbar ends 12 px past the deck, inside the 24 px;
+a backdrop padding wider than 24 px is left partly inside the layer at opacity 0, under `slide`
+as under the sideways looks. Measuring the way back from the deck as it was hidden brought a
+banner on a deck hidden before it was laid out, or while empty, in from an empty box's distance
+(#141 measured it). The way out keeps the reach it was hidden with, so a toast leaving
+during the hide does not move the rest (114 px drifting to 100 px when read live).
+
+A deck turned before its motion ends goes on from the reach drawn at the turn: an open zone
+collapses while it hides, so its live reach parts from the one it was hidden with, and taking the
+live one at a banner 150 ms in moved the deck 54 px in one frame. Going out again keeps the drawn
+reach; coming back eases from it to the live one in step with the hide value. A turn from wholly
+out of sight, or with nothing drawn at the turn, takes the live reach at once. "Nothing drawn" is
+read at the turn, not as the zone was hidden: a toast shown and hidden in one frame is drawn by
+the time it turns, and reading it at the hide jumped it 420 px. A position on the other edge
+assigned while the deck moves keeps the reach drawn then, as before #143: the live reach toward
+the new edge is measured while the deck still glides from the old one, and it jumped 208 px.
+
+The reach is set as the deck is built and again as the layout reports the deck and the layer
+(`findRenderObject` is not valid in a build), and `DeckHideMotionBox` reads it as it paints and
+hit-tests, so no frame draws a reach a frame old. On the way back it follows the deck as it
+changes: a toast dismissed during a `reveal()` drifts it (128 px to 114 px), the reading of
+"the deck as it comes back" #143 took.
 
 Both show while the pointer holds the deck **or the zone is open**, and neither on a
 hidden deck. The hide control also shows on an open zone with **no** toast, past the
@@ -81,6 +100,8 @@ records the absence. Every value here was settled from spikes in the example app
 - `DeckHideControl` and `DeckHideMotion` are named in one §12 row and are the subject of
   none — they grep as covered. `DeckHideMotionLook` is the subject of #141's row.
 - **Not covered**: the sideways looks were not seen by eye.
-- **Open**: the reach of a deck hidden before it was laid out, or while empty, is an empty
-  box's, so a banner comes in from 24 px off or from across the layer; `slide` has done this
-  since it was built (spec §12, #141's hide row).
+- **Not covered**: a position flipped to the other edge while the deck goes out of sight keeps
+  the sign jump it had before #143.
+- **Open**: a motion builder's `reach` is still the deck's as the zone was hidden, so a builder
+  that slides brings a banner on a zone hidden empty in from the wrong distance; left outside
+  #143's confirmed scope.

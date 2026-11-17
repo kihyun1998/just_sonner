@@ -31,10 +31,11 @@ import 'toast_fit.dart' show ClipsOverflow;
 /// far into the scroll as the place it gives, and is not reported.
 ///
 /// The box around the toasts [inDeck] names, and the gaps between them, cut
-/// where the deck is cut and to the layer, is reported through [onDeck]; it
-/// takes in a draggable [scrollbar] and the dismiss-all control. The same box
-/// without the toasts [arriving] names is reported through [onPointerBox], and
-/// a child with the id [backdrop], if any, is laid out over it.
+/// where the deck is cut and to the layer, is reported through [onDeck] with
+/// the layer's size; it takes in a draggable [scrollbar] and the dismiss-all
+/// control. The same box without the toasts [arriving] names is reported
+/// through [onPointerBox], and a child with the id [backdrop], if any, is laid
+/// out over it.
 ///
 /// With a [scroll], the toasts [inDeck] names scroll between the edge and the
 /// cap — [DeckOffsets.farOffset] from the far side, or nearer where
@@ -130,7 +131,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
     double place,
   )
   onPlaced;
-  final ValueChanged<Rect> onDeck;
+  final void Function(Rect deck, Size layer) onDeck;
   final ValueChanged<Rect> onPointerBox;
   final double glide;
   final Rect? Function(T id)? glideFrom;
@@ -352,7 +353,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
 
     final deck = finish(around);
     final pointerBox = finish(settled);
-    onDeck(deck);
+    onDeck(deck, size);
     onPointerBox(pointerBox);
 
     final backdrop = this.backdrop;
