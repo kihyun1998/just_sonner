@@ -226,6 +226,21 @@ void revealWhenEmptied() {
 }
 ```
 
+**`toast.isAlive(id)`** says whether a toast with that id is still up: true from `show` until it
+is dismissed or runs out, and across a replace. Reading it changes nothing. Check it when you next
+act on the id:
+
+```dart
+// Starts a new batch once the toast reporting the last one has gone.
+if (!toast.isAlive(id)) finished.clear();
+finished.add(profile);
+toast.show('${finished.length} profiles saved', id: id);
+```
+
+A listener that compares it before and after a notification can miss a leaving: when a listener
+added before it shows the same id again inside that notification, the toast is alive again by the
+time the comparing listener runs. Checking at the next show, as above, does not depend on that.
+
 The zone holds toasts that are still up, never ones that have gone: it is not a notification
 history.
 

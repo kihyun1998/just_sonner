@@ -1590,6 +1590,169 @@ void main() {
     });
   });
 
+  group('isAlive', () {
+    test('is true while a toast is on screen and false once it leaves, each '
+        'way, and a listener reads the new value in that notification', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        expect(controller.isAlive(const ToastId('never')), isFalse);
+
+        final dismissed = controller.show('One', duration: null);
+        final cleared = controller.show('Two', duration: null);
+        expect(controller.isAlive(dismissed), isTrue);
+        expect(controller.isAlive(cleared), isTrue);
+
+        final seen = <bool>[];
+        controller.addListener(() => seen.add(controller.isAlive(dismissed)));
+        controller.dismiss(dismissed);
+        expect(controller.isAlive(dismissed), isFalse, reason: 'dismiss');
+        expect(seen, [false]);
+        expect(controller.isAlive(cleared), isTrue, reason: 'not the one');
+
+        controller.dismissAll();
+        expect(controller.isAlive(cleared), isFalse, reason: 'dismissAll');
+
+        final timed = controller.show(
+          'Three',
+          duration: const Duration(seconds: 1),
+        );
+        async.elapse(const Duration(milliseconds: 900));
+        expect(controller.isAlive(timed), isTrue, reason: 'still counting');
+        async.elapse(const Duration(milliseconds: 300));
+        expect(controller.isAlive(timed), isFalse, reason: 'ran out');
+        controller.dispose();
+      });
+    });
+
+    test('a replace and an update keep it true, and show at a dismissed id '
+        'makes it true again', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('One', duration: null);
+
+        controller.show('Replaced', id: id, duration: null);
+        expect(controller.isAlive(id), isTrue, reason: 'replace');
+        expect(controller.update(id, title: 'Updated'), isTrue);
+        expect(controller.isAlive(id), isTrue, reason: 'update');
+
+        controller.dismiss(id);
+        expect(controller.isAlive(id), isFalse);
+        controller.show('Again', id: id, duration: null);
+        expect(controller.isAlive(id), isTrue, reason: 'a new toast');
+        controller.dispose();
+      });
+    });
+
+    test(
+      'has no side effect: it neither notifies nor restarts the countdown',
+      () {
+        fakeAsync((async) {
+          final controller = SonnerController();
+          var notifications = 0;
+          final id = controller.show(
+            'One',
+            duration: const Duration(seconds: 1),
+          );
+          controller.addListener(() => notifications++);
+
+          async.elapse(const Duration(milliseconds: 500));
+          expect(controller.isAlive(id), isTrue);
+          expect(controller.isAlive(const ToastId('never')), isFalse);
+          expect(notifications, 0);
+          expect(
+            toastsOf(controller).single.remaining,
+            lessThan(const Duration(seconds: 1)),
+            reason: 'still part way through its countdown',
+          );
+
+          async.elapse(const Duration(milliseconds: 700));
+          expect(controller.isAlive(id), isFalse, reason: 'not restarted');
+          expect(notifications, 1, reason: 'only its running out');
+          controller.dispose();
+        });
+      },
+    );
+
+    test(
+      'a listener comparing before and after misses a leaving re-shown '
+      'inside the same notification, and a check at the next show does not',
+      () {
+        fakeAsync((async) {
+          final controller = SonnerController();
+          const id = ToastId('upload');
+          controller.show('One', id: id, duration: null);
+
+          // Re-shows the toast as it leaves, inside that notification.
+          controller.addListener(() {
+            if (!controller.isAlive(id)) {
+              controller.show('Again', id: id, duration: null);
+            }
+          });
+          final leavings = <String>[];
+          var was = controller.isAlive(id);
+          controller.addListener(() {
+            final now = controller.isAlive(id);
+            if (was && !now) leavings.add('left');
+            was = now;
+          });
+
+          var finished = <String>['first'];
+          controller.dismiss(id);
+          expect(controller.isAlive(id), isTrue, reason: 're-shown');
+          expect(leavings, isEmpty, reason: 'the comparing listener missed it');
+
+          // Checked at the next show, as the README does.
+          if (!controller.isAlive(id)) finished = [];
+          finished.add('second');
+          controller.show('Two', id: id, duration: null);
+          expect(finished, ['first', 'second'], reason: 'alive throughout');
+          controller.dispose();
+        });
+      },
+    );
+
+    test('a listener comparing before and after, added before the one that '
+        're-shows the id, sees the leaving', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        const id = ToastId('upload');
+        controller.show('One', id: id, duration: null);
+
+        final leavings = <String>[];
+        var was = controller.isAlive(id);
+        controller.addListener(() {
+          final now = controller.isAlive(id);
+          if (was && !now) leavings.add('left');
+          was = now;
+        });
+        controller.addListener(() {
+          if (!controller.isAlive(id)) {
+            controller.show('Again', id: id, duration: null);
+          }
+        });
+
+        controller.dismiss(id);
+        expect(controller.isAlive(id), isTrue, reason: 're-shown');
+        expect(leavings, ['left']);
+        controller.dispose();
+      });
+    });
+
+    test('on a disposed controller it answers from the toasts it had, as count '
+        'does', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final id = controller.show('One', duration: const Duration(seconds: 1));
+        controller.dispose();
+
+        async.elapse(const Duration(seconds: 2));
+        expect(controller.isAlive(id), isTrue);
+        expect(controller.isAlive(const ToastId('never')), isFalse);
+        expect(controller.count, 1);
+      });
+    });
+  });
+
   group('zone', () {
     setUp(TestWidgetsFlutterBinding.ensureInitialized);
 

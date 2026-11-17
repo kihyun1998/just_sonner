@@ -14,6 +14,9 @@ tick that serves every counting toast.
   `SonnerConfig.configDuration` (maintainer).
 - [spec §12](../../spec.md#12-decision-record) — `count` on the controller, §2's non-goal
   not covering it, a banner not exposed (#122, maintainer); what it counts (derived).
+- [spec §12](../../spec.md#12-decision-record) — `isAlive(id)` on the controller, §2's non-goal
+  not covering it, a callback and a reason still barred (#150, maintainer for the read and its
+  name); what it answers across a replace and on a disposed controller (derived).
 - [spec §12](../../spec.md#12-decision-record) — no exit for a toast beyond the window with
   nothing drawing it (#126, maintainer), decided from what the last build kept offstage (derived).
 - [spec §12](../../spec.md#12-decision-record) — the timers pausing on the pointer, a drag and a
@@ -55,6 +58,17 @@ is the line §2's non-goal draws. It falls the moment a
 toast is dismissed, so it can reach zero while an exit is still drawing. It counts the
 same toasts as `DeckHideView.count`, and not the ones `DeckDismissAllView.count` does,
 which are only those its `dismiss()` removes.
+
+`isAlive(id)` is a lookup of the id in the same list, so it answers with `count`: true
+from `show`, through an update or a replace, which keep the record, and false the moment
+the toast is dismissed or runs out, its exit still drawing or not. It is present state, the
+same line from the other side as `count`: whether this id is alive now, never when it went
+or why. The trap is in reading it from a listener as a before and after: a listener that
+re-shows the id inside the same notification, registered before the one comparing, turns
+it back to true before the comparing listener runs, so the leaving is never seen
+([A notification can re-enter its sender](../invariant/a-notification-can-re-enter-its-sender.md)).
+Reading it when the app next acts on the id has no such order. On a disposed controller it
+reads the list as `dispose` left it, as `count` does, so the two never disagree.
 
 A toast beyond the window with nothing drawing it has **no exit**. Running one would draw it if
 `open()` or a pointer fanned the deck out inside its 200 ms: 9 to 11 frames of a toast already

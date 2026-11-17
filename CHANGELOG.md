@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **`toast.isAlive(id)` says whether a given toast is still up** (#150). It is true from `show`
+  until the toast is dismissed or runs out, and stays true across a replace. An app adding to a
+  toast it shows at its own id can now tell whether that toast has gone, by any way it can leave,
+  and start afresh. It has no side effect. It does not say when a toast left or why, and there is
+  still no callback for that.
 - **`toast.holdTimers()` lets an app pause the timers** (#149). It returns a `TimerHold`, and
   the timers stay paused until `release()` is called on it. On Windows and Linux a window covered
   by another reports `inactive`, which does not pause, so toasts ran out while the user was in
