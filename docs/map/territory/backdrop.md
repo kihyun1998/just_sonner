@@ -66,7 +66,14 @@ holds nothing on it. The defaults were settled by feel in the example app.
 - A `BackdropFilter` costs about **2.4x a frame's whole raster cost** on the deck it was
   measured against, and 84% of that is there at sigma 2 — the layer costs, not the blur.
   The numbers come from the software rasterizer, so what transfers is the structure.
-- The fixed sigma has not been measured on a real GPU: whether an opacity that changes each
-  frame brings slow frames of its own on Windows, under Skia or Impeller, is open (#142).
-  Warming the blur up is deferred until then; a warm-up would have to draw what the fade
-  draws.
+- The fixed sigma was measured on one Windows GPU (#146): Flutter 3.41.9 profile builds,
+  1280x800, a throwaway app opening and closing the zone by code, 3 fresh launches each.
+  Against the ramp it ended the slow first close (8 toasts: 13-18 ms max raster, against
+  40-455), the opacity changing each frame brought no slow frames in the second and third
+  opens, and the `Opacity` layer over a fanned-out deck cost nothing in median raster (about
+  1 ms either way). The first open still has 1-5 raster frames over 16.7 ms, and so does a
+  deck with no backdrop (1-3), so most of it is not the blur's. An app-side warm-up (a 120 px
+  `Opacity` 0.5 over a rounded `BackdropFilter` of sigma 4, 300 ms at startup) changed
+  nothing with no toast and took the 8-toast first open from 2-5 slow frames to 2, which the
+  noise between launches covers. **No warm-up** is the maintainer's call on that (#146).
+  The backend, Skia or Impeller, was not identified, and one machine is not a survey.
