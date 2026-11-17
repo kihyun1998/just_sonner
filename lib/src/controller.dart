@@ -88,6 +88,17 @@ class SonnerController extends ChangeNotifier {
   /// screen, so `zone.state == ZoneState.hidden && count > 0` holds then too.
   int get count => _toasts.length;
 
+  /// Whether a toast with [id] is alive: shown and not yet dismissed or run
+  /// out, whether it is drawn or not, beyond [SonnerConfig.visibleToasts] or
+  /// in a hidden zone included. A replace keeps it alive, and `show` at an id whose toast has gone
+  /// makes it alive again. Reading it changes nothing.
+  ///
+  /// Listeners are the controller's, which notifies as a toast leaves.
+  ///
+  /// On a disposed controller it answers from the toasts it had, as [count]
+  /// does.
+  bool isAlive(ToastId id) => _recordOf(id) != null;
+
   Timer? _ticker;
 
   /// The zone [_ticker] runs in. A timer is bound to its zone, and one left in

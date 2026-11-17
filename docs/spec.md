@@ -79,7 +79,9 @@ What just_sonner adds, in the order a real consumer needed them:
 - Reporting that a toast went away and why — no callback, future or reason enum (sonner's
   `onDismiss` / `onAutoClose`, `SnackBarClosedReason`). A caller learns about its own button
   through the `action` slot's callback, and nothing else. `count` (§4) is not this: it is how many
-  toasts are alive now, and says neither which one went nor why
+  toasts are alive now, and says neither which one went nor why. A read of present state is not
+  covered by it either: `isAlive(id)` (§4) says whether a toast with that id is alive now, and
+  not when it went or why
 - **Mobile and web.** v0.1 targets desktop only, so nothing here is specified or tested for
   touch: how a deck expands without hover, whether pause-on-hover has a touch equivalent, and
   honouring `MediaQuery.viewPadding` / `viewInsets` for notches, the status bar and the keyboard.
@@ -165,6 +167,11 @@ class SonnerController extends ChangeNotifier {
   /// A toast leaves the count as it is dismissed, while its exit may still be drawing. The change
   /// signal is the controller's listeners, which also fire for changes that leave it as it was.
   int get count;
+
+  /// Whether a toast with [id] is alive now: from `show` until it is dismissed or runs out, a
+  /// replace included, drawn or not (beyond `visibleToasts`, a hidden zone). Reading it changes nothing. The change signal is the controller's
+  /// listeners; on a disposed controller it reads the toasts the controller had, as `count` does.
+  bool isAlive(ToastId id);
 
   /// The layer the deck lives in (§6). Always the same object; its listeners are the controller's.
   SonnerZone get zone;
@@ -1142,6 +1149,13 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   `reveal()` a hidden zone as its last toast leaves, and the next toast puts up no banner, while a
   zone hidden with no toast stays hidden under that listener; a hidden zone with a banner up reads
   as hidden with toasts in the count
+- `isAlive(id)` is true from `show` and false after `dismiss`, `dismissAll` and a timer running
+  out, and a listener reads the new value in that notification; a replace and an update keep it
+  true, and `show` at a dismissed id makes it true again; reading it neither notifies nor restarts
+  the countdown; a listener comparing it before and after misses a leaving that a listener
+  registered before it re-shows in that notification and sees one when registered first, while a
+  check at the next show reads the same either way; a
+  disposed controller answers from the toasts it had, as `count` does
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the toasts beyond the window in the list;
   an equal config does not notify, an invalid one asserts as at construction, and a new `duration`
   leaves the countdowns under way alone
@@ -1539,6 +1553,7 @@ outside v0.1 is in §2's non-goals.
 | `SonnerController.raise()` re-raises the host when the app asks, and is named `raise` | maintainer | #148: an entry another package inserts after the toasts covers them until the next `show`, `zone.open()` does nothing on an open zone, and Flutter's `Overlay` has no insertion hook the package could follow ([overlay research](https://github.com/kihyun1998/just_sonner/blob/research/overlay-reraise/research/overlay-reraise.md) §1). The name was confirmed by the maintainer at #148's reading |
 | It sits on the controller, does nothing in mode 2, and inserts nothing before the host is first inserted since `attach`; a host in a replaced overlay goes into the new one | derived | #148. On the controller beside `attach` and `detach`, since the mount it moves is the controller's and is not exported. Mode 2's host is above the `Navigator`, where no entry of the root overlay reaches. Inserting nothing: before the first `show` or `open()` since `attach` nothing is drawn in that navigator's overlay and nothing can be covered, and the one that comes inserts the host on top, so inserting from `raise()` would add a moment the host enters the overlay for no drawn result. The replaced overlay: those toasts were drawn, and `raise()` puts drawn toasts back, as the next `show` would. With no navigator built it does nothing rather than throw, since it brings nothing new to draw. Drawing order only; the pointer follows paint as it already does |
 | An app pauses the timers with `TimerHold holdTimers()` on the controller and ends the pause with `TimerHold.release()`; each call is a hold of its own, apart from the pointer, a drag, `holdTimer` and a hidden app, and the timers resume once nothing pauses them | maintainer for the API and its names; derived for the rest | #149. Chosen over a `SonnerConfig` field of lifecycle states, which cannot tell a covered window from one beside the user's work, and over both. A handle rather than the internal `holdTimersFor`/`releaseTimersFor` keyed by any `Object`, so a release is tied to the hold it ends. Derived: the hold is itself the key in the controller's set of holders, beside the pointer's host, a drag and a `ToastView`, so a release is idempotent, holds never release each other, and resuming skips the partial tick as every release does; the host's time left stands still under it with no wiring of its own, since it reads the pause on every frame. `holdTimers()` on a disposed controller asserts, as `show`, `update` and `config` do; `release()` once the controller is disposed does nothing, the rule `ChangeNotifier.removeListener` follows because an owner is often disposed before what listens to it (`change_notifier.dart`, Flutter 3.41.9). A release being idempotent was in the reading the maintainer confirmed; Flutter's counted holds assert on an extra release instead (`allowFirstFrame`, `SemanticsHandle.dispose`), which a key per hold does not need, at the cost that an app releasing one hold twice is not told. `TimerHold` is a plain class with a private constructor, as `SonnerZone` is, so a fake that implements `SonnerController` can implement it too. **Not covered**: a hold the app never releases keeps the timers paused for the controller's life, and nothing reports it |
+| An app reads whether a given toast is alive through `bool isAlive(ToastId id)` on the controller: true while a toast with that id is on screen, false once it has been dismissed or has run out, with no side effect; §2's non-goal on reporting a toast's leaving does not cover it, and a callback (`onDismissed`) and a reason stay barred by it | maintainer for the read and its name; derived for the rest | #150, decided in the issue's comment. Shown: the reporter's case needs whether its id is still alive at the next show, not the moment it left; `count` was allowed on the same ground (#122), present state rather than a report of a leaving; every way a toast leaves ends in `dismiss`, `dismissAll` or the tick, and each notifies; and today's alternative, `update` returning false on a gone id, patches a live one and restarts its countdown, so it is no check. Derived: it looks the id up in the controller's list, so a replace and an update, which change the record in place, keep it true, and it turns false as the toast is dismissed while its exit may still draw, as `count` falls; it has no listenable of its own, and no list of ids goes with it, as none goes with `count`. On a disposed controller it neither asserts nor answers false: it reads the list as `dispose` left it, as `count`, `config`, `zone.state` and `held` read, the asserts at entry being on `show`, `update`, the `config` setter and `holdTimers`; answering false there would let `isAlive(id)` be false for every id while `count` is above 0. Measured by test: a listener comparing it before and after misses a leaving when a listener registered before it re-shows that id inside the same notification (`ChangeNotifier` re-entrancy, the invariant *A notification can re-enter its sender*), and catches it when registered first; a check at the next show reads the same either way. **Not covered**: which way a toast left and why, which the non-goal keeps out |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 
