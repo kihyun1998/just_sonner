@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **`toast.holdTimers()` lets an app pause the timers** (#149). It returns a `TimerHold`, and
+  the timers stay paused until `release()` is called on it. On Windows and Linux a window covered
+  by another reports `inactive`, which does not pause, so toasts ran out while the user was in
+  another window. An app can now take a hold on `AppLifecycleListener.onInactive` and release it
+  on `onResume`, or on any other signal it has. Each call is a hold of its own, and releasing one
+  twice does nothing. `TimerHold` is exported. By default `inactive` still does not pause.
 - **`toast.raise()` puts attached toasts back on top** (#148). An entry another package inserted
   into the root overlay after the toasts covered them until the next toast, and `zone.open()` on
   an open zone did not lift them. `raise()` moves them back over it, keeping their state and

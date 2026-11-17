@@ -23,7 +23,7 @@ export 'src/config.dart'
         ToastTimeLeft,
         ZoneEmpty;
 export 'src/controller.dart'
-    show SonnerController, SonnerZone, ZoneState, toast;
+    show SonnerController, SonnerZone, TimerHold, ZoneState, toast;
 export 'src/dismiss_all_view.dart'
     show DeckDismissAllBuilder, DeckDismissAllView;
 export 'src/host.dart' show SonnerHost;

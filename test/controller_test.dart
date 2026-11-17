@@ -5,7 +5,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
-    show holdDeck, holdTimers, releaseDeck, releaseTimers, toastsOf, zoneBanner;
+    show holdDeck, holdTimersFor, releaseDeck, releaseTimersFor, toastsOf, zoneBanner;
 
 void main() {
   group('countdown', () {
@@ -354,10 +354,10 @@ void main() {
         controller.addListener(() => notifications++);
         // Letting go of nothing is not coming out of a pause, so it costs the
         // countdown no tick.
-        releaseTimers(controller, holder);
+        releaseTimersFor(controller, holder);
 
         async.elapse(const Duration(seconds: 1));
-        holdTimers(controller, holder);
+        holdTimersFor(controller, holder);
         async.elapse(const Duration(seconds: 10));
         expect(notifications, 0, reason: 'held, so nothing is subtracted');
         expect(
@@ -366,7 +366,7 @@ void main() {
           reason: 'the tick keeps running while held',
         );
 
-        releaseTimers(controller, holder);
+        releaseTimersFor(controller, holder);
         async.elapse(const Duration(milliseconds: 2999));
         expect(notifications, 0, reason: '3 s were left, not 4 and not 0');
         async.elapse(const Duration(milliseconds: 101));
@@ -386,9 +386,9 @@ void main() {
         // 50 ms counted, then held over no tick, then released 10 ms before
         // the next one: 1 s of unheld time is not over until 1040 ms.
         async.elapse(const Duration(milliseconds: 50));
-        holdTimers(controller, holder);
+        holdTimersFor(controller, holder);
         async.elapse(const Duration(milliseconds: 40));
-        releaseTimers(controller, holder);
+        releaseTimersFor(controller, holder);
 
         async.elapse(const Duration(milliseconds: 949));
         expect(notifications, 0, reason: 'a full unheld second has not passed');
@@ -405,14 +405,14 @@ void main() {
         controller.show('Saved');
         controller.addListener(() => notifications++);
 
-        holdTimers(controller, #first);
-        holdTimers(controller, #second);
-        releaseTimers(controller, #first);
-        releaseTimers(controller, #never);
+        holdTimersFor(controller, #first);
+        holdTimersFor(controller, #second);
+        releaseTimersFor(controller, #first);
+        releaseTimersFor(controller, #never);
         async.elapse(const Duration(seconds: 10));
         expect(notifications, 0, reason: 'the second holder still holds');
 
-        releaseTimers(controller, #second);
+        releaseTimersFor(controller, #second);
         async.elapse(const Duration(milliseconds: 4100));
         expect(notifications, 1);
         controller.dispose();
@@ -422,7 +422,7 @@ void main() {
     test('a toast shown while held waits with the rest', () {
       fakeAsync((async) {
         final controller = SonnerController();
-        holdTimers(controller, #pointer);
+        holdTimersFor(controller, #pointer);
         var notifications = 0;
         controller.show('Saved');
         controller.addListener(() => notifications++);
@@ -430,13 +430,120 @@ void main() {
         async.elapse(const Duration(seconds: 10));
         expect(notifications, 0);
 
-        releaseTimers(controller, #pointer);
+        releaseTimersFor(controller, #pointer);
         async.elapse(const Duration(milliseconds: 3999));
         expect(notifications, 0, reason: 'it starts from its full 4 s');
         async.elapse(const Duration(milliseconds: 101));
         expect(notifications, 1);
         controller.dispose();
       });
+    });
+  });
+
+  group('the app\'s hold', () {
+    test('holdTimers pauses until its hold is released, and the countdown '
+        'resumes with the time left', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        async.elapse(const Duration(seconds: 1));
+        final hold = controller.holdTimers();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'held, so nothing is subtracted');
+
+        hold.release();
+        async.elapse(const Duration(milliseconds: 2999));
+        expect(notifications, 0, reason: '3 s were left, not 4 and not 0');
+        async.elapse(const Duration(milliseconds: 101));
+        expect(notifications, 1, reason: 'gone within a tick of the 3 s left');
+        controller.dispose();
+      });
+    });
+
+    test('a hold released between ticks never runs a toast short', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Short', duration: const Duration(seconds: 1));
+        controller.addListener(() => notifications++);
+
+        // 50 ms counted, then held over no tick, then released 10 ms before
+        // the next one: 1 s of unheld time is not over until 1040 ms.
+        async.elapse(const Duration(milliseconds: 50));
+        final hold = controller.holdTimers();
+        async.elapse(const Duration(milliseconds: 40));
+        hold.release();
+
+        async.elapse(const Duration(milliseconds: 949));
+        expect(notifications, 0, reason: 'a full unheld second has not passed');
+        async.elapse(const Duration(milliseconds: 111));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('each call takes a hold of its own, and releasing one twice does '
+        'not release another', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        final first = controller.holdTimers();
+        final second = controller.holdTimers();
+        expect(identical(first, second), isFalse);
+        first.release();
+        first.release();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the second hold still holds');
+
+        second.release();
+        async.elapse(const Duration(milliseconds: 4100));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('the app\'s hold and the package\'s own holds do not release each '
+        'other', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        var notifications = 0;
+        controller.show('Saved');
+        controller.addListener(() => notifications++);
+
+        final hold = controller.holdTimers();
+        holdTimersFor(controller, #pointer);
+        hold.release();
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the pointer still holds');
+
+        final again = controller.holdTimers();
+        releaseTimersFor(controller, #pointer);
+        async.elapse(const Duration(seconds: 10));
+        expect(notifications, 0, reason: 'the app still holds');
+
+        again.release();
+        async.elapse(const Duration(milliseconds: 4100));
+        expect(notifications, 1);
+        controller.dispose();
+      });
+    });
+
+    test('a hold released after its controller is disposed does nothing', () {
+      final controller = SonnerController();
+      final hold = controller.holdTimers();
+      controller.dispose();
+      expect(hold.release, returnsNormally);
+    });
+
+    test('holdTimers on a disposed controller asserts', () {
+      final controller = SonnerController()..dispose();
+      expect(controller.holdTimers, throwsFlutterError);
     });
   });
 

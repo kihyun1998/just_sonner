@@ -43,7 +43,7 @@ What just_sonner adds, in the order a real consumer needed them:
 
 ### Goals (v0.1)
 
-- Stack, collapse, expand on hover, pause on pointer/drag/app-hidden (§7), swipe to dismiss
+- Stack, collapse, expand on hover, pause on pointer/drag/app-hidden or a hold the app takes (§7), swipe to dismiss
 - Six positions, max visible count, width, gap, offset
 - `show` returns an id; `update(id)`, `dismiss(id)`, `dismissAll()`, `promise(future)`
 - Two mount modes (§5), root overlay by default
@@ -168,6 +168,9 @@ class SonnerController extends ChangeNotifier {
 
   /// The layer the deck lives in (§6). Always the same object; its listeners are the controller's.
   SonnerZone get zone;
+
+  /// Pauses every timer until the returned hold is released (§7). Each call is a hold of its own.
+  TimerHold holdTimers();
 }
 
 enum ZoneState { hidden, shown, open }
@@ -181,6 +184,11 @@ class SonnerZone {
   void close();    // back to the state open() was called from; not open: nothing
   void hide();     // an open zone too; takes a banner down
   void reveal();   // hidden → shown; open: close() then returns to shown
+}
+
+/// A pause on the timers, taken with `holdTimers()` (§7).
+class TimerHold {
+  void release();  // ends this hold; again, or once the controller is disposed: nothing
 }
 
 /// The content of one `promise` state. Everything `show` takes except `id` and `isLoading`,
@@ -863,18 +871,25 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - **a toast is being dragged**, and it keeps pausing after the drag carries the pointer off the
     deck.
   - the app is **`hidden`, `paused` or `detached`**.
+  - **the app holds them**: `holdTimers()` returns a `TimerHold`, and the timers stay paused until
+    `release()` is called on it. It is for a signal the controller does not watch, such as
+    `AppLifecycleListener.onInactive` or a program the app launched coming to the front.
 
   A pointer-down that never becomes a drag needs no rule of its own: pressing something in the
   deck means the pointer is over the deck, which already pauses. (sonner has a separate
   `interacting` flag for this; its other job, keeping the deck expanded until pointer-up, is a
   collapse rule and lives in §6 Expanded.)
 
-  **`inactive` does not pause.** The app is still on screen there — Flutter's own docs describe it
-  as "at least one view is visible, but none have input focus" — on desktop, a window that merely
-  lost focus while staying fully on screen. Pausing for
-  those would leave a pile of stale toasts waiting whenever the user comes back. `hidden` is the
-  state Flutter **synthesises** before `paused` so that one handler covers "conceptually hidden"
-  on every platform, which is exactly what is wanted here.
+  **`inactive` does not pause.** Flutter's own docs describe it as "at least one view is visible,
+  but none have input focus". On desktop it covers more than that. On Windows and Linux a window
+  that lost focus and a window fully covered by another both report `inactive`; only a window not
+  shown at all, minimised or hidden by the app (on Linux, iconified or withdrawn), reports `hidden`. macOS reports `hidden` when the window
+  is occluded, so a covered macOS app pauses. No state on Windows or Linux tells a covered window
+  from one still visible beside the user's work, so the default keeps a toast in a window the user
+  can see counting down: pausing there would leave a pile of stale toasts waiting whenever the
+  user comes back. An app that wants to pause on `inactive` holds the timers itself (above).
+  `hidden` is the state Flutter **synthesises** before `paused` so that one handler covers
+  "conceptually hidden" on every platform.
 - Toasts with `isLoading`, and toasts whose duration is null, have no timer.
 - **`SonnerConfig.configDuration` is the default of every `duration`**: `show`, `update` and
   `ToastContent` tell it apart from null by identity, so omitting `duration` and passing null are
@@ -901,9 +916,11 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - **Resuming** lets the partial tick under way pass uncounted for every counting toast, as a toast
   shown between ticks does, so a pause never runs a toast short. A release that ends no pause
   costs nothing. The pause holds each thing pausing it separately — each host under the pointer,
-  and later a drag — so the timers resume only once none holds them; a host that is disposed or
-  handed another controller while the pointer is over it lets go (a `MouseRegion` unmounted under
-  the pointer reports no exit).
+  each drag, each `holdTimer`, each hold the app took — so the timers resume only once none holds
+  them; a host that is disposed or handed another controller while the pointer is over it lets go
+  (a `MouseRegion` unmounted under the pointer reports no exit). A `TimerHold` released twice, or
+  once its controller is disposed, does nothing; `holdTimers()` on a disposed controller asserts,
+  as `show`, `update` and `config` do.
 - **The controller watches the lifecycle**, not the host: it starts watching when a host first
   draws it, or at a `show` once attached. While the app is hidden no frame is drawn, so a mode-1
   host inserted by that `show` is not built until the app returns, and its toast must already be
@@ -948,7 +965,8 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   waits in the zone until it is dismissed, which is why the zone is not the §2 notification
   centre: it holds live toasts only, and nothing outlives its own duration.
 - `holdTimer()` exists for builders that run their own gestures (flash's `FlashBar` calls
-  `deactivate` when a fling starts): it pauses that toast until it is dismissed, updated or replaced.
+  `deactivate` when a fling starts): it pauses every timer of the controller, not only that toast's,
+  until that toast is dismissed, updated or replaced.
 
 ## 8. Swipe
 
@@ -1081,6 +1099,14 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   short; resume only once every holder has let go
 - a single toast pauses under the pointer, and `expandByDefault` alone does not pause
 - `inactive` does not pause; `hidden` does
+- a hold from `holdTimers()` pauses until it is released, resuming with the time left and never
+  running a toast short; each call is a hold of its own, one released twice releases no other, and
+  neither it nor the pointer's hold releases the other; it outlasts the app being hidden and coming
+  back; released once the controller is disposed it does nothing, and `holdTimers()` on a disposed
+  controller asserts
+- the README's recipe, a hold taken on `AppLifecycleListener.onInactive` or when the listener is
+  made on an app already inactive, and released on `onResume`, pauses an inactive app, minimised
+  and restored included
 - a toast pushed beyond `visibleToasts` keeps counting down, neither paused nor restarted, and is
   dismissed there when its time runs out; leaving there by its timer or a dismiss with nothing
   drawing it, it is out of the tree on the next frame and is not drawn when `open()`, a listener's
@@ -1376,7 +1402,7 @@ outside v0.1 is in §2's non-goals.
 | Re-raise the host on every `show` (so also on replace and each `promise` state), never on `update`; unconditionally, since nothing can be detected | maintainer | §5's premise was wrong: `Navigator` already lifts non-route entries above every pushed route, so dialogs and pages never covered the host (overlay research, probes A1-A5). What remains is another package's direct `overlay.insert`, which no public API can see — hence unconditional. Keying it to `show` covers every transition that matters, since replace and `promise` go through `show`, and spares an overlay rebuild per tick on the progress toast §4 now keeps alive. **Amended by #148**: it does not cover an entry inserted after the last `show` when no toast follows, nor an open zone, whose `open()` does nothing; `raise()` (row below) is the app's way back |
 | `dismissible` is `bool?`, unset meaning `!isLoading`, resolved on read rather than at `show` | maintainer | sonner blocks swipe and the close button on loading *in addition to* `dismissible`, giving one job to two handles and leaving "loading, but closeable" inexpressible — and that rule is policy, not a measurement, so the example reference does not carry it here. Deriving the default keeps a single handle, matches sonner out of the box, and makes a toast hand itself back when its work finishes. Resolving on read rather than at `show` is what makes that last part free |
 | Any `update` or replace restarts the countdown, from the toast's own duration | maintainer | §1's motivating flow breaks otherwise — new content arriving on a toast with 1 s left would vanish before it is read. No field list: the only field that is not on screen is `dismissible`, so an exception would buy one case and cost a rule. Restarting also makes a frequently-updated progress toast stay up for free |
-| Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it |
+| Timers pause on **pointer-over-deck**, on a drag in progress, and on `hidden` / `paused` / `detached` — not on `inactive` | maintainer | keying the pause to the pointer rather than to expansion fixes the commonest case, one toast being read, which sonner misses by forcing `expanded` false at ≤ 1 toast (research #2 row 22). `inactive` means visible-but-unfocused, so pausing there banks stale toasts for the user's return; `hidden` is the state Flutter synthesises for "conceptually hidden" on every platform, and matches sonner's `document.hidden`. A bare pointer-down needs no rule — hover already covers it. **Amended by #149**: the premise that `inactive` means visible-but-unfocused is wrong on Windows and Linux, where a window fully covered by another is `inactive` too and only a minimised one is `hidden`. Measured by the maintainer on a Flutter 3.41.9 Windows release app logging `AppLifecycleListener` states: shown without focus, another window clicked and another window maximised over it all logged `inactive`; minimise logged `hidden`. The engine source agrees, read and not run: Windows sends `hidden` only when no window is visible, with no occlusion tracking (`windows_lifecycle_manager.cc`); Linux only on WITHDRAWN or ICONIFIED (`fl_window_state_monitor.cc`); macOS sends `hidden` on occlusion (`FlutterEngine.mm`). Shown this, the maintainer kept the call for the visible case, over pausing on `inactive` by default on Windows and Linux: a toast in a window visible beside the user's work still goes. It is now known not to cover a covered window, which an app pauses itself with a hold (row below) |
 | ~~Toasts beyond `visibleToasts` do not count down; a toast's duration is fixed on reaching the window — `backlogDuration` (300 ms) with a backlog behind it, `duration` without~~ | maintainer | **Superseded**: reversed by the maintainer (row below). Its picture had new toasts waiting behind a full window, which the newest-first deck does not do |
 | Toasts beyond `visibleToasts` count down like the rest; there is no `backlogDuration` | maintainer | reversed while working #23, on an adversarial pass with a simulation of the controller's tick (100 ms, a skip on joining, newest first). The row above was decided on a picture where new toasts wait behind a full window; on this deck every toast reaches the window at `show`, and the toasts behind are older ones already seen. Taken literally it cleared a burst of 10 in 5.3 s rather than 2, and gave a fourth toast on a full deck 400 ms. Shown alongside: waiting only for toasts never yet in the window, a first-in-first-out window (a new toast hidden for 3 s behind three 4 s ones), and waiting with no short duration (16.4 s for the burst). Chosen with sonner's result in view — 7 of a burst of 10 never drawn — on the premise, also the maintainer's, that hovering will fan every toast out into a scrollable list, which is not specified yet. Until #41 drew every toast under the pointer, a hidden toast whose time ran out left with no way to see it. Hovering already pauses every timer (§7) |
 | A covered toast draws no content, and the default look applies it to itself | maintainer | found by pressing the example app (#45): for the 400 ms a short toast takes to enter, the taller one behind it painted title and description at full opacity under a front still at 0.297, and its description was sliced by the cut to the front's height — two sets of text on top of each other. sonner does not have this because it fades the children of a collapsed non-front styled toast to zero. §6's old wording left the decision to a builder, but `ToastView` gave a builder nothing to decide with, so nothing ever faded. The fraction is the coverage the deck's layout already computes, so it eases with the enter, the exit and collapse ↔ expand for free, and the card is left alone so the deck still reads as a pile |
@@ -1481,7 +1507,7 @@ outside v0.1 is in §2's non-goals.
 | A toast beyond `visibleToasts` is still built and laid out; only its paint is spared | derived | follows from §6 Expanded, which draws every toast at its **measured** height as soon as the pointer arrives: a toast never laid out has no height to draw at. Found while reading `deck_layout.dart` for #79, not by measurement — **what it costs is unmeasured**, and the cost is unbounded for a deck of `Duration.zero` (since #97, null-duration) or `isLoading` toasts, which never leave the list on their own (§7). `natural(id)` already caches the last measured height and the deck already falls back to it, so measuring once and then not building is not ruled out; it needs a number first |
 | ~~The app can expand the deck: `expand()` / `collapse()` / `expanded` on the controller, its own control rather than a flag on `unstow`~~ | maintainer | **Superseded** by #97's `zone.open()` / `close()` / `state`, which also holds with no toast. #88: an app whose entrance to the toasts is its own title-bar button called `unstow()` and got a collapsed pile. `unstow({expanded})` was offered and not chosen, since #60 keeps stow and the pointer apart and a flag would leave a deck that is not stowed with no way to expand. The app calls `unstow(); expand();` |
 | The package keeps the mechanism and the app the policy: nothing but `collapse()` and an empty deck ends an app's expansion (since #97: nothing but `close()` and `hide()` ends an open zone, and an empty one stays open), and `held` (since #97, `zone.held`) tells the app when the pointer holds the deck | maintainer | #88, chosen over the package folding the expansion up once the pointer has come and gone, and over expansion with no pointer signal. An app's rule — the pointer leaving, its own button, a timer — is composed over `held` |
-| The app's expansion (since #97, an open zone) draws every toast, as hover does, and does not pause the timers | maintainer | #88. The #41 row's reason was a region taking every tap in the column with nobody asking; here the app asked. Not pausing keeps §7's rule that only the pointer, a drag or a hidden app pauses |
+| The app's expansion (since #97, an open zone) draws every toast, as hover does, and does not pause the timers | maintainer | #88. The #41 row's reason was a region taking every tap in the column with nobody asking; here the app asked. Not pausing keeps §7's rule that only the pointer, a drag or a hidden app pauses. **Amended by #149**: a hold the app takes with `holdTimers()` pauses too, as does `ToastView.holdTimer`, which the rule's list left out; an open zone still does not |
 | ~~Stow and the app's expansion are independent; the expansion ends when the last toast leaves;~~ the controls show on a deck the app expanded (since #97, an open zone); the signal is named `held` | maintainer | **Partly superseded** by #97: hiding sends an open zone to hidden, and an open zone survives its last toast. #88, the defaults filled at filing and confirmed after. `held` is §6's own phrase, "the pointer holds the deck", and covers a press carried off it, which `pointerOnDeck` or `hovered` would misname |
 | `held` is published by the host from every place the hold changes — a hover, a press, a stow (since #97, hiding), another controller, its own dispose — and a change during a frame reaches listeners at its end, never to a controller disposed by then | derived | two of those places run mid-frame (a new controller in the build, a dispose in finalizing the tree), where a listener rebuilding would throw; a host and the controller its owner disposes go in one frame. Measured by tests that redden with the deferral or the guard removed |
 | The host draws itself again when the hold changes, not only when the expansion moves | derived | found by #88's scrollbar test: with the app's expansion already whole, the pointer arriving moved no animation, so nothing rebuilt and what follows the pointer — the scrollbar, the stretched region — stayed off |
@@ -1512,6 +1538,7 @@ outside v0.1 is in §2's non-goals.
 | The backdrop's blur is drawn at a sigma of `blur` whenever it is drawn, and its **opacity** follows the expansion, replacing the sigma that followed it; one behaviour with no option and no public API change, covering opening, hover fan-out, collapse and `close()` alike, since one `_expand` drives them all. Warming the blur up is deferred | maintainer, for all three: over an instant-on backdrop and over making the appearance an option; over a new `DeckBackdrop` option; and the warm-up deferred until the first open is measured again with the fixed sigma, a warm-up then to draw what the fade draws | #142. Decided on the issue's report that the first opens after launch drop frames, and on a probe in flutter_test's rasterizer (sigma 4 over 24 px stripes, rows of 100 whose grey band passes 40 px): an `Opacity` over the `ClipRect` and `BackdropFilter` left the blur drawing (100 rows at 1.0, 0.99 and 0.5), while a `ShaderMask` there blurred none, so the probe tells a trapped filter apart. Why fixed rather than stepped: each sigma the engine has not drawn yet brings a slow raster frame, so a ramp in a few steps would cut the drops without removing them; not measured. Measured with the change, 4 px inside the deck's top on 800 px of stripes with the default `blur` 4: three 16 ms ticks into a hover, at an expansion of 0.13, 220 pixels of the row are off pure black and white, against 92 with the ramp and 302 fanned out. The backdrop's own clip stays a plain clip, and the filter stays outside the deck's cut. **Measured on a real GPU by #146**, which also settled the warm-up: none, the maintainer's call (2026-11-17), on one Windows GPU (Flutter 3.41.9 profile, 1280x800, a throwaway app driving the zone by code, 3 fresh launches each). The fixed sigma ended the ramp's slow first close (8 toasts: 13–18 ms max raster against 40–455), the changing opacity brought no slow frames in later opens, and the `Opacity` layer over a fanned-out deck cost no median raster. The first open keeps 1–5 raster frames over 16.7 ms, as a deck with no backdrop keeps 1–3, and an app-side warm-up moved it within the noise between launches (0 toasts: 1 frame either way; 8 toasts: 2–5 to 2). **Not covered**: the backend, Skia or Impeller, and any machine but one |
 | `SonnerController.raise()` re-raises the host when the app asks, and is named `raise` | maintainer | #148: an entry another package inserts after the toasts covers them until the next `show`, `zone.open()` does nothing on an open zone, and Flutter's `Overlay` has no insertion hook the package could follow ([overlay research](https://github.com/kihyun1998/just_sonner/blob/research/overlay-reraise/research/overlay-reraise.md) §1). The name was confirmed by the maintainer at #148's reading |
 | It sits on the controller, does nothing in mode 2, and inserts nothing before the host is first inserted since `attach`; a host in a replaced overlay goes into the new one | derived | #148. On the controller beside `attach` and `detach`, since the mount it moves is the controller's and is not exported. Mode 2's host is above the `Navigator`, where no entry of the root overlay reaches. Inserting nothing: before the first `show` or `open()` since `attach` nothing is drawn in that navigator's overlay and nothing can be covered, and the one that comes inserts the host on top, so inserting from `raise()` would add a moment the host enters the overlay for no drawn result. The replaced overlay: those toasts were drawn, and `raise()` puts drawn toasts back, as the next `show` would. With no navigator built it does nothing rather than throw, since it brings nothing new to draw. Drawing order only; the pointer follows paint as it already does |
+| An app pauses the timers with `TimerHold holdTimers()` on the controller and ends the pause with `TimerHold.release()`; each call is a hold of its own, apart from the pointer, a drag, `holdTimer` and a hidden app, and the timers resume once nothing pauses them | maintainer for the API and its names; derived for the rest | #149. Chosen over a `SonnerConfig` field of lifecycle states, which cannot tell a covered window from one beside the user's work, and over both. A handle rather than the internal `holdTimersFor`/`releaseTimersFor` keyed by any `Object`, so a release is tied to the hold it ends. Derived: the hold is itself the key in the controller's set of holders, beside the pointer's host, a drag and a `ToastView`, so a release is idempotent, holds never release each other, and resuming skips the partial tick as every release does; the host's time left stands still under it with no wiring of its own, since it reads the pause on every frame. `holdTimers()` on a disposed controller asserts, as `show`, `update` and `config` do; `release()` once the controller is disposed does nothing, the rule `ChangeNotifier.removeListener` follows because an owner is often disposed before what listens to it (`change_notifier.dart`, Flutter 3.41.9). A release being idempotent was in the reading the maintainer confirmed; Flutter's counted holds assert on an extra release instead (`allowFirstFrame`, `SemanticsHandle.dispose`), which a key per hold does not need, at the cost that an app releasing one hold twice is not told. `TimerHold` is a plain class with a private constructor, as `SonnerZone` is, so a fake that implements `SonnerController` can implement it too. **Not covered**: a hold the app never releases keeps the timers paused for the controller's life, and nothing reports it |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

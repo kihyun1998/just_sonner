@@ -264,8 +264,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _controller.addListener(_onToastsChanged);
     watchLifecycle(_controller);
     if (_hovered) {
-      releaseTimers(previous, this);
-      holdTimers(_controller, this);
+      releaseTimersFor(previous, this);
+      holdTimersFor(_controller, this);
     }
     releaseDeck(previous, this);
     // Another controller's toasts are another deck, and start at the edge,
@@ -294,7 +294,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   void dispose() {
     _controller.removeListener(_onToastsChanged);
     // A region unmounted under the pointer reports no exit.
-    if (_hovered) releaseTimers(_controller, this);
+    if (_hovered) releaseTimersFor(_controller, this);
     releaseDeck(_controller, this);
     for (final slot in _slots) {
       slot.dispose();
@@ -489,9 +489,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final hovered = _hovered;
     if (hovered == was) return;
     if (hovered) {
-      holdTimers(_controller, this);
+      holdTimersFor(_controller, this);
     } else {
-      releaseTimers(_controller, this);
+      releaseTimersFor(_controller, this);
       if (!_interacting) _unscrollDeck();
     }
     _publishHold();
@@ -655,7 +655,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     );
     // The drag holds the timers itself, so they keep pausing once it has
     // carried the pointer off the deck.
-    holdTimers(_controller, slot.dragHold);
+    holdTimersFor(_controller, slot.dragHold);
   }
 
   void _swipeUpdate(_Slot slot, DragUpdateDetails details) {
@@ -1268,7 +1268,7 @@ final class _Slot implements ToastView {
   void holdTimer() {
     if (exiting) return;
     _heldAt = record.state;
-    holdTimers(owner, this);
+    holdTimersFor(owner, this);
   }
 
   /// Lets go of a [holdTimer] hold once the toast has been updated, replaced
@@ -1278,7 +1278,7 @@ final class _Slot implements ToastView {
     if (held == null) return;
     if (identical(held, record.state) && !exiting) return;
     _heldAt = null;
-    releaseTimers(owner, this);
+    releaseTimersFor(owner, this);
   }
 
   /// Where a swipe has taken it from the place the deck gives it.
@@ -1298,7 +1298,7 @@ final class _Slot implements ToastView {
   void endDrag() {
     if (drag == null) return;
     drag = null;
-    releaseTimers(owner, dragHold);
+    releaseTimersFor(owner, dragHold);
   }
 
   /// Where the swipe draws it: as far as the drag has taken it, and, once a
@@ -1504,7 +1504,7 @@ final class _Slot implements ToastView {
     endDrag();
     if (_heldAt != null) {
       _heldAt = null;
-      releaseTimers(owner, this);
+      releaseTimersFor(owner, this);
     }
     final onExit = this.onExit;
     if (onExit != null) controller.removeStatusListener(onExit);
