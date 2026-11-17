@@ -1,9 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 
 import '../config.dart';
 import 'deck_dismiss_all.dart';
 import '../hide_view.dart';
+
+/// How far a deck reaches, in pixels: from the edge it sits at, and from the
+/// layer's left and right sides to its far side.
+typedef HideReach = ({double edge, double left, double right});
 
 /// The deck drawn as far out of sight as [view] says, by the motion
 /// [DeckHideMotion] names or by its builder.
@@ -14,16 +19,17 @@ class DeckHideMotionBox extends StatelessWidget {
     super.key,
     required this.motion,
     required this.view,
-    required this.sideReach,
+    required this.reach,
     required this.deck,
   });
 
   final DeckHideMotion motion;
   final DeckHideMotionView view;
 
-  /// How far the deck reached from the layer's left and right sides when it
-  /// was hidden, in pixels: from each side to the deck's far side.
-  final ({double left, double right}) sideReach;
+  /// How far the built-in slides carry the deck, short of the 24 px past,
+  /// read as the deck is painted and hit-tested. A builder reads
+  /// [DeckHideMotionView.reach] instead.
+  final ValueListenable<HideReach> reach;
 
   final Widget deck;
 
@@ -42,38 +48,49 @@ class DeckHideMotionBox extends StatelessWidget {
     final builder = motion.builder;
     if (builder != null) return builder(context, view, deck);
     final hidden = view.hidden.value;
-    final transform = switch (motion.look) {
-      DeckHideMotionLook.slide => Matrix4.translationValues(
-        0,
-        (view.position.isTop ? -1 : 1) * hidden * (view.reach + _past),
-        0,
-      ),
-      DeckHideMotionLook.slideLeft => Matrix4.translationValues(
-        -hidden * (sideReach.left + _past),
-        0,
-        0,
-      ),
-      DeckHideMotionLook.slideRight => Matrix4.translationValues(
-        hidden * (sideReach.right + _past),
-        0,
-        0,
-      ),
-      DeckHideMotionLook.fade => Matrix4.identity(),
-      DeckHideMotionLook.shrink => Matrix4.diagonal3Values(
-        1 - _shrinkBy * hidden,
-        1 - _shrinkBy * hidden,
-        1,
-      ),
-    };
     return Opacity(
       opacity: 1 - hidden,
       child: _HideTransform(
-        transform: transform,
+        look: motion.look,
+        hidden: hidden,
+        isTop: view.position.isTop,
+        reach: reach,
         alignment: cornerOf(view.position),
         child: deck,
       ),
     );
   }
+
+  /// The transform [look] draws a deck [hidden] of the way out of sight with,
+  /// reaching as far as [reach].
+  static Matrix4 transformOf(
+    DeckHideMotionLook look,
+    double hidden,
+    bool isTop,
+    HideReach reach,
+  ) => switch (look) {
+    DeckHideMotionLook.slide => Matrix4.translationValues(
+      0,
+      (isTop ? -1 : 1) * hidden * (reach.edge + _past),
+      0,
+    ),
+    DeckHideMotionLook.slideLeft => Matrix4.translationValues(
+      -hidden * (reach.left + _past),
+      0,
+      0,
+    ),
+    DeckHideMotionLook.slideRight => Matrix4.translationValues(
+      hidden * (reach.right + _past),
+      0,
+      0,
+    ),
+    DeckHideMotionLook.fade => Matrix4.identity(),
+    DeckHideMotionLook.shrink => Matrix4.diagonal3Values(
+      1 - _shrinkBy * hidden,
+      1 - _shrinkBy * hidden,
+      1,
+    ),
+  };
 
   /// How far past the edge or side a slide carries the deck, beyond its own
   /// reach.
@@ -83,27 +100,105 @@ class DeckHideMotionBox extends StatelessWidget {
   static const _shrinkBy = 0.4;
 }
 
-/// A [Transform] the host's tests, which find a toast's own transform by
-/// type, do not take for it.
+/// A [Transform] by [DeckHideMotionBox.transformOf], following [reach] as it
+/// changes between builds, which the host's tests, finding a toast's own
+/// transform by type, do not take for it.
 class _HideTransform extends SingleChildRenderObjectWidget {
   const _HideTransform({
-    required this.transform,
+    required this.look,
+    required this.hidden,
+    required this.isTop,
+    required this.reach,
     required this.alignment,
     super.child,
   });
 
-  final Matrix4 transform;
+  final DeckHideMotionLook look;
+  final double hidden;
+  final bool isTop;
+  final ValueListenable<HideReach> reach;
   final Alignment alignment;
 
   @override
-  RenderTransform createRenderObject(BuildContext context) =>
-      RenderTransform(transform: transform, alignment: alignment);
+  _RenderHideTransform createRenderObject(BuildContext context) =>
+      _RenderHideTransform(
+        look: look,
+        hidden: hidden,
+        isTop: isTop,
+        reach: reach,
+        alignment: alignment,
+      );
 
   @override
-  void updateRenderObject(BuildContext context, RenderTransform renderObject) =>
-      renderObject
-        ..transform = transform
-        ..alignment = alignment;
+  void updateRenderObject(
+    BuildContext context,
+    _RenderHideTransform renderObject,
+  ) => renderObject
+    ..alignment = alignment
+    ..update(look: look, hidden: hidden, isTop: isTop, reach: reach);
+}
+
+class _RenderHideTransform extends RenderTransform {
+  _RenderHideTransform({
+    required DeckHideMotionLook look,
+    required double hidden,
+    required bool isTop,
+    required ValueListenable<HideReach> reach,
+    required super.alignment,
+  }) : _look = look,
+       _hidden = hidden,
+       _isTop = isTop,
+       _reach = reach,
+       super(
+         transform: DeckHideMotionBox.transformOf(
+           look,
+           hidden,
+           isTop,
+           reach.value,
+         ),
+       );
+
+  DeckHideMotionLook _look;
+  double _hidden;
+  bool _isTop;
+  ValueListenable<HideReach> _reach;
+
+  void update({
+    required DeckHideMotionLook look,
+    required double hidden,
+    required bool isTop,
+    required ValueListenable<HideReach> reach,
+  }) {
+    _look = look;
+    _hidden = hidden;
+    _isTop = isTop;
+    if (!identical(reach, _reach)) {
+      if (attached) _reach.removeListener(_follow);
+      _reach = reach;
+      if (attached) _reach.addListener(_follow);
+    }
+    _follow();
+  }
+
+  void _follow() => transform = DeckHideMotionBox.transformOf(
+    _look,
+    _hidden,
+    _isTop,
+    _reach.value,
+  );
+
+  @override
+  void attach(PipelineOwner owner) {
+    super.attach(owner);
+    _reach.addListener(_follow);
+    _follow();
+  }
+
+  @override
+  void detach() {
+    _reach.removeListener(_follow);
+    super.detach();
+  }
 }
 
 /// The hide control on its own: the pill or the chevron, or its builder's

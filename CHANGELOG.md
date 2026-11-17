@@ -10,6 +10,12 @@
   and `slideRight`, which carry the deck past that side of the window, fading, and bring it back
   the same way. `DeckHideMotion()` still slides past the edge. An exhaustive `switch` over
   `DeckHideMotionLook` in your code needs the two new cases.
+- **A banner on a zone hidden empty slides in from the right distance** (#143). A zone hidden
+  before its deck was laid out or while it was empty, or a host built on a hidden zone, brought
+  the next toast's banner in from the wrong distance under every slide: from across the window,
+  or from just past its edge. The way back is now measured from the deck as it comes back, so a
+  deck hidden open, which folds up as it goes, also comes back from its folded size. A motion
+  builder's `reach` is unchanged.
 
 ## 0.5.1
 

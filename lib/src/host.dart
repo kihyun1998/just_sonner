@@ -131,6 +131,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// out and cut to the layer.
   Rect _deck = Rect.zero;
 
+  /// The layer [_deck] was last laid out in.
+  Size _layer = Size.zero;
+
   /// [_deck] without the toasts still entering, for what takes the pointer.
   Rect _pointerBox = Rect.zero;
 
@@ -208,13 +211,27 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// Whether the deck is drawn hidden: the zone is hidden with no banner up.
   bool _hiddenShown = false;
 
-  /// How far the deck reached from its edge when it was hidden, which the
-  /// slide carries it past.
-  double _hideReach = 0;
+  /// The reach drawn when the motion last turned, toward out of sight or
+  /// back; see [_reachNow].
+  HideReach _turnReach = (edge: 0, left: 0, right: 0);
 
-  /// How far the deck reached from the layer's left and right sides when it
-  /// was hidden, which a slide to that side carries it past.
-  ({double left, double right}) _hideSideReach = (left: 0, right: 0);
+  /// Whether the deck was empty when it last turned back.
+  bool _turnedEmpty = true;
+
+  /// Whether the motion under way keeps [_turnReach] to its end: a position
+  /// on the other edge was assigned while it ran.
+  bool _turnHeld = false;
+
+  /// How far the deck reached from its edge when it was last hidden, for a
+  /// motion builder.
+  double _hiddenEdgeReach = 0;
+
+  /// How far out of sight the deck was when it last turned back, from 0 to 1.
+  double _turnedBackAt = 1;
+
+  /// The reach the built-in slides draw the deck with, set as the deck is
+  /// built and again as it is laid out.
+  final _drawnReach = ValueNotifier<HideReach>((edge: 0, left: 0, right: 0));
 
   static const _hideDuration = Duration(milliseconds: 300);
 
@@ -262,6 +279,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       _setHovered(_moved.clear);
     }
     _hide.jump(_hiddenShown ? 1 : 0);
+    _turnedBackAt = 1;
+    _turnedEmpty = true;
+    _turnHeld = false;
     _empty.jump(_emptyTarget);
     _glide.jump(1);
     _resetScroll();
@@ -291,6 +311,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       ..dispose();
     _cut.dispose();
     _deckAt.dispose();
+    _drawnReach.dispose();
     _dismissAllAt.dispose();
     _scrollbarHide?.cancel();
     _scrollbarShown.dispose();
@@ -350,16 +371,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     final hide = _hiddenNow;
     if (hide == _hiddenShown) return;
     _hiddenShown = hide;
+    _turnHeld = false;
     if (!hide) {
+      _turnReach = _drawnReach.value;
+      _turnedBackAt = _hide.value;
+      _turnedEmpty = _deck.isEmpty;
       _hide.retarget(0, _hideDuration);
       return;
     }
-    final box = context.findRenderObject() as RenderBox?;
-    final size = (box?.hasSize ?? false) ? box!.size : Size.zero;
-    _hideReach = _controller.config.position.isTop
-        ? _deck.bottom
-        : size.height - _deck.top;
-    _hideSideReach = (left: _deck.right, right: size.width - _deck.left);
+    final reach = _reachOf(_deck);
+    _turnReach = _hide.value > 0 ? _drawnReach.value : reach;
+    _hiddenEdgeReach = reach.edge;
     _hide.retarget(1, _hideDuration);
     for (final slot in _slots) {
       if (slot.drag == null) continue;
@@ -373,6 +395,35 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _setHovered(_moved.clear);
     if (was && !_interacting) _unscrollDeck();
     _publishHold();
+  }
+
+  /// How far [deck] reaches in the layer as last laid out: from the edge the
+  /// position names, and from the layer's left and right sides to its far
+  /// side.
+  HideReach _reachOf(Rect deck) => (
+    edge: _controller.config.position.isTop
+        ? deck.bottom
+        : _layer.height - deck.top,
+    left: deck.right,
+    right: _layer.width - deck.left,
+  );
+
+  /// The reach the deck is drawn with. Out of sight and on the way there, or
+  /// after a position on the other edge, the one drawn as it turned. On the
+  /// way back, the deck's as laid out, eased to from the one drawn as it
+  /// turned when it turned before it was out of sight with something drawn.
+  HideReach _reachNow() {
+    if (_hiddenShown || _turnHeld) return _turnReach;
+    final live = _reachOf(_deck);
+    if (_turnedBackAt >= 1 || _turnedBackAt <= 0 || _turnedEmpty) return live;
+    final from = _turnReach;
+    final t = (_hide.value / _turnedBackAt).clamp(0.0, 1.0);
+    double at(double to, double start) => to + (start - to) * t;
+    return (
+      edge: at(live.edge, from.edge),
+      left: at(live.left, from.left),
+      right: at(live.right, from.right),
+    );
   }
 
   /// Starts the toasts on their way to a config assigned since the last
@@ -394,6 +445,12 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     // The scroll runs the other way from the other edge.
     if (flipped) _resetScroll();
+    // The deck goes on out of sight or back by the reach it is drawn with,
+    // toward the other edge.
+    if (flipped && _hide.value > 0) {
+      _turnReach = _drawnReach.value;
+      _turnHeld = true;
+    }
     _glide
       ..jump(0)
       ..retarget(1, _glideDuration);
@@ -896,6 +953,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     bool interacting,
     Widget? control,
   ) {
+    _drawnReach.value = _reachNow();
     return Listener(
       onPointerDown: (event) => _setPressed(event, down: true),
       onPointerUp: (event) => _setPressed(event, down: false),
@@ -927,9 +985,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
               view: DeckHideMotionView(
                 hidden: _hidden,
                 position: config.position,
-                reach: _hideReach,
+                reach: _hiddenEdgeReach,
               ),
-              sideReach: _hideSideReach,
+              reach: _drawnReach,
               deck: DeckLayers(
                 at: _dismissAllAt,
                 onControlSize: (size) => _dismissAllSize = size,
@@ -991,8 +1049,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
                                       ..covers = covering
                                       ..distance = distance
                                       ..place = place,
-                            onDeck: (deck) {
+                            onDeck: (deck, layer) {
                               _deck = deck;
+                              _layer = layer;
+                              _drawnReach.value = _reachNow();
                               _deckAt.value = deck;
                             },
                             onPointerBox: (box) => _pointerBox = box,

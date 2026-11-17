@@ -10500,6 +10500,365 @@ void main() {
       }
     }
 
+    for (final position in [
+      SonnerPosition.bottomRight,
+      SonnerPosition.topLeft,
+    ]) {
+      for (final look in [
+        DeckHideMotionLook.slide,
+        DeckHideMotionLook.slideLeft,
+        DeckHideMotionLook.slideRight,
+      ]) {
+        for (final mountedHidden in [false, true]) {
+          final how = mountedHidden
+              ? 'mounted on a hidden zone'
+              : 'hidden empty';
+          testWidgets('$look brings a banner on a ${position.name} deck $how '
+              'in from as far as the banner reaches', (tester) async {
+            final controller = deckWith(
+              motion: DeckHideMotion(look: look),
+              position: position,
+            );
+            if (mountedHidden) controller.zone.hide();
+            await tester.pumpWidget(app(controller: controller));
+            if (!mountedHidden) {
+              controller.zone.hide();
+              await settle(tester);
+            }
+
+            controller.show('Banner');
+            await tester.pump();
+            final moved = <(double, Offset)>[];
+            for (var frame = 0; frame < 12; frame++) {
+              // The first frame of the way back too, drawn at opacity 0.
+              if (frame > 0) {
+                await tester.pump(const Duration(milliseconds: 16));
+              }
+              final fade = tester
+                  .widgetList<Opacity>(
+                    find.descendant(
+                      of: find.byType(DeckHideMotionBox),
+                      matching: find.byType(Opacity),
+                    ),
+                  )
+                  .first;
+              moved.add((
+                1 - fade.opacity,
+                tester.getTopLeft(find.byType(DeckLayers)),
+              ));
+            }
+            await settle(tester);
+            expect(tester.getTopLeft(find.byType(DeckLayers)), Offset.zero);
+            final banner = boxOf(tester, 'Banner');
+            // The 800 x 600 layer: a slide carries the deck past its edge by
+            // as far as it reaches from it, and a slide to a side past that
+            // side by as far as it reaches from it to its far side, each
+            // with 24 px more.
+            final expected = switch (look) {
+              DeckHideMotionLook.slide => Offset(
+                0,
+                position.isTop ? -(banner.bottom + 24) : 600 - banner.top + 24,
+              ),
+              DeckHideMotionLook.slideLeft => Offset(-(banner.right + 24), 0),
+              _ => Offset(800 - banner.left + 24, 0),
+            };
+            expect(
+              moved.first.$1,
+              1,
+              reason: 'the first frame of the way back',
+            );
+            expect(
+              moved[1].$1,
+              inInclusiveRange(0.05, 0.99),
+              reason: 'on its way back',
+            );
+            for (final (hidden, at) in moved) {
+              expect(
+                at.dx,
+                moreOrLessEquals(expected.dx * hidden, epsilon: 0.5),
+              );
+              expect(
+                at.dy,
+                moreOrLessEquals(expected.dy * hidden, epsilon: 0.5),
+              );
+            }
+          });
+        }
+      }
+    }
+
+    testWidgets('a deck going out of sight keeps the reach it had as it was '
+        'hidden while a toast leaves it on the way', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 2);
+      await settle(tester);
+
+      controller.zone.hide();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      controller.dismiss(toastsOf(controller).first.id);
+      final perHidden = <double>[];
+      var leftOnTheWay = false;
+      for (var frame = 0; frame < 18; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final fade = tester
+            .widgetList<Opacity>(
+              find.descendant(
+                of: find.byType(DeckHideMotionBox),
+                matching: find.byType(Opacity),
+              ),
+            )
+            .first;
+        final hidden = 1 - fade.opacity;
+        if (hidden >= 1) break;
+        if (find.text('Toast 1').evaluate().isEmpty) leftOnTheWay = true;
+        perHidden.add(tester.getTopLeft(find.byType(DeckLayers)).dy / hidden);
+      }
+      expect(
+        leftOnTheWay,
+        isTrue,
+        reason: 'the toast left before the deck was out of sight',
+      );
+      for (final reach in perHidden) {
+        expect(reach, moreOrLessEquals(perHidden.first, epsilon: 0.5));
+      }
+    });
+
+    for (final turns in [
+      ['a banner'],
+      ['reveal()'],
+      ['reveal()', 'hide()'],
+    ]) {
+      testWidgets('an open zone turned by ${turns.join(' then ')} on its way '
+          'out of sight does not jump at the turn', (tester) async {
+        final controller = deckWith();
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 3);
+        controller.zone.open();
+        await settle(tester);
+        controller.zone.hide();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 150));
+
+        (double, double) drawn() => (
+          tester
+              .widgetList<Opacity>(
+                find.descendant(
+                  of: find.byType(DeckHideMotionBox),
+                  matching: find.byType(Opacity),
+                ),
+              )
+              .first
+              .opacity,
+          tester.getTopLeft(find.byType(DeckLayers)).dy,
+        );
+        for (final turn in turns) {
+          final (opacity, at) = drawn();
+          switch (turn) {
+            case 'a banner':
+              controller.show('Banner');
+            case 'reveal()':
+              controller.zone.reveal();
+            case _:
+              controller.zone.hide();
+          }
+          await tester.pump(const Duration(milliseconds: 16));
+          final (opacityAfter, atAfter) = drawn();
+          expect(opacityAfter, moreOrLessEquals(opacity), reason: 'the turn');
+          expect(at.abs(), greaterThan(20), reason: 'drawn out of place');
+          expect(atAfter, moreOrLessEquals(at, epsilon: 0.5));
+          await tester.pump(const Duration(milliseconds: 80));
+        }
+        await settle(tester);
+      });
+    }
+
+    testWidgets('a banner arriving as a zone hidden empty goes out of sight '
+        'comes in from as far as the banner reaches', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      await settle(tester);
+      controller.zone.hide();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      controller.show('Banner');
+      await tester.pump();
+      final moved = <(double, double)>[];
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final fade = tester
+            .widgetList<Opacity>(
+              find.descendant(
+                of: find.byType(DeckHideMotionBox),
+                matching: find.byType(Opacity),
+              ),
+            )
+            .first;
+        moved.add((
+          1 - fade.opacity,
+          tester.getTopLeft(find.byType(DeckLayers)).dy,
+        ));
+      }
+      await settle(tester);
+      final banner = boxOf(tester, 'Banner');
+      expect(
+        moved.first.$1,
+        inInclusiveRange(0.05, 0.95),
+        reason: 'on its way back',
+      );
+      for (final (hidden, at) in moved) {
+        expect(
+          at,
+          moreOrLessEquals((600 - banner.top + 24) * hidden, epsilon: 0.5),
+        );
+      }
+    });
+
+    testWidgets('an open zone hidden all the way and revealed comes back '
+        'from as far as the deck it comes back as reaches', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      controller.zone.open();
+      await settle(tester);
+      controller.zone.hide();
+      await settle(tester);
+
+      controller.zone.reveal();
+      await tester.pump();
+      final moved = <(double, double)>[];
+      for (var frame = 0; frame < 10; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final fade = tester
+            .widgetList<Opacity>(
+              find.descendant(
+                of: find.byType(DeckHideMotionBox),
+                matching: find.byType(Opacity),
+              ),
+            )
+            .first;
+        moved.add((
+          1 - fade.opacity,
+          tester.getTopLeft(find.byType(DeckLayers)).dy,
+        ));
+      }
+      await settle(tester);
+      final deck = tester.getRect(find.byType(DeckHitBox));
+      expect(
+        moved.first.$1,
+        inInclusiveRange(0.05, 0.99),
+        reason: 'on its way back',
+      );
+      for (final (hidden, at) in moved) {
+        expect(
+          at,
+          moreOrLessEquals((600 - deck.top + 24) * hidden, epsilon: 0.5),
+        );
+      }
+    });
+
+    testWidgets('a motion builder is handed the reach the deck had as the '
+        'zone was hidden, on the way back too', (tester) async {
+      final reaches = <double>[];
+      final controller = deckWith(
+        motion: DeckHideMotion(
+          builder: (context, view, deck) {
+            reaches.add(view.reach);
+            return Opacity(opacity: 1 - view.hidden.value, child: deck);
+          },
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 3);
+      controller.zone.open();
+      await settle(tester);
+      final hiddenWith = 600 - tester.getRect(find.byType(DeckHitBox)).top;
+
+      controller.zone.hide();
+      await settle(tester);
+      reaches.clear();
+      controller.zone.reveal();
+      await settle(tester);
+      expect(
+        600 - tester.getRect(find.byType(DeckHitBox)).top,
+        lessThan(hiddenWith - 20),
+        reason: 'the deck comes back collapsed, reaching less',
+      );
+      expect(reaches, isNotEmpty);
+      for (final reach in reaches) {
+        expect(reach, moreOrLessEquals(hiddenWith));
+      }
+    });
+
+    (double, double) hideDrawn(WidgetTester tester) => (
+      tester
+          .widgetList<Opacity>(
+            find.descendant(
+              of: find.byType(DeckHideMotionBox),
+              matching: find.byType(Opacity),
+            ),
+          )
+          .first
+          .opacity,
+      tester.getTopLeft(find.byType(DeckLayers)).dy,
+    );
+
+    testWidgets('a deck coming back when a position on the other edge is '
+        'assigned goes on by the reach it is drawn with', (tester) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 1);
+      await settle(tester);
+      controller.zone.hide();
+      await settle(tester);
+      controller.show('Banner');
+      await tester.pump();
+      for (var frame = 0; frame < 7; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      final (opacity, at) = hideDrawn(tester);
+      final reach = at / (1 - opacity);
+
+      controller.config = controller.config.copyWith(
+        position: SonnerPosition.topRight,
+      );
+      for (var frame = 0; frame < 6; frame++) {
+        await tester.pump(const Duration(milliseconds: 16));
+        final (opacity, at) = hideDrawn(tester);
+        expect(
+          at,
+          moreOrLessEquals(-reach * (1 - opacity), epsilon: 0.5),
+          reason: 'toward the top edge, by the same reach, at frame $frame',
+        );
+      }
+      await settle(tester);
+    });
+
+    testWidgets('a toast hidden as it was shown, before the deck was laid '
+        'out, turned back on its way does not jump at the turn', (
+      tester,
+    ) async {
+      final controller = deckWith();
+      await tester.pumpWidget(app(controller: controller));
+      await settle(tester);
+      controller.show('A');
+      controller.zone.hide();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 150));
+      final (opacity, at) = hideDrawn(tester);
+
+      controller.zone.reveal();
+      await tester.pump(const Duration(milliseconds: 16));
+      final (opacityAfter, atAfter) = hideDrawn(tester);
+      expect(opacityAfter, moreOrLessEquals(opacity), reason: 'the turn');
+      expect(at, greaterThan(20), reason: 'drawn out of place');
+      expect(atAfter, moreOrLessEquals(at, epsilon: 0.5));
+      await settle(tester);
+      expect(tester.getTopLeft(find.byType(DeckLayers)), Offset.zero);
+    });
+
     testWidgets('a motion builder is handed the deck and an animation that '
         'runs to 1 and back, and the deck still takes no pointer', (
       tester,
