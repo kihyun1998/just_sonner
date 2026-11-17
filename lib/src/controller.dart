@@ -193,6 +193,24 @@ class SonnerController extends ChangeNotifier {
     _mount = null;
   }
 
+  /// Puts this controller's toasts back on top of the root overlay, over any
+  /// entry inserted into it since they were last raised. Every [show] already
+  /// does this, as does [SonnerZone.open] on a zone that is not open; call it
+  /// after something else inserts an entry that covers them, such as another
+  /// overlay package.
+  ///
+  /// Moving them keeps their state and running animations. During a build the
+  /// move waits for the end of the frame. It does nothing before [attach],
+  /// after [detach], and until a toast is shown or the zone opened since
+  /// [attach]. With [SonnerHost] it does nothing either: that host sits above
+  /// the app's `Navigator`, where no entry of the root overlay can cover it.
+  void raise() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    final mount = _mount;
+    if (mount == null || !mount.inserted) return;
+    mount.raise();
+  }
+
   /// Shows a toast and returns its id.
   ///
   /// With a [duration] it is a **transient** toast, and dismisses itself once

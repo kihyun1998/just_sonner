@@ -343,6 +343,48 @@ class _HarnessPageState extends State<HarnessPage> {
     });
   }
 
+  /// Inserts a dimmed entry into the root overlay, over the toasts, with
+  /// buttons that raise the toasts and take the entry out.
+  void _coverToasts() {
+    late final OverlayEntry cover;
+    cover = OverlayEntry(
+      builder: (context) => ColoredBox(
+        color: const Color(0x99000000),
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('An entry inserted after the toasts.'),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      TextButton(
+                        onPressed: _toast.raise,
+                        child: const Text('toast.raise()'),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: () => cover
+                          ..remove()
+                          ..dispose(),
+                        child: const Text('Remove'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    Overlay.of(context, rootOverlay: true).insert(cover);
+  }
+
   Future<void> _openDialog({bool toastAfter = false}) async {
     if (toastAfter) {
       Timer(const Duration(seconds: 1), () {
@@ -1482,6 +1524,22 @@ class _HarnessPageState extends State<HarnessPage> {
           'Open a dialog, toast after 1 s',
           () => _openDialog(toastAfter: true),
         ),
+      ],
+    ),
+    _Section(
+      title: 'Under an entry inserted later',
+      issue: 148,
+      note:
+          'An entry another package inserts into the root overlay after the '
+          'toasts covers them until the next toast. Put a few up, cover '
+          'them, then raise them without showing one.',
+      children: [
+        _Button('Three that stay', () {
+          for (var i = 3; i >= 1; i--) {
+            _show('Covered, then raised ($i of 3)', duration: null);
+          }
+        }),
+        _Button('Cover them with an entry', _coverToasts),
       ],
     ),
     _Section(

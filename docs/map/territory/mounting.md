@@ -20,7 +20,19 @@ a slot finds no `Navigator` and no `Overlay`, so a `Tooltip` throws. `attach` ma
 called before the app is built; once attached, a toast with no navigator to draw in is
 an error in debug and dropped in release.
 
+Attached, the toasts are moved to the top of the overlay by every `show`, by `open()`
+on a zone that was not open, and by the app's `raise()`. An entry another package
+inserts after them covers them until one of those runs: `Overlay` has no insertion hook,
+so the package cannot follow it, and `raise()` is how the app says it inserted one.
+`raise()` moves only a host already inserted. Before the first `show` or `open()`
+since `attach` nothing is drawn to cover, and the one that comes inserts on top, so
+`raise()` never puts the host into an overlay for the first time. A host whose overlay
+was replaced by state restoration is put into the new one, as a `show` would put it,
+since those toasts were drawn. Wrapped, `raise()` does nothing: the host is above the
+`Navigator`, and no entry of the root overlay reaches it.
+
 ## Code
+`controller.dart` — SonnerController
 `root_overlay.dart` — RootOverlayMount
 `host.dart` — SonnerHost, ToastLayer
 

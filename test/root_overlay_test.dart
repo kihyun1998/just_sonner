@@ -282,6 +282,200 @@ void main() {
     await cleanUp(tester);
   });
 
+  group('raise', () {
+    testWidgets('puts the toasts back over an entry inserted after them', (
+      tester,
+    ) async {
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      var covered = 0;
+      final catcher = tapCatcher(() => covered++);
+      navigatorKey.currentState!.overlay!.insert(catcher);
+      await tester.pump();
+      await tester.tapAt(centreOf(tester, 'Saved'));
+      expect(covered, 1, reason: 'inserted later, it is on top');
+
+      controller.raise();
+      await tester.pump();
+      await tester.tapAt(centreOf(tester, 'Saved'));
+      expect(covered, 1, reason: 'raise put the toasts over it');
+
+      catcher
+        ..remove()
+        ..dispose();
+      await cleanUp(tester);
+    });
+
+    testWidgets('lifts an open zone, which open() leaves where it is', (
+      tester,
+    ) async {
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.show('Saved');
+      controller.zone.open();
+      await tester.pumpAndSettle();
+
+      var covered = 0;
+      final catcher = tapCatcher(() => covered++);
+      navigatorKey.currentState!.overlay!.insert(catcher);
+      await tester.pump();
+
+      controller.zone.open();
+      await tester.pump();
+      await tester.tapAt(centreOf(tester, 'Saved'));
+      expect(covered, 1, reason: 'open() on an open zone does nothing');
+
+      controller.raise();
+      await tester.pump();
+      await tester.tapAt(centreOf(tester, 'Saved'));
+      expect(covered, 1, reason: 'raise put the toasts over it');
+
+      catcher
+        ..remove()
+        ..dispose();
+      controller.zone.close();
+      await cleanUp(tester);
+    });
+
+    testWidgets('keeps an enter that is under way', (tester) async {
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.show('First');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      final presence = find.ancestor(
+        of: find.ancestor(
+          of: find.text('First'),
+          matching: find.byType(SlideTransition),
+        ),
+        matching: find.byType(FadeTransition),
+      );
+      double presenceNow() =>
+          tester.widget<FadeTransition>(presence.first).opacity.value;
+      final state = tester.state(find.byType(ToastLayer));
+      final midway = presenceNow();
+      expect(midway, inExclusiveRange(0, 1));
+
+      const otherKey = Key('other');
+      final other = OverlayEntry(
+        builder: (_) => const SizedBox.shrink(key: otherKey),
+      );
+      // A later element in the overlay is drawn over an earlier one.
+      int order(Finder finder) =>
+          tester.allElements.toList().indexOf(finder.evaluate().single);
+      navigatorKey.currentState!.overlay!.insert(other);
+      await tester.pump();
+      expect(
+        order(find.byType(ToastLayer)),
+        lessThan(order(find.byKey(otherKey))),
+        reason: 'inserted later, it is on top',
+      );
+      controller.raise();
+      await tester.pump(const Duration(milliseconds: 16));
+
+      expect(
+        order(find.byType(ToastLayer)),
+        greaterThan(order(find.byKey(otherKey))),
+        reason: 'raise put the toasts over it',
+      );
+      expect(tester.state(find.byType(ToastLayer)), same(state));
+      expect(presenceNow(), greaterThan(midway));
+      other
+        ..remove()
+        ..dispose();
+      await cleanUp(tester);
+    });
+
+    testWidgets('during a build waits for the end of the frame', (
+      tester,
+    ) async {
+      controller.attach(navigatorKey);
+      late StateSetter rebuild;
+      var raiseOnBuild = false;
+      await tester.pumpWidget(
+        app(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              rebuild = setState;
+              if (raiseOnBuild) controller.raise();
+              return const SizedBox.expand();
+            },
+          ),
+        ),
+      );
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      var covered = 0;
+      final catcher = tapCatcher(() => covered++);
+      navigatorKey.currentState!.overlay!.insert(catcher);
+      await tester.pump();
+
+      raiseOnBuild = true;
+      rebuild(() {});
+      await tester.pumpAndSettle();
+      raiseOnBuild = false;
+      expect(tester.takeException(), isNull);
+      await tester.tapAt(centreOf(tester, 'Saved'));
+      expect(covered, 0, reason: 'the raise landed after the build');
+
+      catcher
+        ..remove()
+        ..dispose();
+      await cleanUp(tester);
+    });
+
+    testWidgets('puts the toasts into an overlay that replaced theirs', (
+      tester,
+    ) async {
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          restorationScopeId: 'app',
+          home: const SizedBox.expand(),
+        ),
+      );
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      await tester.restartAndRestore();
+      expect(find.text('Saved'), findsNothing, reason: 'the old overlay went');
+
+      controller.raise();
+      await tester.pumpAndSettle();
+      expect(find.text('Saved'), findsOneWidget);
+      await cleanUp(tester);
+    });
+
+    testWidgets('inserts nothing when nothing has been drawn yet', (
+      tester,
+    ) async {
+      expect(
+        controller.raise,
+        returnsNormally,
+        reason: 'a controller never attached has nothing to raise',
+      );
+
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.raise();
+      await tester.pumpAndSettle();
+      expect(find.byType(ToastLayer), findsNothing);
+
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      controller.detach();
+      controller.raise();
+      await tester.pumpAndSettle();
+      expect(find.byType(ToastLayer), findsNothing, reason: 'after detach');
+      await cleanUp(tester);
+    });
+  });
+
   group('attach refuses a navigator that is not the root one', () {
     Widget nested() => MaterialApp(
       home: Navigator(
