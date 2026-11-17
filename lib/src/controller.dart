@@ -174,9 +174,9 @@ class SonnerController extends ChangeNotifier {
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
   /// navigator [navigatorKey] names, above its dialogs and pages.
   ///
-  /// Nothing is inserted until the first [show], so it can be called before
-  /// the app is built. Once attached, a [show] with no navigator to draw in is
-  /// an error in debug and drops the toast in release.
+  /// Nothing is inserted until the first [show] or [SonnerZone.open], so it
+  /// can be called before the app is built. Once attached, a [show] with no
+  /// navigator to draw in is an error in debug and drops the toast in release.
   void attach(GlobalKey<NavigatorState> navigatorKey) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (identical(_mount?.navigatorKey, navigatorKey)) return;
@@ -191,6 +191,24 @@ class SonnerController extends ChangeNotifier {
   void detach() {
     _mount?.detach();
     _mount = null;
+  }
+
+  /// Puts this controller's toasts back on top of the root overlay, over any
+  /// entry inserted into it since they were last raised. Every [show] already
+  /// does this, as does [SonnerZone.open] on a zone that is not open; call it
+  /// after something else inserts an entry that covers them, such as another
+  /// overlay package.
+  ///
+  /// Moving them keeps their state and running animations. During a build the
+  /// move waits for the end of the frame. It does nothing before [attach],
+  /// after [detach], and until a toast is shown or the zone opened since
+  /// [attach]. With [SonnerHost] it does nothing either: that host sits above
+  /// the app's `Navigator`, where no entry of the root overlay can cover it.
+  void raise() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    final mount = _mount;
+    if (mount == null || !mount.inserted) return;
+    mount.raise();
   }
 
   /// Shows a toast and returns its id.

@@ -1,5 +1,10 @@
 ## Unreleased
 
+- **`toast.raise()` puts attached toasts back on top** (#148). An entry another package inserted
+  into the root overlay after the toasts covered them until the next toast, and `zone.open()` on
+  an open zone did not lift them. `raise()` moves them back over it, keeping their state and
+  animations. It does nothing before a toast is shown or the zone opened, after `detach`, and
+  with `SonnerHost`.
 - **Toasts can come in from the side** (#141). `SonnerConfig.enterMotion` takes a
   `ToastEnterMotion`: `edge`, the slide from the top or bottom edge as before and the default,
   or `left` or `right`, which bring every toast in one toast's width from that side and take it

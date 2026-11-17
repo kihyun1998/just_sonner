@@ -72,6 +72,11 @@ void main() {
 `attach` can be called before the app is built. Once attached, a toast shown with no navigator to
 draw in is an error in debug and dropped in release.
 
+An entry another package inserts into the root overlay after the toasts covers them until the next
+toast. Call `toast.raise()` after it is inserted to put the toasts back on top; they keep their
+state and animations. Wrapped in `SonnerHost`, no entry in the overlay can cover the toasts, and
+`raise()` does nothing.
+
 The difference matters for the widgets you put in a toast. Wrapped, the toasts sit **above** the
 `Navigator`, so `Navigator.of(context)` finds no navigator there, and a `Tooltip` or anything else
 that looks for an `Overlay` throws "No Overlay widget found". Attached, they sit inside the root

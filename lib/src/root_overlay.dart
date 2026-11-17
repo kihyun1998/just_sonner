@@ -24,6 +24,11 @@ class RootOverlayMount {
   bool _raiseScheduled = false;
   bool _detached = false;
 
+  /// Whether this mount has inserted its entry and not removed it. The
+  /// overlay it went into may since have been replaced; the next [raise] then
+  /// inserts it into the new one.
+  bool get inserted => _entry != null;
+
   /// Asserts that the navigator, where it is built, is the root one.
   void debugAssertRoot() {
     final navigator = navigatorKey.currentState;
