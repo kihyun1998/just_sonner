@@ -431,7 +431,8 @@ toast.config = toast.config.copyWith(
 ## Behind the fanned-out deck
 
 `config.deckBackdrop` is null by default and draws nothing. With one, the deck softens what is
-behind it as it fans out under the pointer, and fades it back as it collapses.
+behind it as it fans out under the pointer, and fades it back as it collapses. The blur fades in
+at its full `blur` rather than growing into it.
 
 ```dart
 toast.config = toast.config.copyWith(
