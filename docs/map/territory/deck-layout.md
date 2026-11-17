@@ -11,7 +11,8 @@ how far the deck reaches, which is [Deck reach and cut](deck-reach-and-cut.md).
 - [spec §12](../../spec.md#12-decision-record) — the rows on the deck's offsets and
   scales, on a toast's position moving only toward its place, and on a toast behind a
   shorter front being laid out at the height it is drawn at.
-- [spec §6](../../spec.md#6-layout-and-animation) — Collapsed and Expanded.
+- [spec §12](../../spec.md#12-decision-record) — `enterMotion` (#141).
+- [spec §6](../../spec.md#6-layout-and-animation) — Collapsed and Expanded, and the Motion table.
 
 ## Design model
 A toast's place is counted from the **presence** of the toasts in front of it rather
@@ -20,6 +21,14 @@ with a toast entering or leaving. A position only ever moves *toward* its place 
 stops there: a toast entering over 400 ms and one leaving over 200 ms run on different
 clocks, and letting positions move both ways would carry the deck forward and back for
 no net change.
+
+A toast is laid out at its **resting place** throughout its enter and exit; the slide is a
+paint offset of one own size on top of it (`_Slot.slide`), from the edge the position names
+or from the side `enterMotion` names. The toasts behind move on the entering toast's presence
+whichever way it slides, so a sideways enter moves them exactly as an edge one. The slide is
+frozen when the exit starts, keyed by the edge and the motion it was built for, so a config
+assigned mid-exit does not turn it; a toast still entering takes the new one. The cut's band
+spans the whole width, so a sideways slide is never cut by it.
 
 **Heights are measured after layout**, and a toast behind a shorter front is laid out
 at the height it is drawn at rather than clipped to it. That fact holds here, in

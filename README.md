@@ -364,6 +364,12 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `hideMotion` | `DeckHideMotion()` | A slide; not nullable |
 | `zoneEmpty` | `ZoneEmpty()` | What an open zone with no toast draws; null draws nothing |
 | `wheelMotion` | `WheelMotion.spring()` | How the deck glides under the mouse wheel; not nullable. A `Duration.zero` motion jumps |
+| `enterMotion` | `ToastEnterMotion.edge` | The way every toast slides in and back out: from its edge, or from the left or the right; not nullable |
+
+**Toasts from the side.** `enterMotion: ToastEnterMotion.right` brings every toast in from the
+right, one toast's width, and takes it out the same way. The side is yours to pick: it does not
+follow `position`, so a `bottomCenter` deck can enter from the right. A toast you swipe away
+still leaves the way you swiped it.
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.
@@ -466,8 +472,10 @@ an update, a replace, and a `promise` state landing on a toast already up do not
   your own from a `DeckHideView`. Where either control asks for a header look, the two share one
   bar.
 - **`hideMotion`**, `DeckHideMotion()` by default, slides the deck past its edge. Its looks are
-  `slide`, `fade` and `shrink`, and `builder:` takes the deck out of sight your own way. It is not
-  nullable: an app that calls `hide()` needs a motion whether or not a control is drawn.
+  `slide`, `slideLeft`, `slideRight`, `fade` and `shrink`; `slideLeft` and `slideRight` carry
+  the deck out past that side of the window, whatever the position. `builder:` takes the deck out
+  of sight your own way. It is not nullable: an app that calls `hide()` needs a motion whether or
+  not a control is drawn.
 - **`zoneEmpty`**, `ZoneEmpty()` by default, is the card an open zone with no toast draws, reading
   `label:`. `builder:` draws your own from a `ZoneEmptyView`, and null draws nothing.
 

@@ -1,3 +1,16 @@
+## Unreleased
+
+- **Toasts can come in from the side** (#141). `SonnerConfig.enterMotion` takes a
+  `ToastEnterMotion`: `edge`, the slide from the top or bottom edge as before and the default,
+  or `left` or `right`, which bring every toast in one toast's width from that side and take it
+  out the same way. The side does not follow `position`. A toast already leaving when you assign
+  another motion keeps leaving the way it was going, and a swiped toast still leaves the way it
+  was swiped. `ToastEnterMotion` is exported.
+- **Breaking: the deck can hide to the side** (#141). `DeckHideMotionLook` gains `slideLeft`
+  and `slideRight`, which carry the deck past that side of the window, fading, and bring it back
+  the same way. `DeckHideMotion()` still slides past the edge. An exhaustive `switch` over
+  `DeckHideMotionLook` in your code needs the two new cases.
+
 ## 0.5.1
 
 - **`toast.count` says how many toasts are alive** (#122), those beyond `visibleToasts` and those

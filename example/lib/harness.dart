@@ -785,6 +785,34 @@ class _HarnessPageState extends State<HarnessPage> {
       ],
     ),
     _Section(
+      title: 'Enter motion',
+      issue: 141,
+      note:
+          'Every toast slides in from the edge the position names, or from '
+          'the left or the right as enterMotion says, whatever the position, '
+          'and leaves the way it came in. A swiped toast still leaves the way '
+          'the swipe took it. The hide motion has the same two sides, under '
+          'The zone.',
+      children: [
+        _Button('One coming in', () => _show('Coming in')),
+        _Button('Three coming in, staying', () {
+          for (var i = 3; i >= 1; i--) {
+            _show('Coming in $i of 3', duration: null);
+          }
+        }),
+        _Dropdown<ToastEnterMotion>(
+          label: 'enterMotion',
+          value: config.enterMotion,
+          values: ToastEnterMotion.values,
+          nameOf: (value) => value == ToastEnterMotion.edge
+              ? 'edge (the default)'
+              : value.name,
+          onChanged: (value) =>
+              widget.onConfig(config.copyWith(enterMotion: value)),
+        ),
+      ],
+    ),
+    _Section(
       title: 'The deck',
       issue: 19,
       note:

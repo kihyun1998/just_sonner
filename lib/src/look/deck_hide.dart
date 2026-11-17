@@ -14,11 +14,17 @@ class DeckHideMotionBox extends StatelessWidget {
     super.key,
     required this.motion,
     required this.view,
+    required this.sideReach,
     required this.deck,
   });
 
   final DeckHideMotion motion;
   final DeckHideMotionView view;
+
+  /// How far the deck reached from the layer's left and right sides when it
+  /// was hidden, in pixels: from each side to the deck's far side.
+  final ({double left, double right}) sideReach;
+
   final Widget deck;
 
   /// Where the deck's position puts the corner a shrink pulls toward.
@@ -42,6 +48,16 @@ class DeckHideMotionBox extends StatelessWidget {
         (view.position.isTop ? -1 : 1) * hidden * (view.reach + _past),
         0,
       ),
+      DeckHideMotionLook.slideLeft => Matrix4.translationValues(
+        -hidden * (sideReach.left + _past),
+        0,
+        0,
+      ),
+      DeckHideMotionLook.slideRight => Matrix4.translationValues(
+        hidden * (sideReach.right + _past),
+        0,
+        0,
+      ),
       DeckHideMotionLook.fade => Matrix4.identity(),
       DeckHideMotionLook.shrink => Matrix4.diagonal3Values(
         1 - _shrinkBy * hidden,
@@ -59,7 +75,8 @@ class DeckHideMotionBox extends StatelessWidget {
     );
   }
 
-  /// How far past the edge a slide carries the deck, beyond its own reach.
+  /// How far past the edge or side a slide carries the deck, beyond its own
+  /// reach.
   static const _past = 24.0;
 
   /// How much of itself a shrink leaves at the end.

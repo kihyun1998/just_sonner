@@ -64,7 +64,10 @@ stretch; that recurrence is what this note replaces.
 
 ## Where it will recur
 Any change that makes the deck drawn somewhere new or stop being drawn somewhere — a
-new cut, a new control outside the toasts, a new reason to clip. The test: **does the
+new cut, a new control outside the toasts, a new reason to clip, a new way for a toast or the
+deck to move. #141's sideways enter and hide moved nothing here: the box for the pointer
+leaves a toast still arriving out whichever way it slides, and a deck on the move answers
+from a child hit, which goes through any transform. The test: **does the
 pointer still land where the deck is drawn?** If the box for the pointer has to differ
 from the box for paint, the cause is usually a part of the deck left uncut, and that is
 what to fix.
