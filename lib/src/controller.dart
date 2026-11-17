@@ -602,14 +602,14 @@ void dismissRecord(SonnerController controller, ToastRecord record) {
 }
 
 /// Pauses every timer of [controller] until [holder] lets go through
-/// [releaseTimers]. Holding twice with one holder holds once. For the host;
+/// [releaseTimersFor]. Holding twice with one holder holds once. For the host;
 /// not exported.
-void holdTimers(SonnerController controller, Object holder) =>
+void holdTimersFor(SonnerController controller, Object holder) =>
     controller._setPaused(() => controller._holders.add(holder));
 
-/// Lets go of a hold [holder] took with [holdTimers]; the timers resume once
+/// Lets go of a hold [holder] took with [holdTimersFor]; the timers resume once
 /// nothing holds them. A holder that holds nothing is ignored.
-void releaseTimers(SonnerController controller, Object holder) =>
+void releaseTimersFor(SonnerController controller, Object holder) =>
     controller._setPaused(() => controller._holders.remove(holder));
 
 /// Reports that the pointer holds the deck [holder] draws, for [SonnerZone.held].
@@ -641,7 +641,7 @@ class TimerHold {
 
   /// Ends this hold. The timers resume once nothing else pauses them.
   /// Releasing it again, or once the controller is disposed, does nothing.
-  void release() => releaseTimers(_controller, this);
+  void release() => releaseTimersFor(_controller, this);
 }
 
 /// Reports the app's lifecycle state to [onChange], once with the state it is

@@ -63,7 +63,7 @@ offstage, and not the toast's place in the window. A toast crossing the window's
 fading out and one leaving a deck fanned out or folding are all beyond the window and on screen.
 
 ## Code
-`controller.dart` — SonnerController, TimerHold, holdTimers, releaseTimers
+`controller.dart` — SonnerController, TimerHold, holdTimersFor, releaseTimersFor
 `host.dart` — ToastLayer
 `toast_id.dart` — ToastId
 `toast_state.dart` — ToastState
