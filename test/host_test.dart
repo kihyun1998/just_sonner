@@ -5554,6 +5554,97 @@ void main() {
         matching: find.byType(ColoredBox),
       );
 
+      /// The frame a hover reaches three ticks in: part way through the fade,
+      /// which the caller asserts rather than trusts.
+      Future<double> partWay(WidgetTester tester) async {
+        for (var i = 0; i < 3; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+        return tester
+            .widget<DeckBackdropBox>(find.byType(DeckBackdropBox))
+            .expansion;
+      }
+
+      testWidgets('the blur keeps its sigma part way through the fade, and its '
+          'opacity follows the expansion', (tester) async {
+        final controller = withBackdrop(const DeckBackdrop(blur: 6));
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Only');
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        final expansion = await partWay(tester);
+        expect(expansion, inExclusiveRange(0, 1), reason: 'part way');
+
+        final filter = tester.widget<BackdropFilter>(blur);
+        expect(filter.filter, ui.ImageFilter.blur(sigmaX: 6, sigmaY: 6));
+        final fade = tester.widget<Opacity>(
+          find.ancestor(of: blur, matching: find.byType(Opacity)).first,
+        );
+        expect(fade.opacity, expansion);
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<Opacity>(
+                find.ancestor(of: blur, matching: find.byType(Opacity)).first,
+              )
+              .opacity,
+          1,
+          reason: 'fanned out',
+        );
+      });
+
+      testWidgets('part way through the fade the blur reaches as wide as it '
+          'does fanned out, read from the pixels', (tester) async {
+        final key = GlobalKey();
+        final controller = withBackdrop(const DeckBackdrop());
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: key,
+            child: MaterialApp(
+              builder: (context, child) =>
+                  SonnerHost(controller: controller, child: child!),
+              home: const CustomPaint(
+                painter: _HardEdge(),
+                child: SizedBox.expand(),
+              ),
+            ),
+          ),
+        );
+        controller.show('Only');
+        await tester.pumpAndSettle();
+
+        /// How many pixels of the row 4 px inside the deck's top are off pure
+        /// black and white: the blur's grey band, faint or not.
+        Future<int> greyInRow() async {
+          final row = (tester.getRect(find.byType(DeckHitBox)).top + 4).round();
+          final boundary =
+              key.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+          var grey = 0;
+          await tester.runAsync(() async {
+            final image = await boundary.toImage();
+            final data = await image.toByteData(
+              format: ui.ImageByteFormat.rawRgba,
+            );
+            for (var x = 0; x < image.width; x++) {
+              final v = data!.getUint8((row * image.width + x) * 4);
+              if (v > 2 && v < 253) grey++;
+            }
+            image.dispose();
+          });
+          return grey;
+        }
+
+        await mouseAt(tester, boxOf(tester, 'Only').center);
+        final expansion = await partWay(tester);
+        expect(expansion, inExclusiveRange(0, 0.25), reason: 'early on');
+        final early = await greyInRow();
+        await tester.pumpAndSettle();
+        final settled = await greyInRow();
+        expect(settled, greaterThan(100), reason: 'the blur draws');
+        // The band is the full blur's from the start of the fade, only fainter.
+        expect(early, greaterThan(settled ~/ 2));
+      });
+
       testWidgets('no config draws none of it, hovered or not', (tester) async {
         final controller = withBackdrop(null);
         await tester.pumpWidget(app(controller: controller));

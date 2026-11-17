@@ -18,7 +18,8 @@ the same fact. None of them calls another; they meet only in the compositor.
 ## Territories it holds in
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — the clip is this territory's, at both ends.
 - [Deck controls](../territory/deck-controls.md) — the hide motion transforms the whole deck.
-- [Backdrop](../territory/backdrop.md) — a save layer between the filter and the app defeats the filter.
+- [Backdrop](../territory/backdrop.md) — a `ShaderMask` between the filter and the app defeats
+  the filter. An `Opacity` there does not (#142, measured in flutter_test's rasterizer).
 
 ## What a violation looks like
 Nothing at rest, and a flash during a motion: content that is off screen appears for the

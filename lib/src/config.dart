@@ -256,7 +256,8 @@ enum DeckScrollbarPlacement {
 /// What is drawn behind the deck while it is fanned out.
 ///
 /// It is drawn under the fanned-out toasts and the gaps between them, over the
-/// deck's own box and [padding] further. [blur] and [dim] both follow the expansion, so a
+/// deck's own box and [padding] further. The blur fades in and out with the
+/// expansion at its full [blur], and [dim] follows the expansion, so a
 /// collapsed deck draws neither and there is nothing to see until the pointer
 /// fans the deck out.
 ///
@@ -274,7 +275,8 @@ class DeckBackdrop {
        assert(dim >= 0 && dim <= 1, 'A dim is a fraction.'),
        assert(radius >= 0, 'A radius cannot be negative.');
 
-  /// The filter's sigma at full expansion. 0 draws no blur.
+  /// The filter's sigma, the same at every expansion: the blur fades in and
+  /// out by its opacity, never by its sigma. 0 draws no blur.
   ///
   /// It blurs **what the app painted**, not the desktop behind the window: a
   /// `BackdropFilter` reaches the content under it inside the window, and the

@@ -23,8 +23,9 @@ import '../config.dart';
 /// box its own layout places, which this never widens: a click in the padding
 /// this reaches into still reaches the app.
 ///
-/// Both the blur and the dim follow [expansion], so a collapsed deck draws
-/// neither and there is nothing to see until the pointer fans the deck out.
+/// The blur's sigma is [DeckBackdrop.blur] whenever it is drawn; the blur's
+/// opacity and the dim follow [expansion], so a collapsed deck draws neither
+/// and there is nothing to see until the pointer fans the deck out.
 class DeckBackdropBox extends StatelessWidget {
   const DeckBackdropBox({
     super.key,
@@ -53,7 +54,7 @@ class DeckBackdropBox extends StatelessWidget {
   Widget build(BuildContext context) {
     final reach = expansion.clamp(0.0, 1.0);
     if (reach == 0) return const SizedBox.shrink();
-    final sigma = backdrop.blur * reach;
+    final sigma = backdrop.blur;
     return IgnorePointer(
       child: _BackdropClip(
         at: at,
@@ -65,9 +66,12 @@ class DeckBackdropBox extends StatelessWidget {
           fit: StackFit.expand,
           children: [
             if (sigma > 0)
-              BackdropFilter(
-                filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                child: const SizedBox.expand(),
+              Opacity(
+                opacity: reach,
+                child: BackdropFilter(
+                  filter: ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: const SizedBox.expand(),
+                ),
               ),
             if (backdrop.dim > 0)
               ColoredBox(
@@ -90,9 +94,7 @@ class DeckBackdropBox extends StatelessWidget {
 /// would mutate a sibling subtree during layout. Flutter raises on both. So the
 /// box is read at **paint**, the way `DeckCutBox` and `DeckLayers` read theirs.
 ///
-/// The clip is a plain rounded clip, never `antiAliasWithSaveLayer`: a save
-/// layer here would trap the child's `BackdropFilter`, which is the whole
-/// reason this is drawn outside the deck's cut.
+/// The clip is a plain rounded clip, never `antiAliasWithSaveLayer`.
 class _BackdropClip extends SingleChildRenderObjectWidget {
   const _BackdropClip({
     required this.at,

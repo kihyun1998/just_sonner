@@ -16,6 +16,12 @@
   or from just past its edge. The way back is now measured from the deck as it comes back, so a
   deck hidden open, which folds up as it goes, also comes back from its folded size. A motion
   builder's `reach` is unchanged.
+- **The backdrop's blur fades in rather than growing** (#142). With `deckBackdrop` set, opening
+  the zone or fanning the deck out drew the blur at a sigma that grew from 0 to `blur`, and the
+  first opens after launch dropped frames while the engine met each new sigma. The blur is now
+  drawn at `blur` throughout, so an open no longer walks through every sigma, and fades in and
+  out by its opacity; the dim is unchanged.
+  `DeckBackdrop` is unchanged.
 
 ## 0.5.1
 
