@@ -283,6 +283,30 @@ void main() {
       });
     });
 
+    test('dismiss and dismissAll on a disposed controller assert before '
+        'anything changes', () {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: null),
+      );
+      final id = controller.show('Saved');
+      controller.dispose();
+
+      expect(() => controller.dismiss(id), throwsFlutterError);
+      expect(controller.count, 1, reason: 'dismiss changed nothing');
+      expect(
+        () => controller.dismiss(ToastId('never shown')),
+        throwsFlutterError,
+        reason: 'an id not on screen asserts too',
+      );
+      expect(() => controller.dismissAll(), throwsFlutterError);
+      expect(controller.count, 1, reason: 'dismissAll changed nothing');
+      expect(
+        () => (SonnerController()..dispose()).dismissAll(),
+        throwsFlutterError,
+        reason: 'with no toast on screen too',
+      );
+    });
+
     test('disposing the controller cancels the tick', () {
       fakeAsync((async) {
         final controller = SonnerController();
@@ -918,6 +942,88 @@ void main() {
           error: (e) => ToastContent('Failed: $e'),
         ),
         throwsA(isA<AssertionError>()),
+      );
+    });
+
+    test('a success due after dispose is a quiet no-op, and the value still '
+        'reaches the caller', () async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: null),
+      );
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+      final work = Completer<int>();
+      var called = false;
+
+      final result = controller.promise(
+        work.future,
+        loading: const ToastContent('Uploading…'),
+        success: (value) {
+          called = true;
+          return ToastContent('Uploaded $value');
+        },
+        error: (e) => ToastContent('Failed: $e'),
+      );
+      controller.dispose();
+      work.complete(7);
+
+      expect(await result, 7);
+      expect(reported, isEmpty, reason: 'nothing to report');
+      expect(called, isFalse, reason: 'no toast is built');
+      expect(
+        toastsOf(controller).single.state.title,
+        'Uploading…',
+        reason: 'the list as dispose left it',
+      );
+    });
+
+    test('an error due after dispose is a quiet no-op, and the error still '
+        'reaches the caller', () async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: null),
+      );
+      final reported = <FlutterErrorDetails>[];
+      final previous = FlutterError.onError;
+      FlutterError.onError = reported.add;
+      addTearDown(() => FlutterError.onError = previous);
+      final work = Completer<int>();
+      final thrown = StateError('no connection');
+      var called = false;
+
+      final result = controller.promise(
+        work.future,
+        loading: const ToastContent('Uploading…'),
+        success: (value) => ToastContent('Uploaded $value'),
+        error: (e) {
+          called = true;
+          return ToastContent('Failed: $e');
+        },
+      );
+      controller.dispose();
+      work.completeError(thrown);
+
+      await expectLater(result, throwsA(same(thrown)));
+      expect(reported, isEmpty, reason: 'nothing to report');
+      expect(called, isFalse, reason: 'no toast is built');
+      expect(
+        toastsOf(controller).single.state.title,
+        'Uploading…',
+        reason: 'the list as dispose left it',
+      );
+    });
+
+    test('promise on a disposed controller asserts', () {
+      final controller = SonnerController()..dispose();
+      expect(
+        () => controller.promise(
+          Future<void>.value(),
+          loading: const ToastContent('Up'),
+          success: (_) => const ToastContent('Done'),
+          error: (e) => ToastContent('Failed: $e'),
+        ),
+        throwsFlutterError,
       );
     });
 

@@ -148,6 +148,8 @@ non-nullable `T`, exactly when the error path runs. Awaiting it in a `try` / `ca
 - Nothing the toast does changes what the caller gets. A state that cannot be shown, or a
   `success` or `error` callback that throws, is reported through `FlutterError.reportError`, and
   the future's outcome still arrives.
+- A future that finishes after the controller is disposed, as when a screen closes mid-request,
+  shows nothing and reports nothing; the caller still gets its value or error.
 - A loading toast the user dismisses does not stop the result: it arrives as a new toast.
 - `id:` takes over a toast already on screen, which is how a flow of several steps hands one
   loading toast on.

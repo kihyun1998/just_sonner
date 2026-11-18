@@ -374,10 +374,15 @@ class SonnerController extends ChangeNotifier {
   /// What the user swept away was the progress, not the outcome.
   ///
   /// **Nothing the toast does can change what the caller gets.** A state that
-  /// cannot be shown — no navigator to draw in, a disposed controller, a
-  /// `success` or `error` callback that throws — is reported through
-  /// [FlutterError.reportError] and the future's outcome still arrives. The
-  /// caller's work is not the toast's to lose.
+  /// cannot be shown — no navigator to draw in, a `success` or `error`
+  /// callback that throws — is reported through [FlutterError.reportError] and
+  /// the future's outcome still arrives. The caller's work is not the toast's
+  /// to lose.
+  ///
+  /// A `success` or `error` state due after the controller is disposed is
+  /// dropped: its callback is not called, no toast is shown and nothing is
+  /// reported, in debug and release alike, and the future's outcome still
+  /// arrives. Calling [promise] on a disposed controller asserts.
   ///
   /// `duration` on [loading] is ignored, since a loading toast has no timer,
   /// and asserts in debug.
@@ -400,10 +405,10 @@ class SonnerController extends ChangeNotifier {
     _promiseState(toastId, () => loading, isLoading: true);
     try {
       final value = await future;
-      _promiseState(toastId, () => success(value));
+      if (!_disposed) _promiseState(toastId, () => success(value));
       return value;
     } catch (thrown, stack) {
-      _promiseState(toastId, () => error(thrown));
+      if (!_disposed) _promiseState(toastId, () => error(thrown));
       Error.throwWithStackTrace(thrown, stack);
     }
   }
@@ -451,7 +456,10 @@ class SonnerController extends ChangeNotifier {
   }
 
   /// Dismisses the toast with [id]. An id not on screen is ignored.
+  ///
+  /// On a disposed controller it asserts, an id not on screen included.
   void dismiss(ToastId id) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
     final index = _toasts.indexWhere((record) => record.id == id);
     if (index < 0) return;
     _toasts.removeAt(index);
@@ -461,7 +469,10 @@ class SonnerController extends ChangeNotifier {
   }
 
   /// Dismisses every toast on screen.
+  ///
+  /// On a disposed controller it asserts, with no toast on screen too.
   void dismissAll() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (_toasts.isEmpty) return;
     _toasts.clear();
     _endBannerIfDone();
