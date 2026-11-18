@@ -598,6 +598,60 @@ class ZoneEmpty {
   int get hashCode => Object.hash(label, builder);
 }
 
+/// How a builder's content changes on an update or a replace. The default look
+/// does not read it: it fades its new content in over 200 ms over the old,
+/// which stays opaque.
+///
+/// The new content fades in over [duration] while the old fades out on the
+/// curve that keeps two layers of a card of [cardOpacity] covering as one such
+/// card does: at the new layer's opacity `t`, the old one's is
+/// `(1 - t) / (1 - cardOpacity * t)`. A card opacity of 1 keeps the old one
+/// opaque until the new is in, and 0 is the symmetric cross-fade.
+@immutable
+class ContentChange {
+  const ContentChange({
+    this.cardOpacity = 1,
+    this.duration = const Duration(milliseconds: 200),
+    this.keep = false,
+  }) : assert(
+         cardOpacity >= 0 && cardOpacity <= 1,
+         'A card opacity is from 0 to 1.',
+       );
+
+  /// The opacity of the surface the builder draws its card with, 0 to 1.
+  final double cardOpacity;
+
+  /// How long the new content takes to fade in. Zero puts it in place of the
+  /// old in one frame; it cannot be negative.
+  final Duration duration;
+
+  /// Whether the builder's element is kept across an update and a replace,
+  /// whatever builder either passes, with no fade: the builder animates what
+  /// changes itself, and its own state lives on through the change.
+  final bool keep;
+
+  /// A copy with the fields given changed.
+  ContentChange copyWith({
+    double? cardOpacity,
+    Duration? duration,
+    bool? keep,
+  }) => ContentChange(
+    cardOpacity: cardOpacity ?? this.cardOpacity,
+    duration: duration ?? this.duration,
+    keep: keep ?? this.keep,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ContentChange &&
+      other.cardOpacity == cardOpacity &&
+      other.duration == duration &&
+      other.keep == keep;
+
+  @override
+  int get hashCode => Object.hash(cardOpacity, duration, keep);
+}
+
 /// The value of [SonnerConfig.configDuration].
 final class _ConfigDuration extends Duration {
   const _ConfigDuration();
@@ -649,6 +703,7 @@ class SonnerConfig {
     this.zoneEmpty = const ZoneEmpty(),
     this.wheelMotion = const WheelMotion.spring(),
     this.enterMotion = ToastEnterMotion.edge,
+    this.contentChange = const ContentChange(),
   });
 
   final SonnerPosition position;
@@ -759,6 +814,9 @@ class SonnerConfig {
   /// A toast swiped away leaves the way the swipe took it instead.
   final ToastEnterMotion enterMotion;
 
+  /// How a builder's content changes on an update or a replace.
+  final ContentChange contentChange;
+
   /// A copy with the fields given changed.
   ///
   /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
@@ -790,6 +848,7 @@ class SonnerConfig {
     ValueGetter<ZoneEmpty?>? zoneEmpty,
     WheelMotion? wheelMotion,
     ToastEnterMotion? enterMotion,
+    ContentChange? contentChange,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -815,6 +874,7 @@ class SonnerConfig {
     zoneEmpty: zoneEmpty == null ? this.zoneEmpty : zoneEmpty(),
     wheelMotion: wheelMotion ?? this.wheelMotion,
     enterMotion: enterMotion ?? this.enterMotion,
+    contentChange: contentChange ?? this.contentChange,
   );
 
   @override
@@ -841,7 +901,8 @@ class SonnerConfig {
       other.hideMotion == hideMotion &&
       other.zoneEmpty == zoneEmpty &&
       other.wheelMotion == wheelMotion &&
-      other.enterMotion == enterMotion;
+      other.enterMotion == enterMotion &&
+      other.contentChange == contentChange;
 
   @override
   int get hashCode => Object.hashAll([
@@ -867,5 +928,6 @@ class SonnerConfig {
     zoneEmpty,
     wheelMotion,
     enterMotion,
+    contentChange,
   ]);
 }

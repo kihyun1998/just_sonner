@@ -237,8 +237,63 @@ class _HarnessPageState extends State<HarnessPage> {
   @override
   void dispose() {
     _progress?.cancel();
+    _stopSeeThrough();
     _toast.removeListener(_foldUpWhenLeft);
     super.dispose();
+  }
+
+  static final _seeThrough = ToastId('see-through');
+  final List<Timer> _seeThroughTimers = [];
+
+  void _stopSeeThrough() {
+    for (final timer in _seeThroughTimers) {
+      timer.cancel();
+    }
+    _seeThroughTimers.clear();
+  }
+
+  void _showSeeThrough(String title, {required bool loading}) => _toast.show(
+    title,
+    isLoading: loading,
+    duration: loading ? null : const Duration(seconds: 4),
+    id: _seeThrough,
+    builder: seeThroughLook,
+  );
+
+  /// Asks, is answered and is granted, 1.5 s apart, at one id.
+  void _runSeeThrough() {
+    _stopSeeThrough();
+    _showSeeThrough('Requesting node access…', loading: true);
+    _seeThroughTimers
+      ..add(
+        Timer(
+          const Duration(milliseconds: 1500),
+          () => _showSeeThrough('Node reached, authorising…', loading: true),
+        ),
+      )
+      ..add(
+        Timer(
+          const Duration(milliseconds: 3000),
+          () => _showSeeThrough('Node access granted', loading: false),
+        ),
+      );
+  }
+
+  /// A replace every 100 ms, thirty of them, then granted.
+  void _runSeeThroughRapid() {
+    _stopSeeThrough();
+    var count = 0;
+    _seeThroughTimers.add(
+      Timer.periodic(const Duration(milliseconds: 100), (timer) {
+        count++;
+        final done = count >= 30;
+        _showSeeThrough(
+          done ? 'Node access granted' : 'Requesting node access… $count',
+          loading: !done,
+        );
+        if (done) timer.cancel();
+      }),
+    );
   }
 
   void _stopProgress() {
@@ -1314,6 +1369,61 @@ class _HarnessPageState extends State<HarnessPage> {
         ),
         _Button('Replace it whole', () => _show('Signed in', id: _target)),
         _Button('Update in a loop (upload)', _runProgress),
+      ],
+    ),
+    _Section(
+      title: 'A change on a see-through card',
+      issue: 157,
+      note:
+          'A builder whose card is 65 % opaque goes asking (blue) → reached '
+          '(green) → granted (a check), 1.5 s apart, by replace. With '
+          'cardOpacity 1, the default, the old content stays opaque under the '
+          'new and then goes in one frame; at 0.65 the old fades out on the '
+          'curve that holds the card at 65 % throughout; at 0 it is a plain '
+          'cross-fade. A duration of 0 swaps in one frame. keep keeps the '
+          'card, with no fade, and the card animates its own border, icon '
+          'and text. The default look keeps its own fade whatever these say.',
+      children: [
+        _Button('Asking → reached → granted', _runSeeThrough),
+        _Button('A replace every 100 ms, then granted', _runSeeThroughRapid),
+        _Dropdown<double>(
+          label: 'cardOpacity',
+          value: config.contentChange.cardOpacity,
+          values: {1.0, 0.65, 0.0, config.contentChange.cardOpacity}.toList(),
+          nameOf: (value) => value == 1 ? '1 (the default)' : '$value',
+          onChanged: (value) => widget.onConfig(
+            config.copyWith(
+              contentChange: config.contentChange.copyWith(cardOpacity: value),
+            ),
+          ),
+        ),
+        _Dropdown<Duration>(
+          label: 'duration',
+          value: config.contentChange.duration,
+          values: {
+            Duration.zero,
+            const Duration(milliseconds: 200),
+            const Duration(milliseconds: 600),
+            config.contentChange.duration,
+          }.toList(),
+          nameOf: (value) => value == const Duration(milliseconds: 200)
+              ? '200 ms (the default)'
+              : '${value.inMilliseconds} ms',
+          onChanged: (value) => widget.onConfig(
+            config.copyWith(
+              contentChange: config.contentChange.copyWith(duration: value),
+            ),
+          ),
+        ),
+        SwitchListTile(
+          title: const Text('keep'),
+          value: config.contentChange.keep,
+          onChanged: (value) => widget.onConfig(
+            config.copyWith(
+              contentChange: config.contentChange.copyWith(keep: value),
+            ),
+          ),
+        ),
       ],
     ),
     _Section(

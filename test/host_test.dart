@@ -6531,6 +6531,267 @@ void main() {
     });
   });
 
+  group('content change', () {
+    ToastBuilder look(String label) =>
+        (context, toast) =>
+            SizedBox(height: 60, child: Text('$label ${toast.state.title}'));
+
+    /// The opacity of the content-change layer [text] is drawn in.
+    double layerOf(WidgetTester tester, String text) => tester
+        .widget<FadeTransition>(
+          find
+              .ancestor(
+                of: find.text(text),
+                matching: find.byType(FadeTransition),
+              )
+              .first,
+        )
+        .opacity
+        .value;
+
+    /// How much of the screen two layers of a card of [alpha] cover, the base
+    /// at [base] and the new one at [top].
+    double coverage(double alpha, double base, double top) =>
+        1 - (1 - alpha * base) * (1 - alpha * top);
+
+    testWidgets('the old content of a card of opacity α fades out as the new '
+        'fades in, so the two cover as one card of α does', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(cardOpacity: 0.65),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Before', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'After');
+      await tester.pump();
+      expect(layerOf(tester, 'Own Before'), 1);
+      expect(layerOf(tester, 'Own After'), 0);
+      for (final t in [0.25, 0.5, 0.75]) {
+        await tester.pump(const Duration(milliseconds: 50));
+        final base = layerOf(tester, 'Own Before');
+        final top = layerOf(tester, 'Own After');
+        expect(top, moreOrLessEquals(t));
+        expect(base, moreOrLessEquals((1 - t) / (1 - 0.65 * t)));
+        expect(coverage(0.65, base, top), moreOrLessEquals(0.65));
+      }
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.text('Own Before'), findsNothing);
+      expect(layerOf(tester, 'Own After'), 1);
+    });
+
+    testWidgets('a card opacity of 0 is the symmetric cross-fade', (
+      tester,
+    ) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(cardOpacity: 0),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Before', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'After');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(layerOf(tester, 'Own Before'), moreOrLessEquals(0.75));
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(layerOf(tester, 'Own Before'), moreOrLessEquals(0.25));
+      expect(layerOf(tester, 'Own After'), moreOrLessEquals(0.75));
+    });
+
+    testWidgets('a change mid-fade makes the half-faded content the base, '
+        'and the card still covers as one card of α', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(cardOpacity: 0.65),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('10%', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: '20%');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        coverage(0.65, layerOf(tester, 'Own 10%'), layerOf(tester, 'Own 20%')),
+        moreOrLessEquals(0.65),
+        reason: 'just before the change',
+      );
+      controller.update(id, title: '30%');
+      await tester.pump();
+
+      expect(find.text('Own 10%'), findsNothing, reason: 'at most two layers');
+      final base = layerOf(tester, 'Own 20%');
+      final top = layerOf(tester, 'Own 30%');
+      expect(base, 1);
+      expect(top, 0);
+      expect(coverage(0.65, base, top), moreOrLessEquals(0.65));
+    });
+
+    testWidgets('a longer duration fades over that long', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(
+          duration: Duration(milliseconds: 400),
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Before', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'After');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(layerOf(tester, 'Own After'), moreOrLessEquals(0.5));
+      expect(layerOf(tester, 'Own Before'), 1, reason: 'opaque card');
+      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.text('Own Before'), findsNothing);
+    });
+
+    testWidgets('a duration of zero puts the new content in place of the old '
+        'in one frame', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(duration: Duration.zero),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Before', builder: look('Own'));
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'After');
+      await tester.pump();
+      expect(find.text('Own Before'), findsNothing);
+      expect(layerOf(tester, 'Own After'), 1);
+    });
+
+    testWidgets('keep keeps the builder’s element across an update and a '
+        'replace, whatever builder is passed, with no fade', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(keep: true),
+      );
+      var inits = 0;
+      ToastBuilder counted() =>
+          (context, toast) => _InitCounter(
+            onInit: () => inits++,
+            child: Text('Own ${toast.state.title}'),
+          );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Loading', builder: counted());
+      await tester.pumpAndSettle();
+      expect(inits, 1);
+
+      controller.update(id, title: 'Halfway', builder: counted());
+      await tester.pump();
+      expect(find.text('Own Loading'), findsNothing, reason: 'no fade');
+      expect(find.text('Own Halfway'), findsOneWidget);
+      expect(layerOf(tester, 'Own Halfway'), 1);
+
+      controller.show('Done', id: id, builder: counted());
+      await tester.pump();
+      expect(find.text('Own Halfway'), findsNothing);
+      expect(find.text('Own Done'), findsOneWidget);
+      expect(inits, 1, reason: 'the same element throughout');
+    });
+
+    testWidgets('turning keep on or off changes no content: nothing fades and '
+        'the element stays', (tester) async {
+      var inits = 0;
+      ToastBuilder counted() => (context, toast) => _InitCounter(
+        onInit: () => inits++,
+        child: Text('Own ${toast.state.title}'),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Loading', builder: counted());
+      await tester.pumpAndSettle();
+
+      for (final keep in [true, false]) {
+        controller.config = controller.config.copyWith(
+          contentChange: ContentChange(keep: keep),
+        );
+        await tester.pump();
+        expect(find.text('Own Loading'), findsOneWidget, reason: 'keep $keep');
+        expect(inits, 1, reason: 'keep $keep');
+      }
+    });
+
+    testWidgets('keep takes no fade on a replace from the default look to a '
+        'builder', (tester) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(keep: true),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Plain');
+      await tester.pumpAndSettle();
+
+      controller.show('Mine', id: id, builder: look('Own'));
+      await tester.pump();
+      expect(find.text('Plain'), findsNothing);
+      expect(layerOf(tester, 'Own Mine'), 1);
+    });
+
+    testWidgets('without keep, an update builds the builder’s element again', (
+      tester,
+    ) async {
+      var inits = 0;
+      ToastBuilder counted() =>
+          (context, toast) => _InitCounter(
+            onInit: () => inits++,
+            child: Text('Own ${toast.state.title}'),
+          );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Loading', builder: counted());
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'Done');
+      await tester.pumpAndSettle();
+      expect(inits, 2);
+    });
+
+    testWidgets('the default look keeps its own fade whatever the setting', (
+      tester,
+    ) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(
+          cardOpacity: 0,
+          duration: Duration.zero,
+          keep: true,
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Checking');
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'Opening');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(paintedOpacityOf(tester, 'Checking'), 1);
+      expect(paintedOpacityOf(tester, 'Opening'), moreOrLessEquals(0.5));
+    });
+
+    testWidgets('a replace from a builder to the default look takes the '
+        'default look’s fade; one back to a builder takes the setting', (
+      tester,
+    ) async {
+      controller.config = controller.config.copyWith(
+        contentChange: const ContentChange(duration: Duration.zero),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      final id = controller.show('Own', builder: look('Mine'));
+      await tester.pumpAndSettle();
+
+      controller.show('Plain', id: id);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(find.text('Mine Own'), findsOneWidget, reason: 'underneath');
+      expect(paintedOpacityOf(tester, 'Plain'), moreOrLessEquals(0.5));
+      await tester.pumpAndSettle();
+
+      controller.show('Back', id: id, builder: look('Mine'));
+      await tester.pump();
+      expect(find.text('Plain'), findsNothing);
+      expect(find.text('Mine Back'), findsOneWidget);
+    });
+  });
+
   group('swipe', () {
     /// Presses [title]'s card and drags it [by] over [taking], holding on.
     Future<TestGesture> dragBy(
@@ -11700,4 +11961,26 @@ class _OwnsControllerState extends State<_OwnsController> {
   @override
   Widget build(BuildContext context) =>
       SonnerHost(controller: controller, child: widget.child);
+}
+
+/// Calls [onInit] once each time its state is created.
+class _InitCounter extends StatefulWidget {
+  const _InitCounter({required this.onInit, required this.child});
+
+  final VoidCallback onInit;
+  final Widget child;
+
+  @override
+  State<_InitCounter> createState() => _InitCounterState();
+}
+
+class _InitCounterState extends State<_InitCounter> {
+  @override
+  void initState() {
+    super.initState();
+    widget.onInit();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }

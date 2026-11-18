@@ -70,6 +70,10 @@ class SonnerController extends ChangeNotifier {
       'SonnerConfig.visibleToasts must be between 1 and 20; at 21 the toast '
       'at the back would be scaled to nothing.',
     );
+    assert(
+      config.contentChange.duration >= Duration.zero,
+      'ContentChange.duration cannot be negative.',
+    );
     return true;
   }
 
