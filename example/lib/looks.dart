@@ -104,3 +104,79 @@ Widget ownEmpty(BuildContext context, ZoneEmptyView view) => FadeTransition(
     ),
   ),
 );
+
+/// A see-through card: a 65 % background, a border blue while it asks and
+/// green once the node answers, a spinner then a check. It animates its own
+/// border, icon and text, which shows when `ContentChange.keep` keeps its
+/// element across a change.
+final ToastBuilder seeThroughLook = toastCardBuilder(
+  card: (context, toast, child) {
+    final asking = toast.state.title.contains('Requesting');
+    return TweenAnimationBuilder<Color?>(
+      tween: ColorTween(
+        end: asking ? const Color(0xFF3B82F6) : const Color(0xFF22C55E),
+      ),
+      duration: const Duration(milliseconds: 300),
+      builder: (context, border, child) => Material(
+        type: MaterialType.transparency,
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.65),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border!, width: 2),
+          ),
+          child: child,
+        ),
+      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
+    );
+  },
+  content: (context, toast) {
+    const onCard = Colors.white;
+    final description = toast.state.description;
+    return Row(
+      children: [
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 300),
+          child: toast.state.isLoading
+              ? const SizedBox.square(
+                  key: ValueKey('loading'),
+                  dimension: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: onCard,
+                  ),
+                )
+              : const Icon(
+                  Icons.check_circle,
+                  key: ValueKey('done'),
+                  color: Color(0xFF22C55E),
+                ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 300),
+            layoutBuilder: (current, previous) => Stack(
+              alignment: Alignment.centerLeft,
+              children: [...previous, ?current],
+            ),
+            child: Column(
+              key: ValueKey(toast.state.title),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(toast.state.title, style: const TextStyle(color: onCard)),
+                if (description != null)
+                  Text(
+                    description,
+                    style: const TextStyle(color: Color(0xB3FFFFFF)),
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  },
+);

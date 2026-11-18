@@ -65,6 +65,12 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Update and replace** (#21) — both keep the toast's place and restart its countdown. Update
   patches the fields passed; replace swaps the content whole, so a description it is not given
   disappears. "Update in a loop" shows a toast staying up while updates keep arriving.
+- **A change on a see-through card** (#157) — a builder whose card is 65 % opaque changes by
+  replace, asking → reached → granted. At `cardOpacity` 1, the default, the old content shows
+  through for the whole fade and goes in one frame; at 0.65 the card holds at 65 % throughout,
+  under a replace every 100 ms too; at 0 it is a plain cross-fade. A `duration` of 0 swaps in
+  one frame, and `keep` keeps the card, which animates its own border, icon and text. The
+  showcase has the same three settings under Look, and the card as a builder.
 - **Action slot and close button** (#25) — the slot is yours and is handed the toast, so its widget
   decides whether pressing also dismisses; the X is the package's. `dismissible` governs both, and
   unset means "not while it loads" — watch the X appear the moment loading stops.

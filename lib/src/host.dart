@@ -1437,10 +1437,17 @@ final class _Slot implements ToastView {
   bool? _shownPressable;
   Widget? _content;
 
+  /// The state and builder a builder's content was last built for, and the
+  /// key its element has: a new one for new content unless
+  /// `ContentChange.keep` is on, and never for a change of config alone.
+  (ToastState, ToastBuilder)? _builtFor;
+  Key? _builderKey;
+
   /// What the toast shows. Built again only when the record's state changes,
   /// when the config the look reads does, or when the deck covering it takes
   /// its content out of reach — so an animation frame that only moves the
-  /// toast does not rebuild it, and a new state fades in over the old one.
+  /// toast does not rebuild it, and a new state comes in over the old one as
+  /// [ContentFade] and `config.contentChange` say.
   Widget contentIn(SonnerConfig config, {required bool pressable}) {
     final state = record.state;
     if (!identical(state, _shown) ||
@@ -1449,24 +1456,37 @@ final class _Slot implements ToastView {
       _shown = state;
       _shownWith = config;
       _shownPressable = pressable;
+      final builder = state.builder ?? config.builder;
+      final change = config.contentChange;
+      if (builder != null) {
+        final builtFor = (state, builder);
+        if (_builderKey == null || (builtFor != _builtFor && !change.keep)) {
+          _builderKey = ValueKey(builtFor);
+        }
+        _builtFor = builtFor;
+      }
       _content = Semantics(
         liveRegion: true,
-        child: ContentFade(
-          duration: _fadeDuration,
-          child: switch (state.builder ?? config.builder) {
-            final builder? => Builder(
-              key: ValueKey((state, builder)),
+        child: switch (builder) {
+          final builder? => ContentFade(
+            duration: change.keep ? Duration.zero : change.duration,
+            cardOpacity: change.cardOpacity,
+            child: Builder(
+              key: _builderKey,
               builder: (context) => builder(context, this),
             ),
-            null => DefaultToastLook(
+          ),
+          null => ContentFade(
+            duration: _fadeDuration,
+            child: DefaultToastLook(
               key: ObjectKey(state),
               toast: this,
               config: config,
               fade: contentFade,
               pressable: pressable,
             ),
-          },
-        ),
+          ),
+        },
       );
     }
     return _content!;

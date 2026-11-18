@@ -2418,6 +2418,76 @@ void main() {
       }
     });
 
+    test('a config changes a builder’s content as the default look does by '
+        'default: an opaque card, 200 ms, the element not kept', () {
+      const change = ContentChange();
+      expect(const SonnerConfig().contentChange, change);
+      expect(change.cardOpacity, 1);
+      expect(change.duration, const Duration(milliseconds: 200));
+      expect(change.keep, isFalse);
+    });
+
+    test('ContentChange copyWith keeps what it is not given and compares by '
+        'value', () {
+      final changed = const ContentChange().copyWith(
+        cardOpacity: 0.65,
+        duration: Duration.zero,
+        keep: true,
+      );
+      expect(
+        changed,
+        const ContentChange(
+          cardOpacity: 0.65,
+          duration: Duration.zero,
+          keep: true,
+        ),
+      );
+      expect(
+        changed.hashCode,
+        const ContentChange(
+          cardOpacity: 0.65,
+          duration: Duration.zero,
+          keep: true,
+        ).hashCode,
+      );
+      expect(changed.copyWith(keep: false).cardOpacity, 0.65, reason: 'kept');
+      for (final one in [
+        const ContentChange(cardOpacity: 0.5),
+        const ContentChange(duration: Duration(milliseconds: 100)),
+        const ContentChange(keep: true),
+      ]) {
+        expect(one == const ContentChange(), isFalse, reason: '$one');
+        expect(one.hashCode, isNot(const ContentChange().hashCode));
+      }
+    });
+
+    test('a card opacity outside 0 to 1 is refused, and a controller refuses '
+        'a negative duration', () {
+      expect(() => ContentChange(cardOpacity: -0.1), throwsAssertionError);
+      expect(() => ContentChange(cardOpacity: 1.1), throwsAssertionError);
+      const negative = SonnerConfig(
+        contentChange: ContentChange(duration: Duration(milliseconds: -1)),
+      );
+      expect(() => SonnerController(config: negative), throwsAssertionError);
+      final controller = SonnerController();
+      addTearDown(controller.dispose);
+      expect(() => controller.config = negative, throwsAssertionError);
+    });
+
+    test('copyWith keeps contentChange unless given another, and a config '
+        'with another is not equal', () {
+      const keep = ContentChange(keep: true);
+      const set = SonnerConfig(contentChange: keep);
+      expect(set.copyWith(gap: 20).contentChange, keep, reason: 'kept');
+      expect(const SonnerConfig().copyWith(contentChange: keep), set);
+      expect(
+        const SonnerConfig().copyWith(contentChange: keep).hashCode,
+        set.hashCode,
+      );
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+    });
+
     test('configs built with equal runtime wheel motions are equal, and one '
         'field apart they are not', () {
       SonnerConfig spring(int ms, double bounce) => SonnerConfig(

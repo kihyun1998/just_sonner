@@ -412,11 +412,21 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `zoneEmpty` | `ZoneEmpty()` | What an open zone with no toast draws; null draws nothing |
 | `wheelMotion` | `WheelMotion.spring()` | How the deck glides under the mouse wheel; not nullable. A `Duration.zero` motion jumps |
 | `enterMotion` | `ToastEnterMotion.edge` | The way every toast slides in and back out: from its edge, or from the left or the right; not nullable |
+| `contentChange` | `ContentChange()` | How a builder's content changes on an update or a replace; the default look ignores it; not nullable |
 
 **Toasts from the side.** `enterMotion: ToastEnterMotion.right` brings every toast in from the
 right, one toast's width, and takes it out the same way. The side is yours to pick: it does not
 follow `position`, so a `bottomCenter` deck can enter from the right. A toast you swipe away
 still leaves the way you swiped it.
+
+**A see-through card of your own.** A builder's new content fades in over the old in 200 ms,
+and the old stays opaque underneath until the new is in. A builder whose card is see-through
+sets `contentChange: ContentChange(cardOpacity: 0.65)` to the card's own opacity, and the old
+content fades out as the new comes in so the two read as one card; `cardOpacity: 0` is a plain
+cross-fade, and `duration: Duration.zero` swaps the content in one frame. `keep: true` keeps the
+builder's widget across every update and replace, with no fade, so a stateful card animates what
+changes itself, and its state lives on through a replace too. The default look keeps its own fade
+whatever these say.
 
 **Your own controller.** `SonnerController(config: …)` makes one, which `SonnerHost(controller:)`
 draws, or which you `attach` yourself.

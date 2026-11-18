@@ -1,5 +1,16 @@
 ## Unreleased
 
+- **A builder's content can change in place on a see-through card** (#157). On an update or a
+  replace the new content fades in over the old, which stayed opaque underneath, so a builder
+  whose card is see-through showed the old content through the whole fade and lost it in one
+  frame. `SonnerConfig.contentChange` takes a `ContentChange`: `cardOpacity` set to the card's
+  own opacity fades the old out so the two layers read as one card, 0 being a plain cross-fade;
+  `duration` sets the fade's length, zero swapping in one frame; `keep: true` keeps the builder's
+  widget, and its state, across every update and replace with no fade, so the card animates what
+  changes itself. The defaults are the fade as before, and the default look keeps its own fade.
+  `ContentChange` is exported.
+- **The content an update or a replace fades out no longer takes the focus** (#157). A button in
+  it could be reached with Tab for the length of the fade.
 - **`toast.isAlive(id)` says whether a given toast is still up** (#150). It is true from `show`
   until the toast is dismissed or runs out, and stays true across a replace. An app adding to a
   toast it shows at its own id can now tell whether that toast has gone, by any way it can leave,

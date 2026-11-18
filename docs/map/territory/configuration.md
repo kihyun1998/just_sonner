@@ -14,6 +14,8 @@ single `show` can override, and what happens to toasts on screen when a field ch
   `WheelMotion`, re-exported (#110).
 - [spec §12](../../spec.md#12-decision-record) — `enterMotion` and its `ToastEnterMotion`
   (#141).
+- [spec §12](../../spec.md#12-decision-record) — `contentChange` and its `ContentChange`
+  (#157).
 - [spec §4](../../spec.md#4-api).
 
 ## Design model
@@ -36,13 +38,17 @@ are equal, two separately built `Cubic`s are not.
 position needs no rule of its own; `edge` is the one value that follows the position. The
 side is physical, as `offset`'s edges are: a right-to-left app's `left` is still the left.
 
+`contentChange` is read by a builder's content only; the default look has no setting for
+how its content changes. Its `duration` is checked by the controller, as `duration` and
+`visibleToasts` are, since a `Duration` cannot be compared in a const constructor.
+
 `offset` is an `EdgeInsets` of **physical** edges. The edge the position names holds the
 deck off it and measures `DeckCap.pixels`, the scroll track and the scrollbar from it;
 the opposite one is where the expanded deck stops. A centered position reads neither
 left nor right.
 
 ## Code
-`config.dart` — SonnerConfig, DeckCap, DeckScrollbar, DeckBackdrop, DeckDismissAll, DeckHideControl, DeckHideMotion, ZoneEmpty, ToastTimeLeft, SonnerPosition, ToastEnterMotion
+`config.dart` — SonnerConfig, DeckCap, DeckScrollbar, DeckBackdrop, DeckDismissAll, DeckHideControl, DeckHideMotion, ZoneEmpty, ToastTimeLeft, ContentChange, SonnerPosition, ToastEnterMotion
 
 ## Reference behaviour
 sonner's `offset` takes a number or an object of `top`/`right`/`bottom`/`left`, and its

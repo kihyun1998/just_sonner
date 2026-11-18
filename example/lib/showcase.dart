@@ -39,7 +39,7 @@ enum _Leading { none, icon, spinner }
 
 enum _Slot { none, undo, retry }
 
-enum _Look { none, own, flashBar }
+enum _Look { none, own, seeThrough, flashBar }
 
 enum _Cap { none, pixels, share, toasts }
 
@@ -149,6 +149,7 @@ class _ShowcasePageState extends State<ShowcasePage> {
   ToastBuilder? _builderOf(_Look look) => switch (look) {
     _Look.none => null,
     _Look.own => ownLook,
+    _Look.seeThrough => seeThroughLook,
     _Look.flashBar => flashBar(swipe: false),
   };
 
@@ -546,6 +547,8 @@ class _ShowcasePageState extends State<ShowcasePage> {
           value: switch (c.builder) {
             null => _Look.none,
             final builder when identical(builder, ownLook) => _Look.own,
+            final builder when identical(builder, seeThroughLook) =>
+              _Look.seeThrough,
             _ => _Look.flashBar,
           },
           values: _Look.values,
@@ -575,6 +578,37 @@ class _ShowcasePageState extends State<ShowcasePage> {
           'closeButton',
           c.closeButton,
           (value) => _config = c.copyWith(closeButton: value),
+        ),
+        _Slide(
+          label: 'contentChange cardOpacity',
+          value: c.contentChange.cardOpacity,
+          min: 0,
+          max: 1,
+          divisions: 20,
+          format: (value) => value.toStringAsFixed(2),
+          onChanged: (value) => _config = c.copyWith(
+            contentChange: c.contentChange.copyWith(cardOpacity: value),
+          ),
+        ),
+        _Slide(
+          label: 'contentChange duration',
+          value: c.contentChange.duration.inMilliseconds.toDouble(),
+          min: 0,
+          max: 1000,
+          divisions: 20,
+          format: (value) => '${value.round()} ms',
+          onChanged: (value) => _config = c.copyWith(
+            contentChange: c.contentChange.copyWith(
+              duration: Duration(milliseconds: value.round()),
+            ),
+          ),
+        ),
+        _Toggle(
+          'contentChange keep',
+          c.contentChange.keep,
+          (value) => _config = c.copyWith(
+            contentChange: c.contentChange.copyWith(keep: value),
+          ),
         ),
       ],
     ),
@@ -628,6 +662,7 @@ class _ShowcasePageState extends State<ShowcasePage> {
   static String _lookName(_Look look) => switch (look) {
     _Look.none => 'none, the default look',
     _Look.own => 'the example’s own',
+    _Look.seeThrough => 'a see-through card, 65 %',
     _Look.flashBar => 'a FlashBar through the adapter',
   };
 

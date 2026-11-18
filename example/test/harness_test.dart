@@ -188,6 +188,53 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('the see-through section walks its card to granted, and keep '
+      'keeps the card with no fade', (tester) async {
+    await pumpHarness(tester);
+
+    final run = find.widgetWithText(
+      OutlinedButton,
+      'Asking → reached → granted',
+    );
+    await tester.ensureVisible(run);
+    await tester.pumpAndSettle();
+    await tester.tap(run);
+    await tester.pump();
+    expect(find.text('Requesting node access…'), findsOneWidget);
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(
+      find.text('Requesting node access…'),
+      findsOneWidget,
+      reason: 'fading out under the new content',
+    );
+    expect(find.text('Node reached, authorising…'), findsOneWidget);
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsNWidgets(2),
+      reason: 'two layers, each with its spinner',
+    );
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.text('Node access granted'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(SwitchListTile, 'keep'));
+    await tester.pump();
+    await tester.tap(run);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.text('Node reached, authorising…'), findsOneWidget);
+    expect(
+      find.byType(CircularProgressIndicator),
+      findsOneWidget,
+      reason: 'one card, kept',
+    );
+
+    await tester.pump(const Duration(seconds: 7));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('a config control is assigned, and the deck stays', (
     tester,
   ) async {
