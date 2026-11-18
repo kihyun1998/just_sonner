@@ -1,5 +1,13 @@
 ## Unreleased
 
+- **A request finishing after its screen closed no longer reports an error** (#155). A
+  `promise` whose future settled after the controller was disposed reported a `FlutterError`
+  in debug, which failed a widget test that closed a screen mid-request, and in release added
+  a toast to the disposed controller. Its success or error state is now dropped: no toast, no
+  report, and the future's own result or error still reaches the caller.
+- **`dismiss` and `dismissAll` on a disposed controller assert before they change anything**
+  (#155). They removed the toast first and then threw, and an id not on screen passed
+  silently. They now assert at once, as `show` and `update` do. In release they still act.
 - **A builder's content can change in place on a see-through card** (#157). On an update or a
   replace the new content fades in over the old, which stayed opaque underneath, so a builder
   whose card is see-through showed the old content through the whole fade and lost it in one

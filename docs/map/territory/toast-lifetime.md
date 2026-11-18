@@ -22,6 +22,9 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — the timers pausing on the pointer, a drag and a
   hidden app and not on `inactive` (maintainer), amended with what `inactive` means on desktop
   (#149); the app's `TimerHold` (#149, maintainer for the API and names, derived for the rest).
+- [spec §12](../../spec.md#12-decision-record) — `dismiss` and `dismissAll` asserting at entry on
+  a disposed controller, a `promise` state due after `dispose` dropped with no report, and the
+  other direct calls left assert-only (#155, maintainer).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -70,6 +73,21 @@ it back to true before the comparing listener runs, so the leaving is never seen
 Reading it when the app next acts on the id has no such order. On a disposed controller it
 reads the list as `dispose` left it, as `count` does, so the two never disagree.
 
+After `dispose`, every call that changes the controller asserts at entry, before anything
+changes: `show`, `update`, `dismiss`, `dismissAll`, `promise`, the `config` setter,
+`holdTimers`, `attach`, `raise` and the zone's `open`, `close`, `hide` and `reveal`. The
+entry assert matters for `dismiss` and `dismissAll` in particular: without it they removed
+the record and only then hit `notifyListeners`'s assert, so a debug run threw with the toast
+already gone (#155). In release the asserts are gone and these calls act; that was chosen
+over ignoring them. Reads, `TimerHold.release()` and `detach` do not assert.
+
+A `promise` whose future settles after `dispose` drops its `success` or `error` state: the
+callback is not called, nothing is shown and nothing is reported, in debug and release, and
+the caller still gets the future's outcome. The check sits in `promise` after the `await`,
+not in `show` or `_promiseState`, so `show` keeps its assert and only a state that falls due
+after `dispose` is dropped. A screen closed mid-request is the ordinary flow, and a report
+there failed an app's widget test; `FutureBuilder` drops a late result the same way (#155).
+
 A toast beyond the window with nothing drawing it has **no exit**. Running one would draw it if
 `open()` or a pointer fanned the deck out inside its 200 ms: 9 to 11 frames of a toast already
 gone, about 7,700 px at the peak (#126). The test is `_Slot.hidden`, what the last build kept
@@ -109,6 +127,9 @@ states outright, so anything resting on them carries forward as needing confirma
   toast is built and laid out however few are drawn. The cost has never been measured,
   so it is a shape rather than a defect.
 - **Not covered**: a mode-2 host first mounted while the app is hidden.
+- **Not covered**: in release the calls that change the controller act after `dispose`,
+  and `promise` called on a disposed controller shows its loading state while its result is
+  dropped (#155).
 - **Not covered**: a `TimerHold` the app never releases keeps every timer paused for the
   controller's life, and nothing reports it (#149).
 - **Open**: a toast already inside the window at a window fade of exactly 0 is not `_Slot.hidden`,
