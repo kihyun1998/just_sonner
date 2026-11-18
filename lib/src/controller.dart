@@ -189,15 +189,24 @@ class SonnerController extends ChangeNotifier {
   /// Mount mode 1: draws this controller's toasts in the overlay of the root
   /// navigator [navigatorKey] names, above its dialogs and pages.
   ///
-  /// Nothing is inserted until the first [show] or [SonnerZone.open], so it
-  /// can be called before the app is built. Once attached, a [show] with no
-  /// navigator to draw in is an error in debug and drops the toast in release.
+  /// With a toast alive or the zone open, and the navigator built, the
+  /// toasts are drawn there at once, at the end of the frame during a build:
+  /// attaching another navigator, or attaching again after [detach], moves
+  /// them. Otherwise nothing is inserted until the next [show] or
+  /// [SonnerZone.open], so it can be called before the app is built. Once
+  /// attached, a [show] with no navigator to draw in is an error in debug and
+  /// drops the toast in release. Attaching the key already attached does
+  /// nothing.
   void attach(GlobalKey<NavigatorState> navigatorKey) {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (identical(_mount?.navigatorKey, navigatorKey)) return;
     final mount = RootOverlayMount(this, navigatorKey)..debugAssertRoot();
     _mount?.detach();
     _mount = mount;
+    if (_toasts.isEmpty && _zoneState != ZoneState.open) return;
+    if (navigatorKey.currentState == null) return;
+    _watchLifecycle();
+    mount.raise();
   }
 
   /// Undoes [attach]: takes the toasts out of the overlay and leaves a
@@ -216,9 +225,10 @@ class SonnerController extends ChangeNotifier {
   ///
   /// Moving them keeps their state and running animations. During a build the
   /// move waits for the end of the frame. It does nothing before [attach],
-  /// after [detach], and until a toast is shown or the zone opened since
-  /// [attach]. With [SonnerHost] it does nothing either: that host sits above
-  /// the app's `Navigator`, where no entry of the root overlay can cover it.
+  /// after [detach], and until the toasts are first drawn since [attach]: by a
+  /// [show], by [SonnerZone.open], or by [attach] itself. With [SonnerHost] it
+  /// does nothing either: that host sits above the app's `Navigator`, where no
+  /// entry of the root overlay can cover it.
   void raise() {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     final mount = _mount;

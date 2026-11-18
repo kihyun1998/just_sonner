@@ -786,40 +786,226 @@ void main() {
     await cleanUp(tester);
   });
 
-  testWidgets('attaching another navigator moves the toasts to it', (
-    tester,
-  ) async {
+  group('attach with something to draw', () {
     final first = GlobalKey<NavigatorState>();
-    await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: Row(
-          children: [
-            Expanded(
-              child: MaterialApp(
-                navigatorKey: first,
-                home: const SizedBox.expand(),
-              ),
+
+    Widget twoApps() => Directionality(
+      textDirection: TextDirection.ltr,
+      child: Row(
+        children: [
+          Expanded(
+            child: MaterialApp(
+              navigatorKey: first,
+              home: const SizedBox.expand(),
             ),
-            Expanded(child: app()),
-          ],
-        ),
+          ),
+          Expanded(child: app()),
+        ],
       ),
     );
-    controller.attach(first);
-    controller.show('Saved');
-    await tester.pumpAndSettle();
 
-    controller.attach(navigatorKey);
-    controller.show('Moved');
-    await tester.pumpAndSettle();
+    OverlayState overlayOf(WidgetTester tester, String text) =>
+        tester.state<OverlayState>(
+          find.ancestor(of: find.text(text), matching: find.byType(Overlay)),
+        );
 
-    for (final title in ['Saved', 'Moved']) {
-      final overlay = tester.state<OverlayState>(
-        find.ancestor(of: find.text(title), matching: find.byType(Overlay)),
+    testWidgets('another navigator moves the toasts to it at once', (
+      tester,
+    ) async {
+      await tester.pumpWidget(twoApps());
+      controller.attach(first);
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      controller.attach(navigatorKey);
+      await tester.pumpAndSettle();
+      expect(find.text('Saved'), findsOneWidget, reason: 'with no later show');
+      expect(
+        overlayOf(tester, 'Saved'),
+        same(navigatorKey.currentState!.overlay),
       );
-      expect(overlay, same(navigatorKey.currentState!.overlay), reason: title);
-    }
+
+      controller.show('Moved');
+      await tester.pumpAndSettle();
+      for (final title in ['Saved', 'Moved']) {
+        expect(find.text(title), findsOneWidget, reason: title);
+        expect(
+          overlayOf(tester, title),
+          same(navigatorKey.currentState!.overlay),
+          reason: title,
+        );
+      }
+      await cleanUp(tester);
+    });
+
+    testWidgets('after detach, draws the toasts again at once', (tester) async {
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      controller.detach();
+      await tester.pump();
+      expect(find.text('Saved'), findsNothing);
+
+      controller.attach(navigatorKey);
+      await tester.pumpAndSettle();
+      expect(find.text('Saved'), findsOneWidget, reason: 'with no later show');
+      expect(find.byType(ToastLayer), findsOneWidget);
+      await cleanUp(tester);
+    });
+
+    testWidgets('an open zone with no toast is drawn in the new navigator', (
+      tester,
+    ) async {
+      await tester.pumpWidget(twoApps());
+      controller.attach(first);
+      controller.zone.open();
+      await tester.pumpAndSettle();
+
+      controller.attach(navigatorKey);
+      await tester.pumpAndSettle();
+      expect(find.text('No notifications'), findsOneWidget);
+      expect(
+        overlayOf(tester, 'No notifications'),
+        same(navigatorKey.currentState!.overlay),
+      );
+      controller.zone.close();
+      await cleanUp(tester);
+    });
+
+    testWidgets('a hidden zone with live toasts is put in the new navigator', (
+      tester,
+    ) async {
+      await tester.pumpWidget(twoApps());
+      controller.attach(first);
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      controller.zone.hide();
+      await tester.pumpAndSettle();
+
+      controller.attach(navigatorKey);
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(Overlay).last,
+          matching: find.byType(ToastLayer),
+        ),
+        findsOneWidget,
+        reason: 'inserted, as a show while hidden inserts it',
+      );
+
+      controller.zone.reveal();
+      await tester.pumpAndSettle();
+      expect(
+        overlayOf(tester, 'Saved'),
+        same(navigatorKey.currentState!.overlay),
+      );
+      await cleanUp(tester);
+    });
+
+    testWidgets('during a build waits for the end of the frame', (
+      tester,
+    ) async {
+      await tester.pumpWidget(twoApps());
+      controller.attach(first);
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      var attachOnBuild = true;
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Row(
+            children: [
+              Expanded(
+                child: MaterialApp(
+                  navigatorKey: first,
+                  home: const SizedBox.expand(),
+                ),
+              ),
+              Expanded(
+                child: app(
+                  home: Builder(
+                    builder: (context) {
+                      if (attachOnBuild) {
+                        attachOnBuild = false;
+                        controller.attach(navigatorKey);
+                      }
+                      return const SizedBox.expand();
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      expect(
+        overlayOf(tester, 'Saved'),
+        same(navigatorKey.currentState!.overlay),
+      );
+      await cleanUp(tester);
+    });
+
+    testWidgets('while the app is hidden, the toasts wait for it', (
+      tester,
+    ) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: Duration(seconds: 1)),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app());
+      controller.show('Saved');
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+
+      controller.attach(navigatorKey);
+      await tester.binding.delayed(const Duration(seconds: 5));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Saved'), findsOneWidget, reason: 'it waited');
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('with no navigator built under the key, does nothing', (
+      tester,
+    ) async {
+      final unbuilt = GlobalKey<NavigatorState>();
+      controller.attach(navigatorKey);
+      await tester.pumpWidget(app());
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      expect(() => controller.attach(unbuilt), returnsNormally);
+      await tester.pumpAndSettle();
+      expect(find.byType(ToastLayer), findsNothing);
+      await cleanUp(tester);
+    });
+  });
+
+  testWidgets('attach with nothing to draw inserts nothing', (tester) async {
+    final other = GlobalKey<NavigatorState>();
+    controller.attach(other);
+    await tester.pumpWidget(app());
+    controller.attach(navigatorKey);
+    await tester.pumpAndSettle();
+    expect(find.byType(ToastLayer), findsNothing);
+
+    controller.show('Saved');
+    controller.dismissAll();
+    await tester.pumpAndSettle();
+    controller.detach();
+    controller.attach(navigatorKey);
+    await tester.pumpAndSettle();
+    expect(find.byType(ToastLayer), findsNothing, reason: 'no toast alive');
     await cleanUp(tester);
   });
 

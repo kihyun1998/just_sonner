@@ -64,13 +64,15 @@ toast shown or the zone first opened.
 final navigatorKey = GlobalKey<NavigatorState>();
 
 void main() {
-  toast.attach(navigatorKey);
   runApp(MaterialApp(navigatorKey: navigatorKey, home: const HomePage()));
+  toast.attach(navigatorKey);
 }
 ```
 
-`attach` can be called before the app is built. Once attached, a toast shown with no navigator to
-draw in is an error in debug and dropped in release.
+`attach` reads the navigator key, which needs the binding `runApp` sets up, so call it after
+`runApp`; it can still be called before the app is built. Once attached, a toast shown with no navigator to
+draw in is an error in debug and dropped in release. Attaching another navigator, or attaching
+again after `detach`, puts the toasts already on screen into the new one at once.
 
 An entry another package inserts into the root overlay after the toasts covers them until the next
 toast. Call `toast.raise()` after it is inserted to put the toasts back on top; they keep their

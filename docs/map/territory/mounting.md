@@ -13,7 +13,8 @@ own routes, dialogs and overlays. Two modes, and the z-order rule that follows.
 **Wrapped**: `SonnerHost` in `MaterialApp.builder` sits above the app's `Navigator` for
 the life of the app. **Attached**: the controller is given a navigator key and the
 toasts are drawn in the root navigator's overlay, above its dialogs and pages, from the
-first toast shown or the zone first opened.
+first toast shown or the zone first opened — or from `attach` itself, when a toast is
+alive or the zone open.
 
 The difference is not cosmetic and it reaches the caller's widgets: wrapped, a widget in
 a slot finds no `Navigator` and no `Overlay`, so a `Tooltip` throws. `attach` may be
@@ -25,11 +26,30 @@ on a zone that was not open, and by the app's `raise()`. An entry another packag
 inserts after them covers them until one of those runs: `Overlay` has no insertion hook,
 so the package cannot follow it, and `raise()` is how the app says it inserted one.
 `raise()` moves only a host already inserted. Before the first `show` or `open()`
-since `attach` nothing is drawn to cover, and the one that comes inserts on top, so
-`raise()` never puts the host into an overlay for the first time. A host whose overlay
+since `attach`, with nothing alive and the zone not open, nothing is drawn to cover, and
+the one that comes inserts on top, so `raise()` never puts the host into an overlay for
+the first time. A host whose overlay
 was replaced by state restoration is put into the new one, as a `show` would put it,
 since those toasts were drawn. Wrapped, `raise()` does nothing: the host is above the
 `Navigator`, and no entry of the root overlay reaches it.
+
+`attach` to another key removes the old entry, and `detach` removes it altogether. A
+later `attach` — another key, or any key after `detach` — inserts the new entry at once
+when there is something to draw, so the toasts on screen are not left undrawn until the
+next `show` (#152). "Something to draw" is a live toast or an open zone: those are what
+`ToastLayer` draws. A hidden zone's banner needs a live toast shown since it was hidden,
+so a live toast already covers it, and the pointer's hold that keeps a banner up after
+they have gone ends when the old host is disposed. A hidden zone with toasts alive is
+inserted, as a `show` while hidden inserts it. A first `attach` with toasts
+already alive inserts the same way, since after `detach` the controller is in the state
+of one never attached; the maintainer kept that neighbour once shown it after the change. During a build the insert waits for the
+end of the frame, as every insert does; with no navigator built under the key it does
+nothing and the next `show` inserts. It watches the lifecycle as it inserts, as a `show`
+does, since a host inserted while the app is hidden is not built and its toasts would
+count down unseen. Checking for a navigator reads the binding; debug `attach` already
+did, through the root assert, so only release reads it newly, and only with something to
+draw. The entry is built anew in the new overlay: State, and an exit under way, stay
+with the old one.
 
 ## Code
 `controller.dart` — SonnerController
@@ -56,5 +76,7 @@ stop at the boundary where the layer is created.
 - [Zone](zone.md) — an open zone with no toast is drawn, so `open()` inserts the host too.
 
 ## Known holes / open
+- **Not covered**: a toast whose exit is under way when `attach` moves the host — the
+  exit was drawn by the old entry and goes with it.
 - **Not covered**: a mode-2 host that is itself first mounted while the app is hidden —
   nothing draws it, so a `show` on a never-attached controller is not reached.
