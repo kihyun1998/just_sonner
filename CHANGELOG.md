@@ -1,4 +1,4 @@
-## Unreleased
+## 0.6.0
 
 - **The README's mode-1 example attaches after `runApp`.** It called `toast.attach` before
   `runApp`, which throws "Binding has not yet been initialized" in debug, since `attach` reads the
