@@ -5456,6 +5456,64 @@ void main() {
         );
       });
 
+      testWidgets('with a minCount of 1 shows for one toast the user may '
+          'dismiss, and pressed dismisses it and goes', (tester) async {
+        final controller = deckWith(
+          dismissAll: const DeckDismissAll(minCount: 1),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 1);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+        await settle(tester);
+        expect(control, findsOneWidget);
+
+        await tester.tap(find.text('Clear all'));
+        await settle(tester);
+        expect(toastsOf(controller), isEmpty);
+        expect(control, findsNothing);
+      });
+
+      testWidgets('with a minCount of 1 a builder is called for one toast the '
+          'user may dismiss, counting 1', (tester) async {
+        DeckDismissAllView? seen;
+        final controller = deckWith(
+          dismissAll: DeckDismissAll(
+            minCount: 1,
+            builder: (context, view) {
+              seen = view;
+              return const SizedBox(width: 50, height: 20);
+            },
+          ),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 1);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+        await settle(tester);
+
+        expect(control, findsOneWidget);
+        expect(seen?.count, 1);
+      });
+
+      testWidgets('with a minCount of 3 does not show for two toasts the user '
+          'may dismiss, and shows for three', (tester) async {
+        final controller = deckWith(
+          dismissAll: const DeckDismissAll(minCount: 3),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 2);
+        controller.show('Saving', isLoading: true);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Saving').center);
+        await settle(tester);
+        expect(control, findsNothing, reason: 'two the user may dismiss');
+
+        controller.show('Toast 2');
+        await settle(tester);
+        expect(control, findsOneWidget);
+      });
+
       testWidgets('a header reads the count and the label, as given', (
         tester,
       ) async {
@@ -11579,6 +11637,59 @@ void main() {
         expect((controller.zone.state == ZoneState.hidden), isFalse);
       });
     }
+
+    for (final (name, show) in <(String, void Function(SonnerController))>[
+      ('loading', (c) => c.show('Held', isLoading: true)),
+      ('not dismissible', (c) => c.show('Held', dismissible: false)),
+    ]) {
+      testWidgets('with a minCount of 1 a single $name toast draws the hide '
+          'control and no dismiss-all control', (tester) async {
+        final controller = deckWith(
+          control: const DeckHideControl(),
+          dismissAll: const DeckDismissAll(minCount: 1),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        show(controller);
+        await settle(tester);
+        await mouseAt(tester, boxOf(tester, 'Held').center);
+        await settle(tester);
+
+        expect(find.text('Hide'), findsOneWidget);
+        expect(find.text('Clear all'), findsNothing);
+      });
+    }
+
+    testWidgets('with a minCount of 1 and a header on both controls, one toast '
+        'draws the shared bar with both buttons', (tester) async {
+      final controller = deckWith(
+        control: const DeckHideControl(look: DeckHideLook.header),
+        dismissAll: const DeckDismissAll(
+          look: DeckDismissAllLook.header,
+          minCount: 1,
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 1);
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+      await settle(tester);
+
+      expect(find.byType(DeckFarEndBar), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(DeckFarEndBar),
+          matching: find.text('Hide'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(DeckFarEndBar),
+          matching: find.text('Clear all'),
+        ),
+        findsOneWidget,
+      );
+    });
 
     testWidgets('a builder draws the control, is handed the count and hides '
         'through the view, and sits in the bar where there is one', (

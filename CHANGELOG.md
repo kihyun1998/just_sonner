@@ -1,3 +1,11 @@
+## Unreleased
+
+- **The dismiss-all control can show with one toast** (#163). `DeckDismissAll(minCount: 1)`
+  shows it, its look or your `builder`, as soon as one toast the user may dismiss is up, so the
+  deck's far end keeps the same shape as the hide control, which already shows with one.
+  `minCount` is the fewest toasts that show it. It defaults to 2, as before, and must be at least
+  1. Loading toasts and `dismissible: false` ones still do not count.
+
 ## 0.6.0
 
 - **The README's mode-1 example attaches after `runApp`.** It called `toast.attach` before

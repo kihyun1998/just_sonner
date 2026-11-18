@@ -928,7 +928,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       // draws the hide control with no toast too, beside its empty card.
       showHide: everyToast && (live >= 1 || _zoneOpen),
       showDismissAll:
-          dismissAll != null && dismissible.length >= 2 && everyToast,
+          dismissAll != null &&
+          dismissible.length >= dismissAll.minCount &&
+          everyToast,
       hideCount: live,
       dismissCount: dismissible.length,
       onHide: _controller.zone.hide,

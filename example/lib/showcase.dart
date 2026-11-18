@@ -970,6 +970,13 @@ class _ShowcasePageState extends State<ShowcasePage> {
             nameOf: (value) => value.name,
             onChanged: (value) => set(control.copyWith(look: value)),
           ),
+          _Pick<int>(
+            label: 'minCount',
+            value: control.minCount,
+            values: {1, 2, 3, control.minCount}.toList(),
+            nameOf: (value) => '$value',
+            onChanged: (value) => set(control.copyWith(minCount: value)),
+          ),
           _Field(
             label: 'label',
             initialValue: control.label,

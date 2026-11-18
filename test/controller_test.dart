@@ -2379,6 +2379,19 @@ void main() {
       }
     });
 
+    test('DeckDismissAll defaults minCount to 2, takes it through copyWith, '
+        'compares by it, and rejects one below 1', () {
+      expect(const DeckDismissAll().minCount, 2);
+      final changed = const DeckDismissAll().copyWith(minCount: 1);
+      expect(changed.minCount, 1);
+      expect(changed.copyWith(label: 'x').minCount, 1, reason: 'kept');
+      expect(changed, const DeckDismissAll(minCount: 1));
+      expect(changed.hashCode, const DeckDismissAll(minCount: 1).hashCode);
+      expect(changed == const DeckDismissAll(), isFalse);
+      expect(changed.hashCode == const DeckDismissAll().hashCode, isFalse);
+      expect(() => DeckDismissAll(minCount: 0), throwsAssertionError);
+    });
+
     test('a config puts a pill labelled Hide on the expanded deck, slides the '
         'deck away and draws an empty card reading No notifications', () {
       const config = SonnerConfig();
