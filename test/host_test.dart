@@ -1490,6 +1490,29 @@ void main() {
       semantics.dispose();
     });
 
+    testWidgets('the outgoing content cannot take the focus', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      Widget button(BuildContext context, ToastView toast) =>
+          TextButton(onPressed: () {}, child: Text(toast.state.title));
+      final id = controller.show('Checking', builder: button);
+      await tester.pumpAndSettle();
+
+      controller.update(id, title: 'Opening');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+
+      expect(find.text('Checking'), findsOneWidget, reason: 'still fading');
+      expect(
+        Focus.of(tester.element(find.text('Checking'))).canRequestFocus,
+        isFalse,
+      );
+      expect(
+        Focus.of(tester.element(find.text('Opening'))).canRequestFocus,
+        isTrue,
+      );
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('a toast shown at the id of one exiting enters beside it', (
       tester,
     ) async {

@@ -8,8 +8,8 @@ import 'package:flutter/widgets.dart';
 /// that arrives mid-fade makes the half-faded one the base, at full opacity,
 /// so there are never more than two. A [duration] of zero puts the new child
 /// in place of the one before in one frame. The new child sets the size;
-/// the base lies over it from the top, cut to that size, takes no pointer and
-/// is left out of the semantics tree.
+/// the base lies over it from the top, cut to that size, takes no pointer or
+/// focus and is left out of the semantics tree.
 class ContentFade extends StatefulWidget {
   const ContentFade({
     super.key,
@@ -118,10 +118,13 @@ class _ContentFadeState extends State<ContentFade>
     ignoring: !top,
     child: ExcludeSemantics(
       excluding: !top,
-      child: FadeTransition(
-        opacity: opacity,
-        alwaysIncludeSemantics: true,
-        child: child,
+      child: ExcludeFocus(
+        excluding: !top,
+        child: FadeTransition(
+          opacity: opacity,
+          alwaysIncludeSemantics: true,
+          child: child,
+        ),
       ),
     ),
   );

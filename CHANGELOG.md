@@ -9,6 +9,8 @@
   widget, and its state, across every update and replace with no fade, so the card animates what
   changes itself. The defaults are the fade as before, and the default look keeps its own fade.
   `ContentChange` is exported.
+- **The content an update or a replace fades out no longer takes the focus** (#157). A button in
+  it could be reached with Tab for the length of the fade.
 - **`toast.isAlive(id)` says whether a given toast is still up** (#150). It is true from `show`
   until the toast is dismissed or runs out, and stays true across a replace. An app adding to a
   toast it shows at its own id can now tell whether that toast has gone, by any way it can leave,
