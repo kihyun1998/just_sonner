@@ -1,5 +1,11 @@
 ## Unreleased
 
+- **Attaching another navigator moves the toasts on screen at once** (#152). `attach` with a
+  different key, or `attach` after `detach`, took the toasts out of the old overlay and drew
+  nothing in the new one until the next `show`, and `raise()` could not bring them back. With a
+  toast alive or the zone open, `attach` now puts them into the new navigator's overlay right
+  away, at the end of the frame when called during a build. With nothing to draw, or no navigator
+  built under the key, it inserts nothing, as before.
 - **A request finishing after its screen closed no longer reports an error** (#155). A
   `promise` whose future settled after the controller was disposed reported a `FlutterError`
   in debug, which failed a widget test that closed a screen mid-request, and in release added
