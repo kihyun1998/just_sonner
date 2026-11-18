@@ -42,7 +42,7 @@ so a live toast already covers it, and the pointer's hold that keeps a banner up
 they have gone ends when the old host is disposed. A hidden zone with toasts alive is
 inserted, as a `show` while hidden inserts it. A first `attach` with toasts
 already alive inserts the same way, since after `detach` the controller is in the state
-of one never attached; that neighbour is derived, not one the maintainer was shown. During a build the insert waits for the
+of one never attached; the maintainer kept that neighbour once shown it after the change. During a build the insert waits for the
 end of the frame, as every insert does; with no navigator built under the key it does
 nothing and the next `show` inserts. It watches the lifecycle as it inserts, as a `show`
 does, since a host inserted while the app is hidden is not built and its toasts would

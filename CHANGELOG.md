@@ -1,5 +1,8 @@
 ## Unreleased
 
+- **The README's mode-1 example attaches after `runApp`.** It called `toast.attach` before
+  `runApp`, which throws "Binding has not yet been initialized" in debug, since `attach` reads the
+  navigator key; the spec already said after `runApp`.
 - **Attaching another navigator moves the toasts on screen at once** (#152). `attach` with a
   different key, or `attach` after `detach`, took the toasts out of the old overlay and drew
   nothing in the new one until the next `show`, and `raise()` could not bring them back. With a
