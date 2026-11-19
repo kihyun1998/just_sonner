@@ -295,7 +295,7 @@ class DeckDismissAll {
   const DeckDismissAll({
     DeckDismissAllLook look = DeckDismissAllLook.pill,
     String label = 'Clear all',
-    String Function(int count)? countLabel,   // a header's; null: '$count notifications'
+    String Function(int count)? countLabel,   // a header's; null: '1 notification', '$count notifications'
     DeckDismissAllBuilder? builder,           // replaces the look
     int minCount = 2,                         // fewest dismissible toasts that show it; >= 1
   });
@@ -317,7 +317,7 @@ class DeckHideControl {
   const DeckHideControl({
     DeckHideLook look = DeckHideLook.pill,
     String label = 'Hide',
-    String Function(int count)? countLabel,   // a header's; null: '$count notifications'
+    String Function(int count)? countLabel,   // a header's; null: '1 notification', '$count notifications'
     DeckHideBuilder? builder,                 // replaces the look
   });
 }
@@ -1601,6 +1601,7 @@ outside v0.1 is in §2's non-goals.
 | On a disposed controller `dismiss` and `dismissAll` assert at entry, before anything changes; a `promise` state due after `dispose` is dropped with no report in debug and release; the other direct calls stay assert-only | maintainer | #155, after a lens over the options. Shown: `dismiss` and `dismissAll` had no entry assert, so on a disposed controller they removed the record before `notifyListeners`'s assert threw (probe: `dismiss(id)` of a toast on screen took `count` from 1 to 0, then threw `FlutterError`; an id not on screen passed silently), unlike `show`, `update`, the `config` setter and `holdTimers`. A `promise` whose future settles after `dispose` went through `show`, which asserted, and the row on `promise` reporting turned that into one `FlutterError.reportError` with the value still returned (probe: `reportError` called once). That row was grounded only on a mounting mistake and a throwing callback; closing a screen mid-request is the ordinary flow, and the report fails an app's widget test for it, while in release the state silently added a toast to the dead controller. `FutureBuilder` drops a result that arrives after its state is disposed, with no report: `_unsubscribe` clears the callback identity the `then` checks (`widgets/async.dart`, read in Flutter 3.44.8). Chosen: the drop is checked in `promise` after the future settles, not in `show`, so `show` keeps its assert and `promise` called on a disposed controller keeps its entry assert; the `success` or `error` callback is not called, so a throwing one has nothing to report either; the future's outcome reaches the caller unchanged. The other direct calls after `dispose` — `show`, `update`, `config`, `zone.*`, `attach`, `raise`, `holdTimers` — stay assert-only, so release behaviour is unchanged, chosen over ignoring them in release. Reads (`count`, `isAlive`, `config`, `zone.state`, `held`), `TimerHold.release()` and `detach` still do not assert, by the rows on #149 and #150. Measured by tests that redden with each entry assert removed, and with the drop removed. **Not covered**: release behaviour of the direct calls after `dispose`, which still act; and in release, `promise` called on an already-disposed controller shows its loading state, as `show` would, while its result is dropped by the rule above |
 | `DeckDismissAll.minCount`, an `int` defaulting to 2, sets the fewest toasts the user may dismiss that show the dismiss-all control; this changes #59's row, where it was fixed at two | maintainer | #163, at triage: the hide control already shows with one toast, so the deck's far end changed shape between one toast and two, and the maintainer wanted the threshold to be the app's. An `int` defaulting to 2 was chosen over a `bool` switch for one toast. The default stays 2 |
 | A loading or not dismissible toast does not count toward `minCount`, and `minCount` below 1 fails an assert | derived | #163. The control is the user's (**Dismissible**): counting a toast it cannot dismiss would draw "Clear all (1)" that removes nothing, and 0 would draw the control with nothing to dismiss |
+| A header's count with no `countLabel` reads `'1 notification'` for one toast and `'$count notifications'` otherwise, for the dismiss-all and the hide control alike | maintainer for fixing it with #163; derived for the wording | #163, seen in the example app at `minCount: 1`: a header read "1 notifications". The hide header had read it with one toast since #97; `minCount: 1` gave the dismiss-all header the same path. Shown that it predated #163 and that `countLabel` already lets an app change it, the maintainer chose to fix the default in the same change rather than file it. The singular is the plural's own word; any other language is the app's, through `countLabel` |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

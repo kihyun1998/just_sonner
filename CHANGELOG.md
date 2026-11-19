@@ -5,6 +5,9 @@
   deck's far end keeps the same shape as the hide control, which already shows with one.
   `minCount` is the fewest toasts that show it. It defaults to 2, as before, and must be at least
   1. Loading toasts and `dismissible: false` ones still do not count.
+- **A header reads one toast as "1 notification"** (#163). With no `countLabel`, the dismiss-all
+  and hide headers used to read "1 notifications" for a single toast. A `countLabel` you give is
+  unchanged.
 
 ## 0.6.0
 

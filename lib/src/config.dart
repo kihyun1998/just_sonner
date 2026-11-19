@@ -423,7 +423,7 @@ class DeckDismissAll {
   final String label;
 
   /// What a [DeckDismissAllLook.header] reads for the count. Null reads
-  /// `'$count notifications'`.
+  /// `'1 notification'` for one and `'$count notifications'` otherwise.
   final String Function(int count)? countLabel;
 
   /// Draws the control in place of [look].
@@ -495,7 +495,7 @@ class DeckHideControl {
   final String label;
 
   /// What a [DeckHideLook.header] reads for the count. Null reads
-  /// `'$count notifications'`.
+  /// `'1 notification'` for one and `'$count notifications'` otherwise.
   final String Function(int count)? countLabel;
 
   /// Draws the control in place of [look].

@@ -5514,6 +5514,24 @@ void main() {
         expect(control, findsOneWidget);
       });
 
+      testWidgets('a header reads one toast as one notification', (
+        tester,
+      ) async {
+        final controller = deckWith(
+          dismissAll: const DeckDismissAll(
+            look: DeckDismissAllLook.header,
+            minCount: 1,
+          ),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        showToasts(controller, 1);
+        await tester.pumpAndSettle();
+        await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+        await tester.pumpAndSettle();
+        expect(find.text('1 notification'), findsOneWidget);
+        expect(find.text('1 notifications'), findsNothing);
+      });
+
       testWidgets('a header reads the count and the label, as given', (
         tester,
       ) async {
@@ -11497,6 +11515,22 @@ void main() {
         }
       });
     }
+
+    testWidgets('a header reads one toast as one notification', (
+      tester,
+    ) async {
+      final controller = deckWith(
+        control: const DeckHideControl(look: DeckHideLook.header),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      showToasts(controller, 1);
+      await settle(tester);
+      await mouseAt(tester, boxOf(tester, 'Toast 0').center);
+      await settle(tester);
+
+      expect(find.text('1 notification'), findsOneWidget);
+      expect(find.text('1 notifications'), findsNothing);
+    });
 
     testWidgets('a header on its own is a bar the deck’s width, reading the '
         'count and the label', (tester) async {
