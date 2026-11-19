@@ -1,4 +1,4 @@
-## Unreleased
+## 0.9.0
 
 - **An app chooses which lifecycle states pause the timers** (#172).
   `SonnerConfig(pauseTimersOn: {...})` takes a `Set<AppLifecycleState>`. The default is `hidden`,
