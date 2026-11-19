@@ -1,3 +1,13 @@
+## Unreleased
+
+- **The deck can be warmed up so the first open after launch does not drop a frame** (#168).
+  `toast.warmUp()` fans out a deck of its own once, with one stand-in toast built from the
+  controller's config — your `builder` or the default card, and the `deckBackdrop` when there is
+  one — under the app's screen, and takes it away, so the first real open is not also the first
+  time it is drawn. It works with `SonnerHost`; attached with `attach`, it does nothing. Call it
+  while the app's screen is opaque. The stand-in is not one of your toasts and nothing you read
+  from the controller changes. Nothing runs unless you call it.
+
 ## 0.7.0
 
 - **An app can set how long each of the deck's motions takes** (#162).
