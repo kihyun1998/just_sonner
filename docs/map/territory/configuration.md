@@ -20,6 +20,9 @@ single `show` can override, and what happens to toasts on screen when a field ch
   (#162): the maintainer's row (all six motions, one `Duration` each, no curve) and the
   derived one (the names, zero allowed, a running motion keeping its duration, the
   couplings kept).
+- [spec §12](../../spec.md#12-decision-record) — `pauseTimersOn` (#172), reversing #149's
+  "no config field": the maintainer's row (the field, its name, today's set as the default)
+  and the derived one (how the controller reads it).
 - [spec §4](../../spec.md#4-api).
 
 ## Design model
@@ -63,6 +66,14 @@ a toast arrived before it starts the enter. `_Progress` answers 1 from the start
 clamps it with `clampDouble`, which returns the upper bound for NaN — so no test can tell
 the guard is there (every test in `host_test.dart`'s zero group passes without it); it is kept so a zero duration
 does not rest on that.
+
+`pauseTimersOn` is a `Set<AppLifecycleState>` compared by value and hashed unordered, as
+`swipeDirections` is; unlike it, it is not nullable, so an empty set means the lifecycle pauses
+nothing rather than "unset". Unlike `duration`, it reaches toasts already counting: a config
+assigned while the app sits in a state starts or ends the lifecycle pause at once, because
+the controller reads the state again on assignment
+([Toast lifetime](toast-lifetime.md)). `resumed` in it is checked by the controller, as the
+durations are.
 
 `offset` is an `EdgeInsets` of **physical** edges. The edge the position names holds the
 deck off it and measures `DeckCap.pixels`, the scroll track and the scrollbar from it;

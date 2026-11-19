@@ -169,8 +169,9 @@ it moves, presses or turns the wheel there. A toast that lands under a pointer n
 down as usual.
 
 **Every timer pauses** while the pointer is over the deck, while a toast is being dragged, while
-the app is hidden, and while your app holds them. Each resumes with the time it had left. A window
-that lost focus does not pause them, nor, on Windows and Linux, one covered by another window; see
+the app is in a lifecycle state `pauseTimersOn` names (hidden by default), and while your app holds
+them. Each resumes with the time it had left. By default a window that lost focus does not pause
+them, nor, on Windows and Linux, one covered by another window; see
 [Pausing the timers](#pausing-the-timers).
 
 **`expandByDefault`** fans the deck out with no pointer. It draws only `visibleToasts` and does not
@@ -354,9 +355,32 @@ toast.config = toast.config.copyWith(
 ## Pausing the timers
 
 The timers pause while the pointer is on the deck, while a toast is dragged, and while the app is
-hidden. They do not pause while the app is `inactive`. On Windows and Linux a window covered by
-another reports `inactive`, not `hidden`, so its toasts run out while the user is in another
-window. To pause on a signal of your own, take a hold and release it:
+`hidden`, `paused` or `detached`. Toasts resume with the time they had left. `pauseTimersOn` sets
+which lifecycle states pause them:
+
+```dart
+// Pause while the window is inactive too.
+toast.config = toast.config.copyWith(
+  pauseTimersOn: {
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+    AppLifecycleState.detached,
+  },
+);
+
+// Let toasts run out while the app is minimised.
+toast.config = toast.config.copyWith(pauseTimersOn: {});
+```
+
+On Windows and Linux a window covered by another reports `inactive`, not `hidden`, so by default
+its toasts run out while the user is in another window. Adding `inactive` pauses that window, and
+also one that is visible beside the user's work but not focused. macOS reports a covered window as
+`hidden`. The set cannot hold `resumed`. The pointer, a drag and your holds pause the timers
+whatever the set holds.
+
+To pause on a signal of your own, one the lifecycle does not carry, such as a program your app
+launched coming to the front, take a hold and release it:
 
 ```dart
 TimerHold? hold;
@@ -365,17 +389,10 @@ void resume() {
   hold?.release();
   hold = null;
 }
-
-final listener = AppLifecycleListener(onInactive: pause, onResume: resume);
-if (WidgetsBinding.instance.lifecycleState == AppLifecycleState.inactive) pause();
 ```
 
-A listener hears changes only, so the last line covers an app already inactive when it is made,
-such as a window shown without focus. A window minimised and restored comes back through
-`onShow`, not `onInactive`, so this hold lasts through that too. `inactive` also covers a window
-that is visible but not focused, so this pauses toasts the user can still see. Each `holdTimers()` is a hold of its own: the timers resume, with
-the time that was left, once every hold is released and nothing else pauses them. Releasing a hold
-twice does nothing.
+Each `holdTimers()` is a hold of its own: the timers resume, with the time that was left, once
+every hold is released and nothing else pauses them. Releasing a hold twice does nothing.
 
 ## Configuration
 
@@ -388,7 +405,8 @@ toast.config = toast.config.copyWith(
 ```
 
 Assigning a new config moves the toasts on screen with it. Countdowns already under way keep the
-duration they started with; a new `duration` reaches the next toast.
+duration they started with; a new `duration` reaches the next toast. A new `pauseTimersOn` applies
+at once, to the countdowns under way too.
 
 A field that can be null is passed to `copyWith` as a function, so null can be given:
 `copyWith(deckCap: () => null)`.
@@ -419,6 +437,7 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `enterMotion` | `ToastEnterMotion.edge` | The way every toast slides in and back out: from its edge, or from the left or the right; not nullable |
 | `contentChange` | `ContentChange()` | How a builder's content changes on an update or a replace; the default look ignores it; not nullable |
 | `motionDurations` | `MotionDurations()` | How long each of the deck's motions takes; not nullable |
+| `pauseTimersOn` | `{hidden, paused, detached}` | The lifecycle states in which the timers pause; an empty set pauses on none; cannot hold `resumed`; not nullable |
 
 **Toasts from the side.** `enterMotion: ToastEnterMotion.right` brings every toast in from the
 right, one toast's width, and takes it out the same way. The side is yours to pick: it does not
