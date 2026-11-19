@@ -1,4 +1,4 @@
-## Unreleased
+## 0.7.0
 
 - **An app can set how long each of the deck's motions takes** (#162).
   `SonnerConfig(motionDurations: MotionDurations(...))` takes one `Duration` for each of six
@@ -9,9 +9,6 @@
   `expand` fades the toasts beyond the window and eases the scroll back to the edge. Zero puts a
   motion at its end in one frame; a negative duration fails an assert. A motion already running
   keeps the duration it started with. Curves are unchanged.
-
-## 0.7.0
-
 - **The dismiss-all control can show with one toast** (#163). `DeckDismissAll(minCount: 1)`
   shows it, its look or your `builder`, as soon as one toast the user may dismiss is up, so the
   deck's far end keeps the same shape as the hide control, which already shows with one.
