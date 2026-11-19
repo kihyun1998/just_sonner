@@ -783,6 +783,11 @@ class SonnerConfig {
     this.enterMotion = ToastEnterMotion.edge,
     this.contentChange = const ContentChange(),
     this.motionDurations = const MotionDurations(),
+    this.pauseTimersOn = const {
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.detached,
+    },
   });
 
   final SonnerPosition position;
@@ -899,6 +904,27 @@ class SonnerConfig {
   /// How long each of the deck's motions takes.
   final MotionDurations motionDurations;
 
+  /// The lifecycle states in which every timer pauses. While the app is in
+  /// one of them no toast counts down; out of it, each resumes with the time
+  /// it had left. An empty set lets the lifecycle pause nothing. Must not
+  /// hold `resumed`.
+  ///
+  /// A config assigned while the app is in a state applies at once. The
+  /// controller watches the lifecycle from the first host that draws it, or,
+  /// once attached, from the first `show`, `open()` or `attach` that inserts
+  /// the host; before that the lifecycle pauses nothing.
+  ///
+  /// The pointer on the deck, a drag, `ToastView.holdTimer` and a hold from
+  /// `holdTimers()` pause the timers whatever this holds.
+  ///
+  /// On Windows and Linux `inactive` covers a window that lost focus and one
+  /// fully covered by another alike, and `hidden` only a window not shown at
+  /// all: minimised, hidden by the app, or on Linux iconified or withdrawn.
+  /// macOS reports a covered window as `hidden`. So adding `inactive` pauses
+  /// a covered Windows or Linux window, and also one the user can still see
+  /// beside their work.
+  final Set<AppLifecycleState> pauseTimersOn;
+
   /// A copy with the fields given changed.
   ///
   /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
@@ -932,6 +958,7 @@ class SonnerConfig {
     ToastEnterMotion? enterMotion,
     ContentChange? contentChange,
     MotionDurations? motionDurations,
+    Set<AppLifecycleState>? pauseTimersOn,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -959,6 +986,7 @@ class SonnerConfig {
     enterMotion: enterMotion ?? this.enterMotion,
     contentChange: contentChange ?? this.contentChange,
     motionDurations: motionDurations ?? this.motionDurations,
+    pauseTimersOn: pauseTimersOn ?? this.pauseTimersOn,
   );
 
   @override
@@ -987,7 +1015,8 @@ class SonnerConfig {
       other.wheelMotion == wheelMotion &&
       other.enterMotion == enterMotion &&
       other.contentChange == contentChange &&
-      other.motionDurations == motionDurations;
+      other.motionDurations == motionDurations &&
+      setEquals(other.pauseTimersOn, pauseTimersOn);
 
   @override
   int get hashCode => Object.hashAll([
@@ -1015,5 +1044,6 @@ class SonnerConfig {
     enterMotion,
     contentChange,
     motionDurations,
+    Object.hashAllUnordered(pauseTimersOn),
   ]);
 }

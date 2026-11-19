@@ -46,7 +46,8 @@ class SonnerController extends ChangeNotifier {
   /// Assigning a different one notifies, so a host drawing the toasts follows
   /// it with the toasts on screen. The countdowns under way keep the duration
   /// they started with; a new `duration` reaches the next toast shown or
-  /// replaced.
+  /// replaced. A new `pauseTimersOn` applies at once, to the countdowns under
+  /// way too.
   SonnerConfig get config => _config;
   SonnerConfig _config;
 
@@ -55,6 +56,7 @@ class SonnerController extends ChangeNotifier {
     assert(_debugCheckConfig(value));
     if (value == _config) return;
     _config = value;
+    _lifecycle?.read();
     _warmUp.value?.deck.config = value;
     notifyListeners();
   }
@@ -87,6 +89,11 @@ class SonnerController extends ChangeNotifier {
         motion.hide,
       ].every((duration) => duration >= Duration.zero),
       'A MotionDurations duration cannot be negative.',
+    );
+    assert(
+      !config.pauseTimersOn.contains(AppLifecycleState.resumed),
+      'SonnerConfig.pauseTimersOn cannot hold resumed, which would pause the '
+      'timers of a visible, focused app.',
     );
     return true;
   }
@@ -129,13 +136,13 @@ class SonnerController extends ChangeNotifier {
   /// host with the pointer over its deck.
   final Set<Object> _holders = {};
 
-  /// Whether the app is `hidden`, `paused` or `detached`, once [_lifecycle]
-  /// watches it.
-  bool _appHidden = false;
+  /// Whether the app is in a state [SonnerConfig.pauseTimersOn] names, once
+  /// [_lifecycle] watches it.
+  bool _lifecyclePaused = false;
 
   _LifecycleWatch? _lifecycle;
 
-  bool get _paused => _appHidden || _holders.isNotEmpty;
+  bool get _paused => _lifecyclePaused || _holders.isNotEmpty;
 
   /// The layer the deck lives in, which the app opens and closes. It exists
   /// whether or not any toast is alive.
@@ -515,13 +522,14 @@ class SonnerController extends ChangeNotifier {
   }
 
   /// Pauses every timer of this controller until the returned hold is
-  /// released: for a signal the controller does not watch itself, such as the
-  /// window losing focus or being covered by another.
+  /// released: for a signal the lifecycle does not carry, such as a program
+  /// the app launched coming to the front. Which lifecycle states pause the
+  /// timers is [SonnerConfig.pauseTimersOn].
   ///
   /// Each call takes a hold of its own, and releasing one leaves the others.
-  /// The pointer over the deck, a drag, [ToastView.holdTimer] and a hidden app
-  /// pause the timers apart from any hold; they resume, with the time that was
-  /// left, once nothing pauses them.
+  /// The pointer over the deck, a drag, [ToastView.holdTimer] and a state in
+  /// [SonnerConfig.pauseTimersOn] pause the timers apart from any hold; they
+  /// resume, with the time that was left, once nothing pauses them.
   TimerHold holdTimers() {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     final hold = TimerHold._(this);
@@ -605,14 +613,7 @@ class SonnerController extends ChangeNotifier {
 
   void _onLifecycle(AppLifecycleState? state) {
     _setPaused(() {
-      _appHidden = switch (state) {
-        AppLifecycleState.hidden ||
-        AppLifecycleState.paused ||
-        AppLifecycleState.detached => true,
-        AppLifecycleState.resumed ||
-        AppLifecycleState.inactive ||
-        null => false,
-      };
+      _lifecyclePaused = _config.pauseTimersOn.contains(state);
     });
   }
 
@@ -745,8 +746,9 @@ bool zoneBanner(SonnerController controller) =>
 ValueListenable<WarmUpRun?> warmUpOf(SonnerController controller) =>
     controller._warmUp;
 
-/// Makes [controller] pause its timers while the app is `hidden`, `paused` or
-/// `detached`. For the host, which has a binding; not exported.
+/// Makes [controller] pause its timers while the app is in a state its
+/// config's `pauseTimersOn` names. For the host, which has a binding; not
+/// exported.
 void watchLifecycle(SonnerController controller) =>
     controller._watchLifecycle();
 

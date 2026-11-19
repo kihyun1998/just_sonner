@@ -1,3 +1,14 @@
+## Unreleased
+
+- **An app chooses which lifecycle states pause the timers** (#172).
+  `SonnerConfig(pauseTimersOn: {...})` takes a `Set<AppLifecycleState>`. The default is `hidden`,
+  `paused` and `detached`, the states that paused before, so nothing changes on upgrade. Add
+  `inactive` to pause a Windows or Linux window covered by another, which no longer needs an
+  `AppLifecycleListener` and a hold; it also pauses a window that is visible but not focused. Give an empty set to let toasts run out while the app is
+  minimised, which a hold could not do. A config assigned while the app is in a state applies at
+  once. `resumed` in the set fails an assert. The pointer, a drag, `ToastView.holdTimer()` and
+  `holdTimers()` pause the timers whatever the set holds.
+
 ## 0.8.0
 
 - **The deck can be warmed up so the first open after launch does not drop a frame** (#168).

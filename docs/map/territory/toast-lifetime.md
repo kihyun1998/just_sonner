@@ -22,6 +22,9 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — the timers pausing on the pointer, a drag and a
   hidden app and not on `inactive` (maintainer), amended with what `inactive` means on desktop
   (#149); the app's `TimerHold` (#149, maintainer for the API and names, derived for the rest).
+- [spec §12](../../spec.md#12-decision-record) — `SonnerConfig.pauseTimersOn` naming the lifecycle
+  states that pause, reversing #149's "no config field" (#172, maintainer for the field, its name
+  and the default); how the controller reads it (derived).
 - [spec §12](../../spec.md#12-decision-record) — `dismiss` and `dismissAll` asserting at entry on
   a disposed controller, a `promise` state due after `dispose` dropped with no report, and the
   other direct calls left assert-only (#155, maintainer).
@@ -43,13 +46,21 @@ would otherwise subtract a whole one.
 Nothing the app does to the zone pauses: neither hiding nor opening it. A deck left
 open with nobody on it counts down, and so does a hidden one.
 
-What does pause every timer: the pointer on the deck, a drag, `ToastView.holdTimer`, a
-hidden app, and a `TimerHold` the app took with `holdTimers()`. A hidden app is a flag of
-its own; each of the others is a separate key in the controller's set of holders. The
-`TimerHold` object is its own key, so each call is a hold apart from every other and a
-release is idempotent. `inactive` does not pause, and on
-Windows and Linux it covers a window fully covered by another as well as one beside the
-user's work (#149), so an app that wants the covered case paused holds the timers itself.
+What does pause every timer: the pointer on the deck, a drag, `ToastView.holdTimer`, the
+app in a lifecycle state `config.pauseTimersOn` names, and a `TimerHold` the app took with
+`holdTimers()`. The lifecycle pause is a flag of its own; each of the others is a separate
+key in the controller's set of holders. The `TimerHold` object is its own key, so each call
+is a hold apart from every other and a release is idempotent.
+
+The lifecycle flag is set when the current state is in the set; a null state never sets it.
+The set defaults to `hidden`, `paused` and `detached`, so by default `inactive` does not
+pause, and on Windows and Linux it covers a window fully covered by another as well as one
+beside the user's work (#149). The field does not try to tell the two apart, since no state
+does; it lets the app choose, in both directions (#172): add `inactive`, or give an empty set
+so toasts run out while the app is minimised, which a hold, only ever adding a pause, could
+not do. Assigning a config reads the state again through the lifecycle watch, so a changed
+set applies at once, where the controller already watches; when watching starts is
+unchanged. `resumed` in the set asserts.
 A `release()` once the controller is disposed does nothing; `holdTimers()` then asserts.
 
 `update` changes the fields passed; `show` at a live id **replaces**, taking the
@@ -133,6 +144,10 @@ states outright, so anything resting on them carries forward as needing confirma
   dropped (#155).
 - **Not covered**: a `TimerHold` the app never releases keeps every timer paused for the
   controller's life, and nothing reports it (#149).
+- **Not covered**: toasts that leave while the app is hidden, by their timer under an empty
+  `pauseTimersOn` or by the app's `dismiss`/`dismissAll` after the scheduled frame, have no frame
+  to run their exit, so restoring the window plays every drawn toast's exit at once: three cards
+  over 200 ms in a widget test, not run on a desktop engine (#172).
 - **Open**: a toast already inside the window at a window fade of exactly 0 is not `_Slot.hidden`,
   so it runs an exit that is drawn if the deck fans out. With a window of 1, dismissing the front
   toast, the one behind it on exactly the next frame, then `open()`: 12 frames on stage. A frame

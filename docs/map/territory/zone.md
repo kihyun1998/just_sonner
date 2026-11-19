@@ -34,7 +34,8 @@ host can mount into — a hidden zone with toasts, an open one with none.
 
 Opening pauses nothing, and hiding neither; both carry #88's rule that only the pointer,
 a drag or a hidden app pauses — and, beside them, `ToastView.holdTimer` and a hold the app
-takes with `holdTimers()` (#149).
+takes with `holdTimers()` (#149). Since #172 "a hidden app" is the app in a state
+`config.pauseTimersOn` names, hidden by default.
 
 An app that brings the zone back when it empties has to act as `count` **falls** to zero,
 not whenever it reads zero. `hide()` notifies too, so a listener testing

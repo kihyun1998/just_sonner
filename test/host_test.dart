@@ -7932,6 +7932,233 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    group('pauseTimersOn', () {
+      SonnerController counting(Set<AppLifecycleState> pauseTimersOn) {
+        final controller = SonnerController(
+          config: SonnerConfig(
+            duration: const Duration(seconds: 1),
+            pauseTimersOn: pauseTimersOn,
+          ),
+        );
+        addTearDown(controller.dispose);
+        return controller;
+      }
+
+      testWidgets('an empty set lets a toast run out while the app is hidden', (
+        tester,
+      ) async {
+        final controller = counting(const {});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump(const Duration(milliseconds: 500));
+
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(milliseconds: 700));
+        expect(controller.isAlive(id), isFalse);
+        expect(controller.count, 0);
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      for (final state in [
+        AppLifecycleState.paused,
+        AppLifecycleState.detached,
+      ]) {
+        testWidgets('an empty set does not pause while the app is '
+            '${state.name}', (tester) async {
+          final controller = counting(const {});
+          await tester.pumpWidget(app(controller: controller));
+          final id = controller.show('Saved');
+
+          tester.binding.handleAppLifecycleStateChanged(state);
+          await tester.pump(const Duration(milliseconds: 1200));
+          expect(controller.isAlive(id), isFalse);
+
+          tester.binding.handleAppLifecycleStateChanged(
+            AppLifecycleState.resumed,
+          );
+          await tester.pumpAndSettle();
+        });
+      }
+
+      testWidgets('a set with inactive pauses while the app is inactive, and '
+          'resumes with the time left', (tester) async {
+        final controller = counting(const {AppLifecycleState.inactive});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump(const Duration(milliseconds: 500));
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.inactive,
+        );
+        await tester.pump(const Duration(seconds: 10));
+        expect(controller.isAlive(id), isTrue, reason: 'paused');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.isAlive(id), isTrue, reason: 'time was left');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.isAlive(id), isFalse);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a set with inactive alone does not pause while the app is '
+          'hidden', (tester) async {
+        final controller = counting(const {AppLifecycleState.inactive});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(milliseconds: 1200));
+        expect(controller.isAlive(id), isFalse);
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a config assigned while the app is hidden that drops '
+          'hidden lets the timers run at once', (tester) async {
+        final controller = counting(const SonnerConfig().pauseTimersOn);
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump(const Duration(milliseconds: 500));
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(seconds: 10));
+        expect(controller.isAlive(id), isTrue, reason: 'paused');
+
+        controller.config = controller.config.copyWith(pauseTimersOn: {});
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.isAlive(id), isTrue, reason: 'time was left');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.isAlive(id), isFalse, reason: 'ran while hidden');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('a config assigned while the app is hidden that adds '
+          'hidden pauses the timers at once', (tester) async {
+        final controller = counting(const {});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(milliseconds: 500));
+
+        controller.config = controller.config.copyWith(
+          pauseTimersOn: {AppLifecycleState.hidden},
+        );
+        await tester.pump(const Duration(seconds: 10));
+        expect(controller.isAlive(id), isTrue, reason: 'paused');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.isAlive(id), isTrue, reason: 'time was left');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.isAlive(id), isFalse);
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('under an empty set the pointer on the deck still pauses a '
+          'hidden app', (tester) async {
+        final controller = counting(const {});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+        final at = toastRect(tester, 'Saved').center;
+        await mouse.addPointer(location: at - const Offset(1, 0));
+        addTearDown(mouse.removePointer);
+        await mouse.moveTo(at);
+        await tester.pump();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(seconds: 10));
+        expect(controller.isAlive(id), isTrue, reason: 'the pointer holds');
+
+        await mouse.moveTo(const Offset(40, 40));
+        await tester.pump(const Duration(milliseconds: 1100));
+        expect(controller.isAlive(id), isFalse, reason: 'and lets go');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('under an empty set a drag still pauses a hidden app', (
+        tester,
+      ) async {
+        final controller = counting(const {});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 400));
+
+        final gesture = await tester.startGesture(
+          toastRect(tester, 'Saved').center,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveBy(
+          const Offset(0, 20),
+          timeStamp: const Duration(seconds: 1),
+        );
+        await tester.pump();
+        await gesture.moveTo(
+          const Offset(40, 40),
+          timeStamp: const Duration(seconds: 2),
+        );
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(seconds: 3));
+        expect(controller.isAlive(id), isTrue, reason: 'the drag holds');
+
+        await gesture.up();
+        await tester.pump(const Duration(milliseconds: 1100));
+        expect(controller.isAlive(id), isFalse, reason: 'and lets go');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+
+      testWidgets('under an empty set a hold the app takes still pauses a '
+          'hidden app', (tester) async {
+        final controller = counting(const {});
+        await tester.pumpWidget(app(controller: controller));
+        final id = controller.show('Saved');
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final hold = controller.holdTimers();
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(seconds: 10));
+        expect(controller.isAlive(id), isTrue, reason: 'the app holds');
+
+        hold.release();
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(controller.isAlive(id), isTrue, reason: 'time was left');
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(controller.isAlive(id), isFalse);
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pumpAndSettle();
+      });
+    });
+
     testWidgets('a hold the app takes outlasts the app being hidden and '
         'coming back', (tester) async {
       final controller = SonnerController(
@@ -7958,8 +8185,9 @@ void main() {
     });
 
     testWidgets(
-      'the README recipe pauses an inactive app, one already inactive '
-      'when the listener is made and one minimised and restored included',
+      'a hold taken on AppLifecycleListener.onInactive pauses an inactive '
+      'app, one already inactive when the listener is made and one minimised '
+      'and restored included',
       (tester) async {
         final controller = SonnerController(
           config: const SonnerConfig(duration: Duration(seconds: 1)),

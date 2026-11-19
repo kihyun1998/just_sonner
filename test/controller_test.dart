@@ -2154,6 +2154,58 @@ void main() {
       );
     });
 
+    test('a config pauses the timers while the app is hidden, paused or '
+        'detached, and not while it is inactive or resumed', () {
+      expect(const SonnerConfig().pauseTimersOn, {
+        AppLifecycleState.hidden,
+        AppLifecycleState.paused,
+        AppLifecycleState.detached,
+      });
+    });
+
+    test('copyWith keeps pauseTimersOn unless given one; a config compares '
+        'it by value', () {
+      const inactive = {AppLifecycleState.inactive};
+      const set = SonnerConfig(pauseTimersOn: inactive);
+
+      expect(set.copyWith(gap: 20).pauseTimersOn, inactive, reason: 'kept');
+      expect(
+        const SonnerConfig().copyWith(pauseTimersOn: {}).pauseTimersOn,
+        isEmpty,
+      );
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+
+      final built = SonnerConfig(
+        pauseTimersOn: {
+          AppLifecycleState.detached,
+          AppLifecycleState.paused,
+          AppLifecycleState.hidden,
+        },
+      );
+      expect(built, const SonnerConfig(), reason: 'another set, same states');
+      expect(built.hashCode, const SonnerConfig().hashCode);
+    });
+
+    test('a config pausing the timers while the app is resumed is refused', () {
+      expect(
+        () => SonnerController(
+          config: const SonnerConfig(
+            pauseTimersOn: {AppLifecycleState.resumed},
+          ),
+        ),
+        throwsAssertionError,
+      );
+      final controller = SonnerController();
+      expect(
+        () => controller.config = controller.config.copyWith(
+          pauseTimersOn: {AppLifecycleState.hidden, AppLifecycleState.resumed},
+        ),
+        throwsAssertionError,
+      );
+      controller.dispose();
+    });
+
     test('copyWith keeps builder unless given one, can put it back to the '
         'default look, and a config with another builder is not equal', () {
       Widget look(BuildContext context, ToastView toast) => const Text('look');
