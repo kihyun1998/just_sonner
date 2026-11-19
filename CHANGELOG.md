@@ -1,4 +1,4 @@
-## Unreleased
+## 0.8.0
 
 - **The deck can be warmed up so the first open after launch does not drop a frame** (#168).
   `toast.warmUp()` fans out a deck of its own once, with one stand-in toast built from the
