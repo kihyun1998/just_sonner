@@ -82,7 +82,8 @@ state and animations. Wrapped in `SonnerHost`, no entry in the overlay can cover
 The difference matters for the widgets you put in a toast. Wrapped, the toasts sit **above** the
 `Navigator`, so `Navigator.of(context)` finds no navigator there, and a `Tooltip` or anything else
 that looks for an `Overlay` throws "No Overlay widget found". Attached, they sit inside the root
-overlay and find both.
+overlay and find both. `toast.warmUp()` (see [Warming the deck up](#warming-the-deck-up)) works
+wrapped only; attached, it does nothing.
 
 ## Showing, updating and dismissing
 
@@ -547,6 +548,35 @@ keeps clear at the deck's edge, scrolled or not. **A click in that padding still
 app** — what the backdrop draws over claims no pointer the deck did not already claim. `blur: 0`
 draws no filter and `dim: 0` no cover, so the default softens what is behind the deck without
 darkening it.
+
+### Warming the deck up
+
+The first time the deck fans out after launch, everything in it — the backdrop, the card, the
+deck's own layout — is drawn for the first time, and that open can drop a frame or two; later opens
+do not. `toast.warmUp()` does that first draw ahead of time:
+
+```dart
+MaterialApp(
+  builder: (context, child) => SonnerHost(child: child!),
+  home: const HomePage(),
+);
+
+// Once the app is running and its first screen is up:
+toast.warmUp();
+```
+
+It fans out a deck of its own with one stand-in toast, built from `toast.config` — your `builder`
+or the default card, and the backdrop when there is one — and takes it away after about twenty
+frames. **It draws under your app's screen**, so call it while that screen is opaque; a
+transparent window or route shows it. The stand-in is not one of your toasts: `count`, `isAlive`,
+the zone and the listeners do not see it, it takes no pointer or focus, and a screen reader is not
+told of it.
+
+It works with `SonnerHost` only. **Attached with `attach`, it does nothing**: there is no public
+way to put the deck under the root overlay's routes. It also does nothing while a toast is alive
+or the zone is open, while one runs, after one has run to its end, and while the app is hidden. A
+`show` or `zone.open()` while it runs takes it away at once. The returned future completes when it
+is taken away or does nothing, and never with an error.
 
 ## Hiding the zone
 

@@ -17,6 +17,7 @@ import 'toast_view.dart';
 import 'root_overlay.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
+import 'warm_up.dart';
 
 /// The default controller, usable from anywhere.
 final toast = SonnerController();
@@ -54,6 +55,7 @@ class SonnerController extends ChangeNotifier {
     assert(_debugCheckConfig(value));
     if (value == _config) return;
     _config = value;
+    _warmUp.value?.deck.config = value;
     notifyListeners();
   }
 
@@ -175,6 +177,14 @@ class SonnerController extends ChangeNotifier {
 
   bool _disposed = false;
 
+  /// The warm-up under way, for a host to draw.
+  final _warmUp = ValueNotifier<WarmUpRun?>(null);
+
+  /// Whether a warm-up has held its deck fanned out to the end.
+  bool _warmed = false;
+
+  void _endWarmUp() => _warmUp.value?.end();
+
   /// Applies [change] to what holds the deck and tells the listeners when
   /// [_held] has changed, at the end of the frame when it changes during one.
   void _setHeld(VoidCallback change) {
@@ -213,6 +223,7 @@ class SonnerController extends ChangeNotifier {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (identical(_mount?.navigatorKey, navigatorKey)) return;
     final mount = RootOverlayMount(this, navigatorKey)..debugAssertRoot();
+    _endWarmUp();
     _mount?.detach();
     _mount = mount;
     if (_toasts.isEmpty && _zoneState != ZoneState.open) return;
@@ -296,6 +307,7 @@ class SonnerController extends ChangeNotifier {
       debugPrint('just_sonner: $problem The toast "$title" was dropped.');
       return id;
     }
+    _endWarmUp();
     final state = ToastState(
       title: title,
       description: description,
@@ -517,9 +529,62 @@ class SonnerController extends ChangeNotifier {
     return hold;
   }
 
+  /// Draws the deck once where the user cannot see it, so the first time it
+  /// is drawn for real — the first toast, the first fan-out — costs no frame
+  /// for being the first.
+  ///
+  /// It fans out a deck with one stand-in toast, built from [config] as a
+  /// toast shown now would be — through its `builder`, or the default card,
+  /// with its `deckBackdrop` — and then takes it away. The stand-in has a title
+  /// and a one-line description set by the package. It is not one of this
+  /// controller's toasts: [count], [isAlive], [zone] and the listeners do not
+  /// see it, and it has no timer. It takes no pointer and no focus, and a
+  /// screen reader is not told of it.
+  ///
+  /// With [SonnerHost] the deck is drawn **under the host's child**, the app's
+  /// screen, so call it while that screen is opaque: a transparent window or
+  /// route shows it. Attached with [attach], it does nothing.
+  ///
+  /// It does nothing while a toast is alive, while the zone is open, while a
+  /// warm-up runs, after one has run to its end, and while the app is hidden.
+  /// A [show] or [SonnerZone.open] while it runs takes the deck away at once,
+  /// and the toasts are drawn as they would be without it; so does the app
+  /// being hidden, and [attach]. It ends at the end of any frame with no host
+  /// drawing it, the first included, so call it after `runApp`. One cut short
+  /// can be run again.
+  ///
+  /// The future completes once the deck is taken away, or at once when it
+  /// does nothing; it never completes with an error. Called before the app's
+  /// binding exists, it throws, as [attach] does.
+  Future<void> warmUp() {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    // Throws while there is no binding.
+    WidgetsBinding.instance;
+    if (_mount != null ||
+        _warmed ||
+        _warmUp.value != null ||
+        _toasts.isNotEmpty ||
+        _zoneState == ZoneState.open) {
+      return Future.value();
+    }
+    late final WarmUpRun run;
+    run = WarmUpRun(
+      _config,
+      onEnd: () {
+        if (run.finished) _warmed = true;
+        if (identical(_warmUp.value, run)) _warmUp.value = null;
+      },
+    );
+    _warmUp.value = run;
+    run.start();
+    return run.done;
+  }
+
   @override
   void dispose() {
     _disposed = true;
+    _endWarmUp();
+    _warmUp.dispose();
     _mount?.detach();
     _ticker?.cancel();
     _lifecycle?.dispose();
@@ -675,6 +740,11 @@ void releaseDeck(SonnerController controller, Object holder) =>
 bool zoneBanner(SonnerController controller) =>
     controller._zoneState == ZoneState.hidden && controller._banner;
 
+/// The warm-up [controller] has under way, for a host to draw. For the host;
+/// not exported.
+ValueListenable<WarmUpRun?> warmUpOf(SonnerController controller) =>
+    controller._warmUp;
+
 /// Makes [controller] pause its timers while the app is `hidden`, `paused` or
 /// `detached`. For the host, which has a binding; not exported.
 void watchLifecycle(SonnerController controller) =>
@@ -788,6 +858,7 @@ class SonnerZone {
       debugPrint('just_sonner: $problem The zone was not opened.');
       return;
     }
+    controller._endWarmUp();
     controller._beforeOpen = controller._zoneState;
     controller._setZone(ZoneState.open);
     if (mount != null) {

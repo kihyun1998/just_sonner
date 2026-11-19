@@ -10,7 +10,8 @@ default, so an app that does not ask for it is unchanged.
   drawn outside the deck's cut with a hard cut of its own, placed at paint rather than
   at layout.
 - [spec §12](../../spec.md#12-decision-record) — the blur at a fixed sigma, its opacity
-  following the expansion, and the warm-up deferred (#142, the maintainer's).
+  following the expansion, and the warm-up deferred (#142, the maintainer's), then refused
+  (#146), then added as an app call (#168, the maintainer's).
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -35,6 +36,14 @@ Its box is read at **paint**, not at layout — the deck reports its box while i
 out, so a builder on it would schedule a build mid-frame.
 
 It takes no pointer: a click in the `padding` it reaches into goes to the app.
+
+The first open after launch is slow because the backdrop, the card and the deck's layout
+are all drawn for the first time then, not because of anything the backdrop does each frame.
+`warmUp()` does that first draw ahead of time: it draws the real deck once, fanned out, under
+the app's screen ([Mounting](mounting.md) holds where). The deck it draws is built from the controller's
+config, so it runs with no backdrop too. An app-side blur alone (#146) moved nothing that the
+noise between launches did not cover. The warm-up draws the whole deck, and that is what the
+#168 triage measured: the first open went from 1–2 slow frames to 0–1 with one toast.
 
 It never reaches nearer the edge than `offset`, scrolled or not. The box it follows is
 the deck's drawn box, and the deck's near cut exists only once a toast is pushed past
@@ -75,5 +84,12 @@ holds nothing on it. The defaults were settled by feel in the example app.
   deck with no backdrop (1-3), so most of it is not the blur's. An app-side warm-up (a 120 px
   `Opacity` 0.5 over a rounded `BackdropFilter` of sigma 4, 300 ms at startup) changed
   nothing with no toast and took the 8-toast first open from 2-5 slow frames to 2, which the
-  noise between launches covers. **No warm-up** is the maintainer's call on that (#146).
+  noise between launches covers. **No warm-up** was the maintainer's call on that (#146),
+  reversed by #168 on a re-measure (Flutter 3.44.8, same machine and method). The real deck drawn
+  under the app's opaque screen took the first open, as slow frames : longest ms per launch, from
+  2:37 1:31 2:39 to 0:11 1:19 0:15 with one toast, and from 4:48 6:87 5:40 to 2:58 1:19 0:16 with
+  eight. The cost moves to startup, 1–3 slow frames of 22–56 ms. With eight toasts, slow frames
+  remain after a one-card warm-up.
   The backend, Skia or Impeller, was not identified, and one machine is not a survey.
+- **Not covered**: the first open with the package's own `warmUp()` on a real GPU. The numbers
+  above are the triage's app-side stand-in for it.

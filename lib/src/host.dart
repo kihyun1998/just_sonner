@@ -41,9 +41,11 @@ import 'time_left.dart';
 import 'toast_id.dart';
 import 'toast_state.dart';
 import 'toast_view.dart';
+import 'warm_up.dart';
 
 /// Mount mode 2: draws [controller]'s toasts above [child], or the exported
-/// `toast`'s when [controller] is null.
+/// `toast`'s when [controller] is null, and the deck of a
+/// [SonnerController.warmUp] under it.
 class SonnerHost extends StatelessWidget {
   const SonnerHost({super.key, this.controller, required this.child});
 
@@ -51,12 +53,16 @@ class SonnerHost extends StatelessWidget {
   final Widget child;
 
   @override
-  Widget build(BuildContext context) => Stack(
-    children: [
-      child,
-      Positioned.fill(child: ToastLayer(controller: controller ?? toast)),
-    ],
-  );
+  Widget build(BuildContext context) {
+    final controller = this.controller ?? toast;
+    return Stack(
+      children: [
+        Positioned.fill(child: WarmUpDeck(controller: controller)),
+        child,
+        Positioned.fill(child: ToastLayer(controller: controller)),
+      ],
+    );
+  }
 }
 
 /// Lays out and animates [controller]'s toasts over whatever it is given to

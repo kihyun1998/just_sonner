@@ -131,3 +131,11 @@ _Avoid_: patch, edit
 **Replace**:
 Showing new content at the id of a toast on screen: the old content goes whole, and only the toast's place in the deck is kept. Showing at the id of a dismissed toast is not a replace — it creates a new toast.
 _Avoid_: update (for this), overwrite
+
+**Warm-up**:
+The deck drawn once where the user cannot see it, so that its first real fan-out after launch is
+not also the first time the engine draws it: `toast.warmUp()`. `SonnerHost` lays a deck of its own,
+holding one stand-in **toast** built from the controller's config, under the app's screen, fans it
+out and takes it away. The stand-in is not a toast of the controller: no id, no timer, not counted.
+Attached, there is nothing under the routes the package can reach, and it does nothing.
+_Avoid_: preload, precache, shader warm-up (that is the engine's, `PaintingBinding.shaderWarmUp`)
