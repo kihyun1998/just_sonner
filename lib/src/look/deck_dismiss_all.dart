@@ -5,6 +5,10 @@ import 'package:flutter/rendering.dart';
 import '../config.dart';
 import '../dismiss_all_view.dart';
 
+/// What a header reads for the count when the app gives no `countLabel`.
+String defaultCountLabel(int count) =>
+    count == 1 ? '1 notification' : '$count notifications';
+
 /// The [DeckDismissAll] control: its builder's widget, or the look it names.
 class DeckDismissAllButton extends StatelessWidget {
   const DeckDismissAllButton({
@@ -84,7 +88,8 @@ class DeckDismissAllButton extends StatelessWidget {
                 children: [
                   Expanded(
                     child: Text(
-                      control.countLabel?.call(count) ?? '$count notifications',
+                      control.countLabel?.call(count) ??
+                          defaultCountLabel(count),
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.onSurfaceVariant,
                       ),

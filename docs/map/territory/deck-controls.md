@@ -10,7 +10,8 @@ share when both ask for one.
   or builder; what it leaves alone; the stow, its motion and its handle, renamed `hide*`
   by #97, which removed the handle; Hide on an empty open zone; each toast re-read as it
   is reached (#129, maintainer); the two sideways hide looks (#141); the reach the deck
-  comes back from (#143).
+  comes back from (#143); `minCount`, the fewest dismissible toasts that show dismiss-all
+  (#163, maintainer; what does not count, derived).
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -68,6 +69,14 @@ changes: a toast dismissed during a `reveal()` drifts it (128 px to 114 px), the
 Both show while the pointer holds the deck **or the zone is open**, and neither on a
 hidden deck. The hide control also shows on an open zone with **no** toast, past the
 empty card, so an empty zone can be put away without the app.
+
+Dismiss-all also needs `minCount` toasts the user may dismiss on screen, two unless the app
+sets it (#163, maintainer). The hide control shows with one, so at the default the far end
+changes shape between one toast and two; `minCount: 1` is how an app keeps it the same. The
+count is the same `dismissibleNow` list the press acts on, so a loading or not dismissible toast
+never counts: counting it would draw a control that removes nothing, and the same holds for
+`minCount: 0`, which the constructor asserts against. The count is checked in the host, so a
+look and a `builder` are gated alike.
 
 ## Code
 `look/deck_dismiss_all.dart` — DeckDismissAllButton, DeckLayers, DeckLayerSlot, RenderDeckLayers

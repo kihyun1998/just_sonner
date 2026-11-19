@@ -635,6 +635,13 @@ class _HarnessPageState extends State<HarnessPage> {
           nameOf: (value) => value.name,
           onChanged: (value) => set(control.copyWith(look: value)),
         ),
+        _Dropdown<int>(
+          label: 'minCount',
+          value: control.minCount,
+          values: {1, 2, 3, control.minCount}.toList(),
+          nameOf: (value) => '$value',
+          onChanged: (value) => set(control.copyWith(minCount: value)),
+        ),
         _Dropdown<String>(
           label: 'label',
           value: control.label,

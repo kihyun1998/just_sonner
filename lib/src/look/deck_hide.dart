@@ -443,7 +443,7 @@ Widget? farEndControls({
     final count = hideBar ? hideCount : dismissCount;
     return DeckFarEndBar(
       width: config.width,
-      countText: countLabel?.call(count) ?? '$count notifications',
+      countText: countLabel?.call(count) ?? defaultCountLabel(count),
       expansion: expansion,
       hide: hide.builder != null
           ? hideAlone()

@@ -467,11 +467,13 @@ the while the deck can scroll. `placement: DeckScrollbarPlacement.inside` puts i
 pointer.
 
 **Dismiss all.** `DeckDismissAll()` draws a pill reading "Clear all" past the deck's far end. It
-shows while the pointer holds the deck or the zone is open, and at least two toasts the
-user may dismiss are up.
+shows while the pointer holds the deck or the zone is open, and at least `minCount` (2) toasts
+the user may dismiss are up.
 
 - Pressing it leaves loading toasts and `dismissible: false` ones. `toast.dismissAll()` still
   dismisses everything.
+- `minCount:` sets how many such toasts it takes. It defaults to 2. `minCount: 1` shows it with a
+  single toast, as the hide control does. Loading and `dismissible: false` toasts do not count.
 - `look: DeckDismissAllLook.header` draws a bar as wide as the deck, with the count.
 - `builder:` draws your own control. It is handed a `DeckDismissAllView`: `count`, `dismiss` and
   the deck's `expansion`.

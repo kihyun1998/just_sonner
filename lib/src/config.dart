@@ -406,7 +406,7 @@ enum DeckDismissAllLook {
 
 /// The control at the expanded deck's far end that dismisses every toast the
 /// user may dismiss. It shows while the pointer holds the deck or the zone is
-/// open, and at least two such toasts are on screen.
+/// open, and at least [minCount] such toasts are on screen.
 @immutable
 class DeckDismissAll {
   const DeckDismissAll({
@@ -414,7 +414,8 @@ class DeckDismissAll {
     this.label = 'Clear all',
     this.countLabel,
     this.builder,
-  });
+    this.minCount = 2,
+  }) : assert(minCount >= 1, 'minCount must be at least 1');
 
   final DeckDismissAllLook look;
 
@@ -422,11 +423,15 @@ class DeckDismissAll {
   final String label;
 
   /// What a [DeckDismissAllLook.header] reads for the count. Null reads
-  /// `'$count notifications'`.
+  /// `'1 notification'` for one and `'$count notifications'` otherwise.
   final String Function(int count)? countLabel;
 
   /// Draws the control in place of [look].
   final DeckDismissAllBuilder? builder;
+
+  /// The fewest toasts the user may dismiss that show the control, its look
+  /// and its [builder] alike. At least 1.
+  final int minCount;
 
   /// A copy with the fields given changed. [countLabel] and [builder] are
   /// given as functions, since null is a value each can take.
@@ -435,11 +440,13 @@ class DeckDismissAll {
     String? label,
     ValueGetter<String Function(int count)?>? countLabel,
     ValueGetter<DeckDismissAllBuilder?>? builder,
+    int? minCount,
   }) => DeckDismissAll(
     look: look ?? this.look,
     label: label ?? this.label,
     countLabel: countLabel == null ? this.countLabel : countLabel(),
     builder: builder == null ? this.builder : builder(),
+    minCount: minCount ?? this.minCount,
   );
 
   @override
@@ -448,10 +455,11 @@ class DeckDismissAll {
       other.look == look &&
       other.label == label &&
       other.countLabel == countLabel &&
-      other.builder == builder;
+      other.builder == builder &&
+      other.minCount == minCount;
 
   @override
-  int get hashCode => Object.hash(look, label, countLabel, builder);
+  int get hashCode => Object.hash(look, label, countLabel, builder, minCount);
 }
 
 /// The built-in looks of the [DeckHideControl].
@@ -487,7 +495,7 @@ class DeckHideControl {
   final String label;
 
   /// What a [DeckHideLook.header] reads for the count. Null reads
-  /// `'$count notifications'`.
+  /// `'1 notification'` for one and `'$count notifications'` otherwise.
   final String Function(int count)? countLabel;
 
   /// Draws the control in place of [look].

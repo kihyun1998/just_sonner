@@ -45,7 +45,8 @@ The harness is also where the values `docs/spec.md` §9 left provisional get set
 - **Dismiss all** (#59) — put two or more up and rest the pointer on the deck. A pill past its far
   end dismisses every toast you may dismiss; a loading toast stays. With twenty up it waits at the
   cap while they scroll. The controls below switch it to a header, a Korean label and count, or
-  the app's own builder.
+  the app's own builder, and `minCount` sets how many toasts it takes (#163): at 1 it shows with
+  one, as Hide does.
 - **The zone** (#97) — `open()` fans every toast out with no pointer, and with none draws the
   empty card; `close()` goes back to where `open()` came from. Press Hide, or `hide()`, and the deck
   goes with its toasts kept and counting; "In 3 s: a new toast" then shows as a banner until it has
