@@ -417,11 +417,36 @@ A field that can be null is passed to `copyWith` as a function, so null can be g
 | `wheelMotion` | `WheelMotion.spring()` | How the deck glides under the mouse wheel; not nullable. A `Duration.zero` motion jumps |
 | `enterMotion` | `ToastEnterMotion.edge` | The way every toast slides in and back out: from its edge, or from the left or the right; not nullable |
 | `contentChange` | `ContentChange()` | How a builder's content changes on an update or a replace; the default look ignores it; not nullable |
+| `motionDurations` | `MotionDurations()` | How long each of the deck's motions takes; not nullable |
 
 **Toasts from the side.** `enterMotion: ToastEnterMotion.right` brings every toast in from the
 right, one toast's width, and takes it out the same way. The side is yours to pick: it does not
 follow `position`, so a `bottomCenter` deck can enter from the right. A toast you swipe away
 still leaves the way you swiped it.
+
+**How fast the deck moves.** `motionDurations` takes one `Duration` per motion:
+
+```dart
+toast.config = toast.config.copyWith(
+  motionDurations: const MotionDurations(
+    enter: Duration(milliseconds: 250),
+    exit: Duration(milliseconds: 150),
+  ),
+);
+```
+
+| Field | Default | Times |
+|---|---|---|
+| `enter` | 400 ms | A toast sliding and fading in, the toasts behind it making room, and the empty card fading in and out |
+| `exit` | 200 ms | A toast leaving, swiped away included, and the toasts behind closing the gap |
+| `expand` | 400 ms | The deck fanning out and collapsing, the toasts beyond the window fading with it, and the deck easing back to its edge from a scroll as the pointer leaves |
+| `glide` | 400 ms | The toasts moving to where a newly assigned config puts them |
+| `springBack` | 400 ms | A toast let go short of a swipe going back to its place |
+| `hide` | 300 ms | The deck going out of sight as the zone is hidden, and coming back |
+
+`Duration.zero` puts a motion at its end in one frame; a negative duration fails an assert. A
+motion already running when you assign a config keeps the duration it started with, and the next
+one takes the new value. The curves are fixed.
 
 **A see-through card of your own.** A builder's new content fades in over the old in 200 ms,
 and the old stays opaque underneath until the new is in. A builder whose card is see-through

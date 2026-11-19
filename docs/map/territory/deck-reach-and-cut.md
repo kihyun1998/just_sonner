@@ -17,7 +17,7 @@ Holds the cap, the scroll, the two-ended cut and the scrollbar beside it.
 The cut has two ends and each is reported from **where toasts were drawn**, never from
 whether the scroll overflows — the toasts beyond the window leave the deck the moment
 the pointer does, while still fanned out, so a cut keyed on the overflow shows them for
-the whole 400 ms collapse. The far end sits at the cap, or at the far edge's `offset`
+the whole collapse (`motionDurations.expand`, 400 ms by default). The far end sits at the cap, or at the far edge's `offset`
 where the cap reaches it or there is none; the near end at the position's own `offset`.
 **Neither end needs a cap**, since a deck taller than the layer scrolls with none.
 

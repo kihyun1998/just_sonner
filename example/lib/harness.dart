@@ -917,6 +917,84 @@ class _HarnessPageState extends State<HarnessPage> {
       ],
     ),
     _Section(
+      title: 'Motion durations',
+      issue: 162,
+      note:
+          'How long each of the deck’s motions takes. enter also moves the '
+          'toasts behind and fades the empty card; exit also takes a swiped '
+          'toast out and closes the gap; expand also fades the toasts beyond '
+          'the window and eases a scrolled deck back to its edge. glide is '
+          'the move to a newly assigned config: change the position under '
+          'Position to see it. springBack is a drag let go short of a swipe. '
+          'A motion already running keeps the duration it started with. '
+          '0 puts a motion at its end in one frame.',
+      children: [
+        _Button('One coming in', () => _show('Coming in')),
+        _Button('Three staying', () {
+          for (var i = 3; i >= 1; i--) {
+            _show('Staying $i of 3', duration: null);
+          }
+        }),
+        _Button('hide()', _toast.zone.hide),
+        _Button('reveal()', _toast.zone.reveal),
+        for (final (name, value, set, fallback) in [
+          (
+            'enter',
+            config.motionDurations.enter,
+            (Duration value) => config.motionDurations.copyWith(enter: value),
+            const MotionDurations().enter,
+          ),
+          (
+            'exit',
+            config.motionDurations.exit,
+            (Duration value) => config.motionDurations.copyWith(exit: value),
+            const MotionDurations().exit,
+          ),
+          (
+            'expand',
+            config.motionDurations.expand,
+            (Duration value) => config.motionDurations.copyWith(expand: value),
+            const MotionDurations().expand,
+          ),
+          (
+            'glide',
+            config.motionDurations.glide,
+            (Duration value) => config.motionDurations.copyWith(glide: value),
+            const MotionDurations().glide,
+          ),
+          (
+            'springBack',
+            config.motionDurations.springBack,
+            (Duration value) =>
+                config.motionDurations.copyWith(springBack: value),
+            const MotionDurations().springBack,
+          ),
+          (
+            'hide',
+            config.motionDurations.hide,
+            (Duration value) => config.motionDurations.copyWith(hide: value),
+            const MotionDurations().hide,
+          ),
+        ])
+          _Dropdown<Duration>(
+            label: name,
+            value: value,
+            values: {
+              Duration.zero,
+              const Duration(milliseconds: 100),
+              fallback,
+              const Duration(milliseconds: 1000),
+              value,
+            }.toList()..sort(),
+            nameOf: (value) => value == fallback
+                ? '${value.inMilliseconds} ms (the default)'
+                : '${value.inMilliseconds} ms',
+            onChanged: (value) =>
+                widget.onConfig(config.copyWith(motionDurations: set(value))),
+          ),
+      ],
+    ),
+    _Section(
       title: 'The deck',
       issue: 19,
       note:
@@ -1181,8 +1259,8 @@ class _HarnessPageState extends State<HarnessPage> {
           'Press one, then the other. A toast behind the front is drawn at the '
           'front’s height — stretched when it is shorter, squeezed when '
           'it is taller, its card whole either way (#72) — and eases to it '
-          'over the 400 ms the new one takes to enter. Watch that 400 ms, not '
-          'just where it lands.',
+          'over the time the new one takes to enter, 400 ms by default. Watch '
+          'that ease, not just where it lands.',
       children: [
         _Button(
           'A tall one, staying',

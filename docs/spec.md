@@ -349,6 +349,20 @@ class ContentChange {
   });
 }
 
+/// How long each of the deck's motions takes (§6 Motion). `SonnerConfig.motionDurations` is one
+/// of these, and is never null. Zero puts a motion at its end in one frame; none can be negative.
+/// A motion already running keeps the duration it started with.
+class MotionDurations {
+  const MotionDurations({
+    Duration enter = const Duration(milliseconds: 400),       // and the toasts behind, the empty card
+    Duration exit = const Duration(milliseconds: 200),        // dismiss, timeout, swipe out; the gap closing
+    Duration expand = const Duration(milliseconds: 400),      // fan out, collapse; beyond the window; the scroll back
+    Duration glide = const Duration(milliseconds: 400),       // to where an assigned config puts the toasts
+    Duration springBack = const Duration(milliseconds: 400),  // a drag let go short of a swipe
+    Duration hide = const Duration(milliseconds: 300),        // out of sight and back
+  });
+}
+
 /// What an open zone draws while no toast is alive. `SonnerConfig.zoneEmpty` is one of these, on
 /// by default, or null for nothing.
 class ZoneEmpty {
@@ -398,18 +412,19 @@ live until dismissed, and it is set with `copyWith(duration: () => null)`), `exp
 `scrollbar` (`DeckScrollbar()`), `dismissAll` (`DeckDismissAll()`), `hideControl`
 (`DeckHideControl()`), `hideMotion` (`DeckHideMotion()`), `zoneEmpty` (`ZoneEmpty()`), `wheelMotion`
 (`WheelMotion.spring()`, re-exported from `flutter_smooth_wheel_scroll`), `enterMotion`
-(`ToastEnterMotion.edge`), `contentChange` (`ContentChange()`). It is immutable and has a `copyWith`, so
+(`ToastEnterMotion.edge`), `contentChange` (`ContentChange()`), `motionDurations`
+(`MotionDurations()`). It is immutable and has a `copyWith`, so
 one field changes with `toast.config = toast.config.copyWith(position: …)`; `swipeDirections` is
 given as a function, `copyWith(swipeDirections: () => null)`, so it can go back to following the
 position, `builder` the same way, `copyWith(builder: () => null)`, back to the default look, and
 `timeLeft` too, `copyWith(timeLeft: () => null)`, to draw none, and `deckCap` and `scrollbar`
 likewise, to reach as far as the layer and to draw no scrollbar, and `dismissAll`, to draw no
 control, and `hideControl` and `zoneEmpty` the same way; `hideMotion`, `wheelMotion`,
-`enterMotion` and `contentChange` are not nullable and are passed as values. `ToastTimeLeft` and
+`enterMotion`, `contentChange` and `motionDurations` are not nullable and are passed as values. `ToastTimeLeft` and
 `DeckScrollbar` have a `copyWith` of their own, with
 `color` given as a function to go back to the theme's, `DeckDismissAll`, `DeckHideControl`,
 `DeckHideMotion` and `ZoneEmpty` one with `countLabel` and `builder` given as functions, and
-`ContentChange` one with no nullable field.
+`ContentChange` and `MotionDurations` one with no nullable field.
 
 **The config lives on the controller and nowhere else.** `attach` does not take one and neither
 does `SonnerHost`, so there is a single place to set it and no precedence to define — both mount
@@ -638,7 +653,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - **A covered toast draws no content.** How much of a toast the deck covers is the running product
   of the presences of the toasts in front of it — 0 for the front, 1 behind one fully present — and
   what it draws of its content is `1 − covered × (1 − expansion)`. So the content fades out over
-  the 400 ms a new toast takes to enter, comes back over the 200 ms the front takes to leave, and
+  the enter (400 ms by default), comes back over the exit (200 ms by default), and
   is fully drawn wherever the deck is expanded. Without it, a toast behind paints its text under a
   front that is still entering and therefore see-through, and a taller one behind a shorter front
   shows a description sliced by the cut to the front's height.
@@ -673,14 +688,14 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - Every visible toast is drawn at its **measured** height, stacked with `gap` between them, and is
   not scaled. Toast *i*'s offset is the sum of the heights before it plus `gap × i`, where the
   height of a toast in front is the one it **covers** with (§6 Collapsed) and counts by how far in
-  it is — so a toast entering or leaving moves the ones behind it on its own clock, 400 ms in and
-  200 ms out, exactly as in the collapsed deck.
+  it is — so a toast entering or leaving moves the ones behind it on its own clock, the enter and
+  exit durations (400 ms in and 200 ms out by default), exactly as in the collapsed deck.
 - Heights are measured after layout. A toast whose height changes (an update with a longer
   description) re-lays the stack: it is drawn at its new height at once, and the toasts behind it
   ease to their new offsets over 400 ms, `ease`, going on from where the ease got to — the same
   height ease as the collapsed deck.
 - **While the pointer is over the deck, every toast is drawn**, not only `visibleToasts`: the ones
-  beyond the window fade in over the same 400 ms, `ease`, take taps, join the semantics tree, and
+  beyond the window fade in over the same expand duration, `ease`, take taps, join the semantics tree, and
   fade out and leave it again when the pointer goes — or, where a press that started on the deck is
   still down, when it lets go. **While the zone is open** (`zone.open()`), every toast is drawn the
   same way, and they leave with `zone.close()` unless the pointer still holds the deck.
@@ -745,7 +760,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   - **A `position` on the other edge puts the scroll back at the edge** (top ↔ bottom runs the
     scroll the other way), as a host handed another controller does.
   - **When the pointer leaves, the scroll goes back to the edge**, easing with the collapse over
-    400 ms, and the next hover starts there. A press still down keeps it where it is, with the rest
+    the expand duration (400 ms by default), and the next hover starts there. A press still down keeps it where it is, with the rest
     of the deck.
   - An exiting toast keeps the place **on screen** it was dismissed at, so a scroll during its exit
     moves the toasts around it and not it.
@@ -807,7 +822,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
     the app. So the reach is painted outside the box rather than laid out as a bigger one — a
     bigger box would carry the claim with it.
 - **A hidden zone's deck is drawn by `config.hideMotion`**, from where it is to out of sight over
-  300 ms, eased, and back the same way when a banner goes up or the zone is shown or opened. A
+  `config.motionDurations.hide` (300 ms by default), eased, and back the same way when a banner goes up or the zone is shown or opened. A
   `slide` carries it past the edge it sits at, by as far as it reaches from that edge and 24 px
   more; a `slideLeft` or `slideRight` carries it past that side of the layer, by as far as the
   deck reaches from that side to its far side and 24 px more, whatever the position. Going out of
@@ -829,7 +844,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   Hiding, opening or revealing takes the banner down.
 - **The empty card** is `config.zoneEmpty`, on by default: an open zone with no toast draws a card
   `config.width` wide where the front toast sits, reading `label`, with the hide control past it.
-  It fades in over 400 ms as the last toast leaves an open zone and out as a toast arrives or the
+  It fades in over the enter duration (400 ms by default) as the last toast leaves an open zone and out as a toast arrives or the
   zone closes. It is in the hover region, so the pointer on it holds the deck. A `builder` draws
   the app's own, handed the fade; null draws nothing. A shown zone with no toast draws nothing.
 - A toast still entering is not in the hover region's box until it has arrived, unless the pointer
@@ -876,15 +891,20 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 
 ### Motion
 
-| Event | Motion | Duration | Source |
+Every duration below that names a `motionDurations` field is that field's default, which the app
+sets on `config.motionDurations` (#162); the curves are fixed. The sixth, `hide`, times the
+hidden zone's motion (Expanded, above). A motion already running keeps the
+duration it started with, and the next one started reads the new value.
+
+| Event | Motion | Duration (default) | Source |
 |---|---|---|---|
-| Enter | slide in + fade: from the screen edge the position names, one own height, or from the left or the right, one own width, as `config.enterMotion` says whatever the position | 400 ms, `ease` | sonner `styles.css` (`transform 400ms, opacity 400ms, height 400ms`); the sides are just_sonner's, sonner enters only vertically |
-| Collapse ↔ expand | offsets, scales and heights animate | 400 ms | same transition |
-| Exit (dismiss or timeout) | slide toward the edge or side it entered from + fade; the rest close the gap | removed from the tree after 200 ms; at once with nothing drawing it: from a deck wholly out of sight, or beyond the window (§7) | sonner `TIME_BEFORE_UNMOUNT` |
-| Swipe out | continue in the swipe direction, a whole toast further, `easeOut` + fade | 200 ms | sonner `styles.css` (`swipe-out-*`) |
-| Swipe back | the toast eases back to its place from where the drag left it | 400 ms, `ease` | sonner (its base transform transition) |
+| Enter | slide in + fade: from the screen edge the position names, one own height, or from the left or the right, one own width, as `config.enterMotion` says whatever the position | 400 ms, `ease`; `motionDurations.enter`, which also moves the toasts behind and fades the empty card | sonner `styles.css` (`transform 400ms, opacity 400ms, height 400ms`); the sides are just_sonner's, sonner enters only vertically |
+| Collapse ↔ expand | offsets, scales and heights animate; the toasts beyond the window fade in and out with it, and the scroll eases back to the edge as the pointer leaves | 400 ms; `motionDurations.expand` | same transition |
+| Exit (dismiss or timeout) | slide toward the edge or side it entered from + fade; the rest close the gap | removed from the tree after 200 ms, `motionDurations.exit`; at once with nothing drawing it: from a deck wholly out of sight, or beyond the window (§7) | sonner `TIME_BEFORE_UNMOUNT` |
+| Swipe out | continue in the swipe direction, a whole toast further, `easeOut` + fade | 200 ms; `motionDurations.exit` | sonner `styles.css` (`swipe-out-*`) |
+| Swipe back | the toast eases back to its place from where the drag left it | 400 ms, `ease`; `motionDurations.springBack` | sonner (its base transform transition) |
 | Update / replace | the default look's new content fades in over the old, linearly, while the old stays fully opaque underneath and goes once the new is in; an update arriving mid-fade makes the half-faded content the opaque base, so the card is never see-through and there are at most two layers (the two builders' output, if the builder changed). No re-enter. The new content sets the toast's height at once; the old lies over it from the top, cut to that height, takes no focus and is not announced. **A builder's new content** follows `config.contentChange` instead: the old fades out as the new fades in, at `(1 − t) / (1 − cardOpacity · t)` when the new is at `t`, so two layers of a card of that opacity cover as one does — opaque until the new is in at the default 1, the symmetric cross-fade at 0 — over `duration`, zero swapping in one frame; with `keep` the builder's element is kept and nothing fades, a replace from the default look included. Mid-fade the half-faded content becomes the base at full opacity, as above. The look drawing the new content decides which fade applies | 200 ms; a builder's, `contentChange.duration` | just_sonner |
-| `config` assigned | each toast moves from where it is drawn to where the new config puts it, holding the edges the position names — across the screen for a position on another side, while a new `width` takes at once and keeps that edge. No toast re-enters or exits, and no countdown restarts. A toast outside a lowered `visibleToasts` fades out and one inside a raised one fades in, on the same clock, and stops being painted once faded, as when a newer toast pushes it out. A toast exiting as it is assigned, or dismissed on the way, stays where it is on screen. An assignment on the way goes on from where the toasts are drawn | 400 ms, `ease` | just_sonner |
+| `config` assigned | each toast moves from where it is drawn to where the new config puts it, holding the edges the position names — across the screen for a position on another side, while a new `width` takes at once and keeps that edge. No toast re-enters or exits, and no countdown restarts. A toast outside a lowered `visibleToasts` fades out and one inside a raised one fades in, on the same clock, and stops being painted once faded, as when a newer toast pushes it out. A toast exiting as it is assigned, or dismissed on the way, stays where it is on screen. An assignment on the way goes on from where the toasts are drawn | 400 ms, `ease`; `motionDurations.glide`, the assigned config's | just_sonner |
 
 ## 7. Timers
 
@@ -931,7 +951,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   two things. It is public so a function that passes a duration on to `show` can take it as its
   own default and still let its callers omit one.
 - A toast stops counting when it is **dismissed**, not when it is **removed** — its exit, where
-  it has one, takes 200 ms more (§6) and there is nothing left to count.
+  it has one, takes the exit duration more, 200 ms by default (§6), and there is nothing left to count.
 - **How the countdown runs.** One `Timer.periodic` of **100 ms**, alive only while some toast has
   a timer, subtracts a tick from every counting toast; a toast whose remainder reaches zero is
   dismissed. Pausing is not subtracting. **The controller never reads a clock**, so it needs no
@@ -942,7 +962,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   duration rounded up to a whole tick. One shown while the tick is already running cannot know
   how far into the current tick it arrived, so it lets that partial tick pass uncounted and runs
   up to one tick longer than that — a 4 s toast lives 4.0–4.1 s, a 150 ms one up to 300 ms. That
-  is invisible against the 200-400 ms motion in §6, and it is not configurable.
+  is invisible against the default 200-400 ms motion in §6, and it is not configurable.
 
   The gain is that "time left" is a number the controller owns rather than one it derives from two
   clock readings. sonner derives it, and needs a guard so a pause is not subtracted twice
@@ -1016,7 +1036,7 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
   scroll. The mouse wheel and a mouse drag never meet: a drag does not scroll, and a wheel is not a
   drag.
 - Dismiss when the drag passes 45 px or its speed is above 0.11 px/ms (distance over the time since
-  the pointer went down), in an allowed direction; otherwise spring back over **400 ms**, `ease`,
+  the pointer went down), in an allowed direction; otherwise spring back over `motionDurations.springBack` (**400 ms** by default), `ease`,
   from wherever the drag left the toast (§6 Motion).
 - **The swipe locks to one axis** on the first move of more than a pixel — the one the pointer has
   gone further along — and follows it for the rest of the drag.
@@ -1187,10 +1207,23 @@ Numbers from sonner (`src/index.tsx`, `src/styles.css`) unless marked.
 - assigning `config` notifies, and a lowered `visibleToasts` leaves the toasts beyond the window in the list;
   an equal config does not notify, an invalid one asserts as at construction, and a new `duration`
   leaves the countdowns under way alone
+- `MotionDurations` defaults to 400, 200, 400, 400, 400 and 300 ms; its `copyWith` changes one
+  duration and keeps the rest, any one field apart is unequal, and `SonnerConfig` carries it
+  through `copyWith`, `==` and `hashCode`; a negative duration asserts at construction and at
+  assignment, and zero is taken
 
 ### Host (widget tests)
 
 - Collapsed offsets and scales for 1, 2, 3 and 5 toasts
+- Each `motionDurations` field, set to 100 ms, times its motion: partway at 50 ms and at its end at
+  100 ms — enter and the toast behind, exit and the gap closing, a swiped toast removed at its end,
+  fan-out and collapse, a config assignment's glide on the assigned config's duration, a spring
+  back, hide and reveal, and the empty card on the enter; zero puts each at its end in one frame
+  with no exception; a toast entering as another enter duration is assigned finishes on the one it
+  started with, the next toast takes the new one, and a toast brought back from its exit by
+  swapping back to its controller enters on that controller's duration now; a toast made not
+  dismissible mid-drag in a build that also assigns another spring back springs back over the new
+  one; a toast entered over zero takes the pointer, an open zone keeping the clicks in its gaps
 - A toast enters from the edge, or one own width from the left or the right as `enterMotion`
   says, and leaves the way it came in; one leaving as another motion is assigned keeps its way,
   and one still entering takes the new one; a swiped toast leaves the way it was swiped whichever
@@ -1588,7 +1621,7 @@ outside v0.1 is in §2's non-goals.
 | While the hide value is above 0 the deck takes a pointer where something of it is hit, not by its box | derived | #133, from "Hit-testing follows paint". The box is where the deck rests and the hide motion draws it elsewhere until then. Hit-testing the child already goes through the motion's transforms, so a `hideMotion` builder reports nothing. Taking no pointer until at rest was measured and lets a click on a drawn toast through to the app. A banner coming up is the same motion and follows the same rule |
 | Hiding cancels the pointers pressed on the deck, so a click under way does not complete | maintainer | #132, at triage. Shown: a close button dismissing a toast out of sight and a builder's button firing, the result of cancelling the pointer with no unmounting, that the cancel also reaches a tap detector the app wraps around the host, and the alternatives of letting the click finish with §7 reworded, or leaving it. Then shown, after review: that the SDK's `cancelPointer` sends a touch-kind cancel, which turned the whole app's focus highlight to touch mode until the next key, that a cancel of the pointer's own kind does not, and that hover on the app's widgets is stale until the next move after the release; kept. **Not covered**: not seen on a device; touch; a builder's own drag recognizer |
 | The dismiss-all control re-reads each toast as it reaches it, on `dismissibleNow` and on being the same toast | maintainer | #129, at triage. Shown: what is left of three toasts when a listener changes the other two in the first dismissal, now and with a spike, and the alternatives of leaving any toast changed since the build, which also leaves one whose title alone changed and keeps the built state, and of leaving it as it was. **Not covered**: a toast replaced at its id during the press is dismissed if it is dismissible, content the user has not seen. A listener's `hide()` during the press does not stop the rest, and one made dismissible during it is not reached; both reproduced and left so by the maintainer, the press being for what the control showed |
-| An app picks the way every toast enters through `SonnerConfig.enterMotion`, a `ToastEnterMotion` of `edge` (today's slide from the edge the position names, the default), `left` or `right`; it is deck-wide, not nullable and passed to `copyWith` as a value; the side is never derived from `position`, and a toast leaves toward the side it entered from | maintainer for the option, the app choosing the side and the default; the rest derived | #141, confirmed against a throwaway HTML prototype. Derived and open to overturning: the field and enum names; one own width as the distance, today's one own height turned sideways; a toast exiting as a config is assigned keeping its slide, and a swiped toast drawing none, both carried over unchanged. A toast still entering when another motion is assigned takes the new slide on the next frame, as it already did for a position on the other edge; derived, not asked. Out of scope: a builder for the enter, a per-toast motion, distances or durations, swipe directions, and up or down as values apart from `edge`. **Not covered**: not seen by eye; the part of an entering toast drawn beside its resting place takes no pointer, as #137's row records for the part drawn past it |
+| An app picks the way every toast enters through `SonnerConfig.enterMotion`, a `ToastEnterMotion` of `edge` (today's slide from the edge the position names, the default), `left` or `right`; it is deck-wide, not nullable and passed to `copyWith` as a value; the side is never derived from `position`, and a toast leaves toward the side it entered from | maintainer for the option, the app choosing the side and the default; the rest derived | #141, confirmed against a throwaway HTML prototype. Derived and open to overturning: the field and enum names; one own width as the distance, today's one own height turned sideways; a toast exiting as a config is assigned keeping its slide, and a swiped toast drawing none, both carried over unchanged. A toast still entering when another motion is assigned takes the new slide on the next frame, as it already did for a position on the other edge; derived, not asked. Out of scope: a builder for the enter, a per-toast motion, distances or durations, swipe directions, and up or down as values apart from `edge`. **Durations since set by #162** (`motionDurations`, rows below); a per-toast one is still out of scope. **Not covered**: not seen by eye; the part of an entering toast drawn beside its resting place takes no pointer, as #137's row records for the part drawn past it |
 | `DeckHideMotionLook` gains `slideLeft` and `slideRight`, which carry the deck past that side of the layer by as far as it reached from that side to its far side, as laid out when the zone was hidden, and 24 px more, fading over the same 300 ms; `DeckHideMotion`'s default stays `slide` and `DeckHideMotionView` is unchanged | maintainer for the two looks and the default; the distance and the names derived | #141. The distance is `slide`'s reach plus 24 px turned sideways, so the deck ends wholly outside the layer; the host hands the two reaches to the built-in looks, and a builder is handed what it was before. The cut's band spans the whole width, so a sideways move cannot bring on what is laid out past the layer's far edge: a #75 test row for either look stayed green with the cut's clip removed, while `slide` and `shrink` went red, and was left out. **Not covered**: not seen by eye; a `DeckBackdrop.padding` wider than 24 px on the near side, or a deck wider than the layer, which is measured cut to it, ends partly inside the layer, at opacity 0, as under `slide`. A deck hidden before it was laid out, or while empty, is measured as an empty box, so a banner then comes in from the wrong distance: measured 16 ms after `show` on `bottomRight`, `slideLeft` 23 px off where a deck hidden with a toast came from 771, `slideRight` 794 against 389, and `slide` 651 against 146 at the bottom and 73 against 146 at the top; `slide` did this before #141 and the sideways looks inherit it. **Fixed** by #143 (row below) |
 | The reach a deck comes back from is the deck's as it is laid out to come back, under `slide`, `slideLeft` and `slideRight`; going out of sight it stays the deck's as the zone was hidden. A deck that turns before it ends goes on from the reach drawn at the turn: going out again it keeps that one, and coming back it eases from it to the deck's own in step with the hide value, unless nothing was drawn at the turn. A position on the other edge assigned while the motion runs keeps the reach drawn then to its end | maintainer for the rule, for the way back following the deck and for an open zone coming back collapsed; the turn, the position and the timing derived | #143, confirmed at triage. The host's box for the deck starts as `Rect.zero` and is set only by a layout, so a zone hidden before one, or while empty, or a host mounted on a hidden zone, measured an empty box: reproduced about 16 ms in on a `topLeft` deck, `slideRight` came from 794 px hidden empty and 23 px mounted hidden where the banner's own reach gives 771 px. Going out, the reach as hidden is kept so a toast leaving on the way does not move the rest: reading it live drifted from 114 px to 100 px over the hide. Found in review and measured against HEAD: an open zone collapses as it hides, and taking the live reach at a banner 150 ms in moved the deck 54 px in one frame (186.1 to 132.3) where HEAD moved it 0, so a turn eases from the drawn reach; a toast shown and hidden in one frame, before any layout, turned back at 150 ms jumped 420 px (500.4 to 80.2) while "nothing drawn" was read from the deck as hidden, so it is read at the turn; a position flipped to the other edge part way back jumped 208 px where HEAD jumped 64, the live reach being measured toward the new edge while the deck still glides from the old one, so the reach drawn then is kept as HEAD kept it. The reach is set as the deck is built and again as it is laid out, and the built-in looks read it as they paint and hit-test, so the first frame of the way back already has the banner's; `findRenderObject` is not valid in a build (Flutter's doc), so the layout reports the layer's size with the deck. On the way back the reach follows the deck as it changes: a toast dismissed 48 ms into a `reveal()` drifted it from 128 px to 114 px over the return where HEAD kept 128. Chosen by the maintainer (2026-11-17) over measuring the way back once, shown that a once-measured reach has to wait for the banner's first layout, the fault this row fixes. An open zone hidden and revealed now comes back from its collapsed reach (123 px) rather than the expanded one it was hidden with (220 px); accepted by the maintainer the same day over an exception for that case. A builder's `reach` stays the deck's as the zone was hidden, outside the confirmed scope. **Not covered**: not seen by eye; a position flipped while the deck goes out keeps HEAD's sign jump |
 | The backdrop's blur is drawn at a sigma of `blur` whenever it is drawn, and its **opacity** follows the expansion, replacing the sigma that followed it; one behaviour with no option and no public API change, covering opening, hover fan-out, collapse and `close()` alike, since one `_expand` drives them all. Warming the blur up is deferred | maintainer, for all three: over an instant-on backdrop and over making the appearance an option; over a new `DeckBackdrop` option; and the warm-up deferred until the first open is measured again with the fixed sigma, a warm-up then to draw what the fade draws | #142. Decided on the issue's report that the first opens after launch drop frames, and on a probe in flutter_test's rasterizer (sigma 4 over 24 px stripes, rows of 100 whose grey band passes 40 px): an `Opacity` over the `ClipRect` and `BackdropFilter` left the blur drawing (100 rows at 1.0, 0.99 and 0.5), while a `ShaderMask` there blurred none, so the probe tells a trapped filter apart. Why fixed rather than stepped: each sigma the engine has not drawn yet brings a slow raster frame, so a ramp in a few steps would cut the drops without removing them; not measured. Measured with the change, 4 px inside the deck's top on 800 px of stripes with the default `blur` 4: three 16 ms ticks into a hover, at an expansion of 0.13, 220 pixels of the row are off pure black and white, against 92 with the ramp and 302 fanned out. The backdrop's own clip stays a plain clip, and the filter stays outside the deck's cut. **Measured on a real GPU by #146**, which also settled the warm-up: none, the maintainer's call (2026-11-17), on one Windows GPU (Flutter 3.41.9 profile, 1280x800, a throwaway app driving the zone by code, 3 fresh launches each). The fixed sigma ended the ramp's slow first close (8 toasts: 13–18 ms max raster against 40–455), the changing opacity brought no slow frames in later opens, and the `Opacity` layer over a fanned-out deck cost no median raster. The first open keeps 1–5 raster frames over 16.7 ms, as a deck with no backdrop keeps 1–3, and an app-side warm-up moved it within the noise between launches (0 toasts: 1 frame either way; 8 toasts: 2–5 to 2). **Not covered**: the backend, Skia or Impeller, and any machine but one |
@@ -1602,6 +1635,8 @@ outside v0.1 is in §2's non-goals.
 | `DeckDismissAll.minCount`, an `int` defaulting to 2, sets the fewest toasts the user may dismiss that show the dismiss-all control; this changes #59's row, where it was fixed at two | maintainer | #163, at triage: the hide control already shows with one toast, so the deck's far end changed shape between one toast and two, and the maintainer wanted the threshold to be the app's. An `int` defaulting to 2 was chosen over a `bool` switch for one toast. The default stays 2 |
 | A loading or not dismissible toast does not count toward `minCount`, and `minCount` below 1 fails an assert | derived | #163. The control is the user's (**Dismissible**): counting a toast it cannot dismiss would draw "Clear all (1)" that removes nothing, and 0 would draw the control with nothing to dismiss |
 | A header's count with no `countLabel` reads `'1 notification'` for one toast and `'$count notifications'` otherwise, for the dismiss-all and the hide control alike | maintainer for fixing it with #163; derived for the wording | #163, seen in the example app at `minCount: 1`: a header read "1 notifications". The hide header had read it with one toast since #97; `minCount: 1` gave the dismiss-all header the same path. Shown that it predated #163 and that `countLabel` already lets an app change it, the maintainer chose to fix the default in the same change rather than file it. The singular is the plural's own word; any other language is the app's, through `countLabel` |
+| An app sets how long each of the deck's motions takes, through one `Duration` per motion — enter, exit, expand, glide, spring back and hide, all six — with no curve | maintainer | #162, at triage. It came from a Windows desktop app whose toasts enter and leave from the right (`ToastEnterMotion.right`, #141): the maintainer watched it in a throwaway app and wanted to tune how fast a toast comes in and goes out. Chosen: all six motions over enter and exit alone, one `Duration` per motion over a single speed scale, and no curve, which the issue had left optional. **Not covered**: not seen by eye; curves, a per-toast duration, and the other fixed timings (the scrollbar's linger and fade, the content-change resize, the time-left ease, the timer tick) |
+| The six durations sit in one non-nullable `MotionDurations` on `SonnerConfig.motionDurations`, its const default today's values (400, 200, 400, 400, 400, 300 ms), with `copyWith`, `==` and `hashCode`; each drives exactly what the host's constant drove, couplings kept — enter also moves the toasts behind and fades the empty card, exit also takes a swiped toast out and closes the gap, expand also fades the toasts beyond the window and eases the scroll back to the edge; zero is allowed and puts a motion at its end in one frame, a negative duration asserts in the controller; a motion already running keeps the duration it started with and the next one reads the new value, and a config assignment's own glide runs on the assigned config's glide | derived | #162, at triage and in the change. Derived and open to overturning: the class and field names (`MotionDurations`, `motionDurations`, its fields named after the host's constants, `springBack` after the glossary's "springs back"; the field reads as the durations of the motions, where `hideMotion` and `enterMotion` name a way of moving); the assert in the controller, since a `Duration` cannot be compared in a const constructor, as `contentChange.duration`. A running motion keeps its duration because the host reads one only as it starts a motion: an `AnimationController` keeps its simulation when its `duration` changes, so splitting the clock mid-motion would need its own rule. A motion reads the controller's config as it is when the motion starts, not the one the deck last followed, so a spring back started in the same deferred notification as a config assignment, before the deck follows it, runs on the assigned one. A toast brought back from its exit, by swapping a host back to its controller, enters again on that controller's enter duration, since that is a new motion; a host handed another controller runs the old controller's toasts out on the new controller's exit duration, as it draws them with the new controller's config throughout — derived, not asked. With a zero enter the host listens for the enter's end before starting it, since a zero `forward()` completes at once; otherwise the toast never counted as arrived and an open zone gave the clicks in its gaps to the app. Zero runs through `_Progress` answering 1 from the start; the `0 / 0` it replaced also worked, through `clampDouble`, and no test can tell the two apart. Every new test was seen to fail with the change off, and the rules on a running motion, the glide's config and the resumed enter each with a targeted mutation. **Not covered**: not seen by eye; a coupling split (the empty card on its own duration, swipe out apart from exit) |
 
 ### Verified in a throwaway spike (consumer repository, 2026-09-14)
 

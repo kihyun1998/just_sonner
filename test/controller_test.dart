@@ -2607,6 +2607,97 @@ void main() {
       expect(set.hashCode, isNot(const SonnerConfig().hashCode));
     });
 
+    test('a config times the deck\'s motions as it always has by default', () {
+      const durations = MotionDurations();
+      expect(const SonnerConfig().motionDurations, durations);
+      expect(durations.enter, const Duration(milliseconds: 400));
+      expect(durations.exit, const Duration(milliseconds: 200));
+      expect(durations.expand, const Duration(milliseconds: 400));
+      expect(durations.glide, const Duration(milliseconds: 400));
+      expect(durations.springBack, const Duration(milliseconds: 400));
+      expect(durations.hide, const Duration(milliseconds: 300));
+    });
+
+    test('MotionDurations copyWith changes one duration and keeps the rest, '
+        'and any one field apart is not equal', () {
+      const ms = Duration(milliseconds: 1);
+      final changed = const MotionDurations().copyWith(enter: ms);
+      expect(
+        changed,
+        const MotionDurations(enter: ms),
+        reason: 'every other field kept',
+      );
+      expect(changed.hashCode, const MotionDurations(enter: ms).hashCode);
+      final each = [
+        const MotionDurations().copyWith(enter: ms),
+        const MotionDurations().copyWith(exit: ms),
+        const MotionDurations().copyWith(expand: ms),
+        const MotionDurations().copyWith(glide: ms),
+        const MotionDurations().copyWith(springBack: ms),
+        const MotionDurations().copyWith(hide: ms),
+      ];
+      expect(each, [
+        const MotionDurations(enter: ms),
+        const MotionDurations(exit: ms),
+        const MotionDurations(expand: ms),
+        const MotionDurations(glide: ms),
+        const MotionDurations(springBack: ms),
+        const MotionDurations(hide: ms),
+      ]);
+      for (final one in each) {
+        expect(one == const MotionDurations(), isFalse, reason: '$one');
+        expect(one.hashCode, isNot(const MotionDurations().hashCode));
+      }
+    });
+
+    test('a controller refuses a negative motion duration, and takes zero', () {
+      const ms = Duration(milliseconds: -1);
+      final controller = SonnerController();
+      addTearDown(controller.dispose);
+      for (final negative in [
+        const MotionDurations(enter: ms),
+        const MotionDurations(exit: ms),
+        const MotionDurations(expand: ms),
+        const MotionDurations(glide: ms),
+        const MotionDurations(springBack: ms),
+        const MotionDurations(hide: ms),
+      ]) {
+        final config = SonnerConfig(motionDurations: negative);
+        expect(
+          () => SonnerController(config: config),
+          throwsAssertionError,
+          reason: '$negative',
+        );
+        expect(() => controller.config = config, throwsAssertionError);
+      }
+      const zero = SonnerConfig(
+        motionDurations: MotionDurations(
+          enter: Duration.zero,
+          exit: Duration.zero,
+          expand: Duration.zero,
+          glide: Duration.zero,
+          springBack: Duration.zero,
+          hide: Duration.zero,
+        ),
+      );
+      controller.config = zero;
+      expect(controller.config, zero);
+    });
+
+    test('copyWith keeps motionDurations unless given another, and a config '
+        'with another is not equal', () {
+      const fast = MotionDurations(enter: Duration(milliseconds: 100));
+      const set = SonnerConfig(motionDurations: fast);
+      expect(set.copyWith(gap: 20).motionDurations, fast, reason: 'kept');
+      expect(const SonnerConfig().copyWith(motionDurations: fast), set);
+      expect(
+        const SonnerConfig().copyWith(motionDurations: fast).hashCode,
+        set.hashCode,
+      );
+      expect(set == const SonnerConfig(), isFalse);
+      expect(set.hashCode, isNot(const SonnerConfig().hashCode));
+    });
+
     test('configs built with equal runtime wheel motions are equal, and one '
         'field apart they are not', () {
       SonnerConfig spring(int ms, double bounce) => SonnerConfig(

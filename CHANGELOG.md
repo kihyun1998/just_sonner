@@ -1,3 +1,15 @@
+## Unreleased
+
+- **An app can set how long each of the deck's motions takes** (#162).
+  `SonnerConfig(motionDurations: MotionDurations(...))` takes one `Duration` for each of six
+  motions: `enter` (400 ms), `exit` (200 ms), `expand` (400 ms), `glide` (400 ms),
+  `springBack` (400 ms) and `hide` (300 ms). The defaults are the timings the deck already had, so
+  nothing changes on upgrade. Each duration also times what moves with that motion: `enter` moves
+  the toasts behind and fades the empty card, `exit` covers a swipe out and the gap closing, and
+  `expand` fades the toasts beyond the window and eases the scroll back to the edge. Zero puts a
+  motion at its end in one frame; a negative duration fails an assert. A motion already running
+  keeps the duration it started with. Curves are unchanged.
+
 ## 0.7.0
 
 - **The dismiss-all control can show with one toast** (#163). `DeckDismissAll(minCount: 1)`

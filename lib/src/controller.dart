@@ -74,6 +74,18 @@ class SonnerController extends ChangeNotifier {
       config.contentChange.duration >= Duration.zero,
       'ContentChange.duration cannot be negative.',
     );
+    final motion = config.motionDurations;
+    assert(
+      [
+        motion.enter,
+        motion.exit,
+        motion.expand,
+        motion.glide,
+        motion.springBack,
+        motion.hide,
+      ].every((duration) => duration >= Duration.zero),
+      'A MotionDurations duration cannot be negative.',
+    );
     return true;
   }
 

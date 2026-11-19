@@ -11977,6 +11977,511 @@ void main() {
       await tester.pumpAndSettle();
     });
   });
+
+  group('motion durations', () {
+    // CSS `ease`, cubic-bezier(0.25, 0.1, 0.25, 1), at t = 0.5.
+    const half = 0.8024;
+    const ms50 = Duration(milliseconds: 50);
+    const ms100 = Duration(milliseconds: 100);
+    const zero = MotionDurations(
+      enter: Duration.zero,
+      exit: Duration.zero,
+      expand: Duration.zero,
+      glide: Duration.zero,
+      springBack: Duration.zero,
+      hide: Duration.zero,
+    );
+
+    SonnerController timed(
+      MotionDurations durations, {
+      DeckHideMotion hideMotion = const DeckHideMotion(),
+    }) {
+      final controller = SonnerController(
+        config: SonnerConfig(
+          duration: null,
+          motionDurations: durations,
+          hideMotion: hideMotion,
+        ),
+      );
+      addTearDown(controller.dispose);
+      return controller;
+    }
+
+    /// A toast's box before it is scaled.
+    Rect boxOf(WidgetTester tester, String title) => tester.getRect(
+      find.ancestor(
+        of: find.text(title),
+        matching: find.byType(SlideTransition),
+      ),
+    );
+
+    Future<TestGesture> mouseAt(WidgetTester tester, Offset at) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: at - const Offset(1, 0));
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(at);
+      await tester.pump();
+      return mouse;
+    }
+
+    /// Drags the card of [title] by [by] over a second, and lets go.
+    Future<void> swipe(WidgetTester tester, String title, Offset by) async {
+      final gesture = await tester.startGesture(
+        toastRect(tester, title).center,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(by, timeStamp: const Duration(seconds: 1));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+    }
+
+    testWidgets('enter: a toast is fully in at its duration and partway at '
+        'half, and the toast behind moves on the same clock', (tester) async {
+      final controller = timed(const MotionDurations(enter: ms100));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Older');
+      await tester.pumpAndSettle();
+      expect(boxOf(tester, 'Older').bottom, 576);
+
+      controller.show('Newer');
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(presenceOf(tester, 'Newer'), closeTo(half, 0.001));
+      expect(
+        boxOf(tester, 'Older').bottom,
+        moreOrLessEquals(576 - 14 * half, epsilon: 0.05),
+        reason: 'the toast behind on the same clock',
+      );
+
+      await tester.pump(ms50);
+      expect(presenceOf(tester, 'Newer'), 1);
+      expect(boxOf(tester, 'Older').bottom, 562);
+    });
+
+    testWidgets('exit: a dismissed toast is removed at its duration and not '
+        'before, and the toast behind closes the gap on the same clock', (
+      tester,
+    ) async {
+      final controller = timed(const MotionDurations(exit: ms100));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Older');
+      final newer = controller.show('Newer');
+      await tester.pumpAndSettle();
+
+      controller.dismiss(newer);
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(
+        boxOf(tester, 'Older').bottom,
+        allOf(greaterThan(562), lessThan(576)),
+        reason: 'closing the gap',
+      );
+      await tester.pump(const Duration(milliseconds: 49));
+      expect(find.text('Newer'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 2));
+      expect(boxOf(tester, 'Older').bottom, 576);
+      await tester.pump();
+      expect(find.text('Newer'), findsNothing);
+    });
+
+    testWidgets('exit: a swiped toast is removed at its duration and not '
+        'before', (tester) async {
+      final controller = timed(const MotionDurations(exit: ms100));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      await swipe(tester, 'Saved', const Offset(60, 0));
+      expect(toastsOf(controller), isEmpty);
+      await tester.pump(const Duration(milliseconds: 99));
+      expect(find.text('Saved'), findsOneWidget);
+
+      await tester.pump(const Duration(milliseconds: 2));
+      await tester.pump();
+      expect(find.text('Saved'), findsNothing);
+    });
+
+    testWidgets('expand: the deck fans out and collapses over its duration', (
+      tester,
+    ) async {
+      final controller = timed(const MotionDurations(expand: ms100));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Behind');
+      controller.show('Front');
+      await tester.pumpAndSettle();
+      const collapsed = 576 - 14.0;
+      final expanded = 576 - boxOf(tester, 'Front').height - 14;
+
+      final mouse = await mouseAt(tester, boxOf(tester, 'Front').center);
+      await tester.pump(ms50);
+      expect(
+        boxOf(tester, 'Behind').bottom,
+        moreOrLessEquals(
+          collapsed + (expanded - collapsed) * half,
+          epsilon: 0.05,
+        ),
+      );
+      await tester.pump(ms50);
+      expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(expanded));
+
+      await mouse.moveTo(const Offset(40, 40));
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(
+        boxOf(tester, 'Behind').bottom,
+        moreOrLessEquals(
+          expanded + (collapsed - expanded) * half,
+          epsilon: 0.05,
+        ),
+      );
+      await tester.pump(ms50);
+      expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(collapsed));
+    });
+
+    testWidgets('glide: an assigned config moves the toasts over its own '
+        'glide duration', (tester) async {
+      final controller = timed(const MotionDurations());
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Front');
+      await tester.pumpAndSettle();
+
+      controller.config = controller.config.copyWith(
+        offset: const EdgeInsets.all(80),
+        motionDurations: const MotionDurations(glide: ms100),
+      );
+      await tester.pump();
+      expect(boxOf(tester, 'Front').bottom, 576, reason: 'no jump');
+      await tester.pump(ms50);
+      expect(
+        boxOf(tester, 'Front').bottom,
+        moreOrLessEquals(576 - 56 * half, epsilon: 0.05),
+      );
+      await tester.pump(const Duration(milliseconds: 51));
+      expect(boxOf(tester, 'Front').bottom, 520);
+    });
+
+    testWidgets('spring back: a toast let go short of a swipe is back in its '
+        'place at its duration and not before', (tester) async {
+      final controller = timed(const MotionDurations(springBack: ms100));
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+
+      await swipe(tester, 'Saved', const Offset(0, 30));
+      final from = toastRect(tester, 'Saved').top - at.top;
+      expect(from, greaterThan(0), reason: 'left where the drag took it');
+      await tester.pump(ms50);
+      expect(
+        toastRect(tester, 'Saved').top - at.top,
+        moreOrLessEquals(from * (1 - half), epsilon: 0.05),
+      );
+      await tester.pump(const Duration(milliseconds: 51));
+      expect(toastRect(tester, 'Saved'), at);
+    });
+
+    testWidgets('hide: the deck goes out of sight and comes back over its '
+        'duration', (tester) async {
+      late Animation<double> hidden;
+      final controller = timed(
+        const MotionDurations(hide: ms100),
+        hideMotion: DeckHideMotion(
+          builder: (context, view, deck) {
+            hidden = view.hidden;
+            return deck;
+          },
+        ),
+      );
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Saved');
+      await tester.pumpAndSettle();
+
+      controller.zone.hide();
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(hidden.value, closeTo(half, 0.001));
+      await tester.pump(ms50);
+      expect(hidden.value, 1);
+
+      controller.zone.reveal();
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(hidden.value, closeTo(1 - half, 0.001));
+      await tester.pump(ms50);
+      expect(hidden.value, 0);
+    });
+
+    testWidgets('enter: the empty card fades in and out over the enter '
+        'duration', (tester) async {
+      late Animation<double> shown;
+      final controller = SonnerController(
+        config: SonnerConfig(
+          duration: null,
+          motionDurations: const MotionDurations(enter: ms100),
+          zoneEmpty: ZoneEmpty(
+            builder: (context, view) {
+              shown = view.shown;
+              return const SizedBox(height: 40);
+            },
+          ),
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+
+      controller.zone.open();
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(shown.value, closeTo(half, 0.001));
+      await tester.pump(ms50);
+      expect(shown.value, 1);
+
+      controller.zone.close();
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(shown.value, closeTo(1 - half, 0.001));
+      await tester.pump(ms50);
+      expect(shown.value, 0);
+    });
+
+    group('zero puts each motion at its end in one frame', () {
+      testWidgets('enter, and the toast behind', (tester) async {
+        final controller = timed(zero);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Older');
+        await tester.pump();
+        expect(presenceOf(tester, 'Older'), 1);
+        controller.show('Newer');
+        await tester.pump();
+        expect(presenceOf(tester, 'Newer'), 1);
+        expect(boxOf(tester, 'Older').bottom, 562);
+        expect(tester.takeException(), isNull);
+      });
+
+      for (final durations in [const MotionDurations(), zero]) {
+        final name = durations == zero ? 'zero' : 'the default';
+        testWidgets('a toast entered over $name takes the pointer: on an open '
+            'zone a click in the gap between two toasts is the deck’s', (
+          tester,
+        ) async {
+          final controller = timed(durations);
+          var app = 0;
+          await tester.pumpWidget(
+            MaterialApp(
+              builder: (context, child) =>
+                  SonnerHost(controller: controller, child: child!),
+              home: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => app++,
+                child: const SizedBox.expand(),
+              ),
+            ),
+          );
+          controller.zone.open();
+          controller.show('Older');
+          controller.show('Newer');
+          await tester.pumpAndSettle();
+          final older = toastRect(tester, 'Older');
+          final newer = toastRect(tester, 'Newer');
+          expect(newer.top, greaterThan(older.bottom), reason: 'fanned out');
+
+          await tester.tapAt(
+            Offset(newer.center.dx, (older.bottom + newer.top) / 2),
+            kind: PointerDeviceKind.mouse,
+          );
+          await tester.pumpAndSettle();
+          expect(app, 0);
+        });
+      }
+
+      testWidgets('exit, dismissed and swiped', (tester) async {
+        final controller = timed(zero);
+        await tester.pumpWidget(app(controller: controller));
+        final one = controller.show('One');
+        controller.show('Two');
+        await tester.pumpAndSettle();
+        controller.dismiss(one);
+        await tester.pump();
+        expect(find.text('One'), findsNothing);
+
+        await swipe(tester, 'Two', const Offset(60, 0));
+        expect(find.text('Two'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('expand and collapse', (tester) async {
+        final controller = timed(zero);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Behind');
+        controller.show('Front');
+        await tester.pumpAndSettle();
+        final expanded = 576 - boxOf(tester, 'Front').height - 14;
+
+        final mouse = await mouseAt(tester, boxOf(tester, 'Front').center);
+        await tester.pump();
+        expect(boxOf(tester, 'Behind').bottom, moreOrLessEquals(expanded));
+        await mouse.moveTo(const Offset(40, 40));
+        await tester.pump();
+        expect(boxOf(tester, 'Behind').bottom, 562);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('glide', (tester) async {
+        final controller = timed(zero);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Front');
+        await tester.pumpAndSettle();
+
+        controller.config = controller.config.copyWith(
+          offset: const EdgeInsets.all(80),
+        );
+        await tester.pump();
+        expect(boxOf(tester, 'Front').bottom, 520);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('spring back', (tester) async {
+        final controller = timed(zero);
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Saved');
+        await tester.pumpAndSettle();
+        final at = toastRect(tester, 'Saved');
+
+        final gesture = await tester.startGesture(
+          at.center,
+          kind: PointerDeviceKind.mouse,
+        );
+        await tester.pump();
+        await gesture.moveBy(
+          const Offset(0, 30),
+          timeStamp: const Duration(seconds: 1),
+        );
+        await tester.pump();
+        expect(toastRect(tester, 'Saved'), isNot(at), reason: 'dragged');
+        await gesture.up();
+        await tester.pump();
+        expect(toastRect(tester, 'Saved'), at);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('hide and reveal', (tester) async {
+        late Animation<double> hidden;
+        final controller = timed(
+          zero,
+          hideMotion: DeckHideMotion(
+            builder: (context, view, deck) {
+              hidden = view.hidden;
+              return deck;
+            },
+          ),
+        );
+        await tester.pumpWidget(app(controller: controller));
+        controller.show('Saved');
+        await tester.pumpAndSettle();
+
+        controller.zone.hide();
+        await tester.pump();
+        expect(hidden.value, 1);
+        controller.zone.reveal();
+        await tester.pump();
+        expect(hidden.value, 0);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    testWidgets('a toast made not dismissible mid-drag, in a build that also '
+        'assigns another spring back, springs back over the new one', (
+      tester,
+    ) async {
+      late ToastId id;
+      await tester.pumpWidget(
+        rebuildingApp(() {
+          controller.update(id, dismissible: false);
+          controller.config = controller.config.copyWith(
+            motionDurations: const MotionDurations(springBack: ms100),
+          );
+        }),
+      );
+      id = controller.show('Saved');
+      await tester.pumpAndSettle();
+      final at = toastRect(tester, 'Saved');
+      final gesture = await tester.startGesture(
+        at.center,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(
+        const Offset(0, 30),
+        timeStamp: const Duration(seconds: 1),
+      );
+      await tester.pump();
+      expect(toastRect(tester, 'Saved'), isNot(at), reason: 'dragged');
+
+      rebuild();
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 101));
+      expect(toastRect(tester, 'Saved'), at);
+      await gesture.up();
+    });
+
+    testWidgets('a toast entering as a config with another enter duration is '
+        'assigned finishes on the one it started with, and the next toast '
+        'shown takes the new one', (tester) async {
+      final controller = timed(const MotionDurations());
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('First');
+      await tester.pump();
+      await tester.pump(ms100);
+
+      controller.config = controller.config.copyWith(
+        motionDurations: const MotionDurations(enter: ms100),
+      );
+      await tester.pump(ms100);
+      expect(
+        presenceOf(tester, 'First'),
+        closeTo(half, 0.001),
+        reason: 'halfway through its 400 ms',
+      );
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(presenceOf(tester, 'First'), 1);
+
+      controller.show('Second');
+      await tester.pump();
+      await tester.pump(ms50);
+      expect(presenceOf(tester, 'Second'), closeTo(half, 0.001));
+      await tester.pump(ms50);
+      expect(presenceOf(tester, 'Second'), 1);
+    });
+
+    testWidgets('a toast brought back from its exit, by swapping back to its '
+        'controller, enters again over the enter duration that controller '
+        'has now', (tester) async {
+      final controller = timed(const MotionDurations());
+      final other = timed(const MotionDurations());
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Kept');
+      await tester.pumpAndSettle();
+      controller.config = controller.config.copyWith(
+        motionDurations: const MotionDurations(enter: ms100),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.pumpWidget(app(controller: other));
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(
+        presenceOf(tester, 'Kept'),
+        inExclusiveRange(0, 0.5),
+        reason: 'most of the way out',
+      );
+      await tester.pumpWidget(app(controller: controller));
+      await tester.pump(const Duration(milliseconds: 101));
+      expect(presenceOf(tester, 'Kept'), 1);
+    });
+  });
 }
 
 Matcher _sizeCloseTo(Size expected) => predicate<Size>(

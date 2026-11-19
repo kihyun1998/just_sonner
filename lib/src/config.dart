@@ -660,6 +660,76 @@ class ContentChange {
   int get hashCode => Object.hash(cardOpacity, duration, keep);
 }
 
+/// How long each of the deck's motions takes. A motion already running keeps
+/// the duration it started with; the next one started reads the new value.
+///
+/// Zero puts a motion at its end in one frame. None can be negative.
+@immutable
+class MotionDurations {
+  const MotionDurations({
+    this.enter = const Duration(milliseconds: 400),
+    this.exit = const Duration(milliseconds: 200),
+    this.expand = const Duration(milliseconds: 400),
+    this.glide = const Duration(milliseconds: 400),
+    this.springBack = const Duration(milliseconds: 400),
+    this.hide = const Duration(milliseconds: 300),
+  });
+
+  /// A toast sliding and fading in, the way [SonnerConfig.enterMotion] says;
+  /// the toasts behind it moving on the same clock; and the [ZoneEmpty] card
+  /// fading in and out.
+  final Duration enter;
+
+  /// A toast leaving, dismissed, run out or swiped away, and the toasts behind
+  /// it closing the gap on the same clock. The toast is removed at its end.
+  final Duration exit;
+
+  /// The deck fanning out and collapsing; the toasts beyond the window fading
+  /// in and out with it; and the deck easing back to its edge from where it
+  /// was scrolled as the pointer leaves.
+  final Duration expand;
+
+  /// The toasts moving to where an assigned config puts them. An assignment
+  /// glides over the duration of the config being assigned.
+  final Duration glide;
+
+  /// A toast let go short of a swipe easing back to its place.
+  final Duration springBack;
+
+  /// The deck going out of sight as the zone is hidden, and coming back.
+  final Duration hide;
+
+  /// A copy with the fields given changed.
+  MotionDurations copyWith({
+    Duration? enter,
+    Duration? exit,
+    Duration? expand,
+    Duration? glide,
+    Duration? springBack,
+    Duration? hide,
+  }) => MotionDurations(
+    enter: enter ?? this.enter,
+    exit: exit ?? this.exit,
+    expand: expand ?? this.expand,
+    glide: glide ?? this.glide,
+    springBack: springBack ?? this.springBack,
+    hide: hide ?? this.hide,
+  );
+
+  @override
+  bool operator ==(Object other) =>
+      other is MotionDurations &&
+      other.enter == enter &&
+      other.exit == exit &&
+      other.expand == expand &&
+      other.glide == glide &&
+      other.springBack == springBack &&
+      other.hide == hide;
+
+  @override
+  int get hashCode => Object.hash(enter, exit, expand, glide, springBack, hide);
+}
+
 /// The value of [SonnerConfig.configDuration].
 final class _ConfigDuration extends Duration {
   const _ConfigDuration();
@@ -712,6 +782,7 @@ class SonnerConfig {
     this.wheelMotion = const WheelMotion.spring(),
     this.enterMotion = ToastEnterMotion.edge,
     this.contentChange = const ContentChange(),
+    this.motionDurations = const MotionDurations(),
   });
 
   final SonnerPosition position;
@@ -825,6 +896,9 @@ class SonnerConfig {
   /// How a builder's content changes on an update or a replace.
   final ContentChange contentChange;
 
+  /// How long each of the deck's motions takes.
+  final MotionDurations motionDurations;
+
   /// A copy with the fields given changed.
   ///
   /// [duration], [swipeDirections], [builder] and [timeLeft] are given as
@@ -857,6 +931,7 @@ class SonnerConfig {
     WheelMotion? wheelMotion,
     ToastEnterMotion? enterMotion,
     ContentChange? contentChange,
+    MotionDurations? motionDurations,
   }) => SonnerConfig(
     position: position ?? this.position,
     width: width ?? this.width,
@@ -883,6 +958,7 @@ class SonnerConfig {
     wheelMotion: wheelMotion ?? this.wheelMotion,
     enterMotion: enterMotion ?? this.enterMotion,
     contentChange: contentChange ?? this.contentChange,
+    motionDurations: motionDurations ?? this.motionDurations,
   );
 
   @override
@@ -910,7 +986,8 @@ class SonnerConfig {
       other.zoneEmpty == zoneEmpty &&
       other.wheelMotion == wheelMotion &&
       other.enterMotion == enterMotion &&
-      other.contentChange == contentChange;
+      other.contentChange == contentChange &&
+      other.motionDurations == motionDurations;
 
   @override
   int get hashCode => Object.hashAll([
@@ -937,5 +1014,6 @@ class SonnerConfig {
     wheelMotion,
     enterMotion,
     contentChange,
+    motionDurations,
   ]);
 }
