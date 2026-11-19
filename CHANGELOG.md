@@ -1,4 +1,4 @@
-## Unreleased
+## 0.7.0
 
 - **The dismiss-all control can show with one toast** (#163). `DeckDismissAll(minCount: 1)`
   shows it, its look or your `builder`, as soon as one toast the user may dismiss is up, so the
