@@ -13,7 +13,7 @@ the empty card an open one draws, and `toast.zone`, the app's handle on all of i
   supersedes.
 - [spec §12](../../spec.md#12-decision-record) — a banner not exposed to an app reading
   `count` (#122, maintainer); no exit out of sight (#123, maintainer), decided from the hide
-  value (derived).
+  value (derived); widened to a toast that leaves while frames are disabled (#174, maintainer).
 - [spec §6](../../spec.md#6-layout-and-animation), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -48,7 +48,9 @@ toast if `reveal()`, `open()` or a banner brought the deck back inside its exit
 100 ms of a toast already gone, 6,838 px at its peak against 450 px for the empty app (#123).
 The test is the hide value the deck is drawn by, because a listener that runs before the
 host's calls `reveal()` first, and the state and the host's flag both then read shown with
-nothing yet on screen.
+nothing yet on screen. The same rule holds for a toast that leaves while the app draws no
+frames, the whole deck out of sight with the zone shown: no exit, read from `framesEnabled`
+(#174, [Toast lifetime](toast-lifetime.md)).
 
 Hiding sets the hide target **before** it lets go of the pointer. Letting go notifies through
 `held`, and a listener can bring the deck back in that notification with `reveal()`, `open()` or

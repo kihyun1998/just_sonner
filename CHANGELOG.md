@@ -8,6 +8,11 @@
   minimised, which a hold could not do. A config assigned while the app is in a state applies at
   once. `resumed` in the set fails an assert. The pointer, a drag, `ToastView.holdTimer()` and
   `holdTimers()` pause the timers whatever the set holds.
+- **Toasts that leave while the app is hidden no longer play their exits together when it comes
+  back** (#174). A toast dismissed while the app is `hidden`, `paused` or `detached`, by your
+  `dismiss` or `dismissAll` or by its timer under a `pauseTimersOn` without that state, is gone at once with no
+  exit, as one leaving a hidden deck already was. A toast shown then still enters when the app
+  comes back.
 
 ## 0.8.0
 
