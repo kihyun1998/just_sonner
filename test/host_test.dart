@@ -6037,9 +6037,11 @@ void main() {
       var done = false;
       unawaited(old.dismiss().then((_) => done = true));
       await tester.pump();
-      expect(toastsOf(controller).map((r) => r.state.title), [
-        'New',
-      ], reason: 'the id is the new toast\'s now');
+      expect(
+        toastsOf(controller).map((r) => r.state.title),
+        ['New'],
+        reason: 'the id is the new toast\'s now',
+      );
       expect(done, isFalse, reason: 'the old one is still leaving');
 
       await tester.pumpAndSettle();
@@ -6794,10 +6796,11 @@ void main() {
     testWidgets('turning keep on or off changes no content: nothing fades and '
         'the element stays', (tester) async {
       var inits = 0;
-      ToastBuilder counted() => (context, toast) => _InitCounter(
-        onInit: () => inits++,
-        child: Text('Own ${toast.state.title}'),
-      );
+      ToastBuilder counted() =>
+          (context, toast) => _InitCounter(
+            onInit: () => inits++,
+            child: Text('Own ${toast.state.title}'),
+          );
       await tester.pumpWidget(app(controller: controller));
       controller.show('Loading', builder: counted());
       await tester.pumpAndSettle();
@@ -11516,9 +11519,7 @@ void main() {
       });
     }
 
-    testWidgets('a header reads one toast as one notification', (
-      tester,
-    ) async {
+    testWidgets('a header reads one toast as one notification', (tester) async {
       final controller = deckWith(
         control: const DeckHideControl(look: DeckHideLook.header),
       );
@@ -11665,9 +11666,11 @@ void main() {
 
         await tester.tap(find.text('Clear all'));
         await settle(tester);
-        expect(toastsOf(controller).map((toast) => toast.state.title), [
-          'Saving',
-        ], reason: 'the dismiss-all control still leaves what stays');
+        expect(
+          toastsOf(controller).map((toast) => toast.state.title),
+          ['Saving'],
+          reason: 'the dismiss-all control still leaves what stays',
+        );
         expect((controller.zone.state == ZoneState.hidden), isFalse);
       });
     }
