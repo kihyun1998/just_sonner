@@ -802,9 +802,9 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   /// Runs the exit over the full exit duration from wherever the enter got
-  /// to, then removes the slot. A slot leaving a deck wholly out of sight, or
-  /// beyond the window with nothing drawing it, is removed at once, with no
-  /// exit.
+  /// to, then removes the slot. A slot leaving a deck wholly out of sight,
+  /// beyond the window with nothing drawing it, or while frames are disabled,
+  /// is removed at once, with no exit.
   void _exit(_Slot slot) {
     slot.exiting = true;
     slot.timeLeftFollower.stop(slot.record);
@@ -825,7 +825,8 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     // and one nothing is drawing has nothing to wait for.
     if (slot.controller.status == AnimationStatus.dismissed ||
         _hide.value >= 1 ||
-        slot.hidden) {
+        slot.hidden ||
+        !SchedulerBinding.instance.framesEnabled) {
       onExit(AnimationStatus.dismissed);
       return;
     }

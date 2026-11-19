@@ -25,6 +25,8 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — `SonnerConfig.pauseTimersOn` naming the lifecycle
   states that pause, reversing #149's "no config field" (#172, maintainer for the field, its name
   and the default); how the controller reads it (derived).
+- [spec §12](../../spec.md#12-decision-record) — no exit for a toast that leaves while frames are
+  disabled, enters kept (#174, maintainer); decided from `framesEnabled` as it leaves (derived).
 - [spec §12](../../spec.md#12-decision-record) — `dismiss` and `dismissAll` asserting at entry on
   a disposed controller, a `promise` state due after `dispose` dropped with no report, and the
   other direct calls left assert-only (#155, maintainer).
@@ -106,6 +108,15 @@ gone, about 7,700 px at the peak (#126). The test is `_Slot.hidden`, what the la
 offstage, and not the toast's place in the window. A toast crossing the window's edge, one a lowered window is
 fading out and one leaving a deck fanned out or folding are all beyond the window and on screen.
 
+A toast that leaves while the app draws no frames has **no exit** either, whichever way it left
+(#174). An exit started then gets no start time for its ticker, so every such exit played at once
+on restore: cards drawn per 50 ms after restore `[3, 3, 3, 3, 3, 0, 0, 0]`. The test is
+`SchedulerBinding.framesEnabled` as the toast leaves, not the controller's lifecycle pause, which
+`pauseTimersOn` can leave off while the app is hidden. An exit already running as the app hides is
+left alone; it is over on the first frame after restore, since its ticker started before. A toast
+that arrives then keeps its enter, which plays from the first frame after restore, several
+together: the maintainer chose that over arriving already in place.
+
 ## Code
 `controller.dart` — SonnerController, TimerHold, holdTimersFor, releaseTimersFor
 `host.dart` — ToastLayer
@@ -144,10 +155,6 @@ states outright, so anything resting on them carries forward as needing confirma
   dropped (#155).
 - **Not covered**: a `TimerHold` the app never releases keeps every timer paused for the
   controller's life, and nothing reports it (#149).
-- **Not covered**: toasts that leave while the app is hidden, by their timer under an empty
-  `pauseTimersOn` or by the app's `dismiss`/`dismissAll` after the scheduled frame, have no frame
-  to run their exit, so restoring the window plays every drawn toast's exit at once: three cards
-  over 200 ms in a widget test, not run on a desktop engine (#172).
 - **Open**: a toast already inside the window at a window fade of exactly 0 is not `_Slot.hidden`,
   so it runs an exit that is drawn if the deck fans out. With a window of 1, dismissing the front
   toast, the one behind it on exactly the next frame, then `open()`: 12 frames on stage. A frame

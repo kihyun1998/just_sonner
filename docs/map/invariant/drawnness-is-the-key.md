@@ -21,7 +21,7 @@ could have carried this fact.
 
 ## Territories it holds in
 - [Deck reach and cut](../territory/deck-reach-and-cut.md) — both ends of the cut are reported from drawn positions.
-- [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn; a toast beyond the window has an exit only if it is drawn.
+- [Toast lifetime](../territory/toast-lifetime.md) — frames run for the time left only while a counting toast is drawn; a toast beyond the window has an exit only if it is drawn, and none has one while the app draws no frames.
 - [Default look](../territory/default-look.md) — the time left stands still while nothing draws it, and comes back on the number.
 - [Zone](../territory/zone.md) — a hidden zone draws no deck unless a banner is up, and the frame gate reads that; whether a leaving toast has an exit reads the hide value the deck is drawn by.
 
@@ -46,8 +46,12 @@ which is why it survives a test suite that pumps to completion.
 - **#126** — whether a toast beyond the window runs an exit. Its place in the window says beyond
   for a toast still fading out at the edge and for one on a fanned-out deck, so the place would
   take their exit; `_Slot.hidden` does not.
+- **#174** — whether a toast leaving while the app is hidden runs an exit. The controller's
+  lifecycle pause reads "not drawn" only under the default `pauseTimersOn`; with an empty set it
+  is off while nothing is drawn, so the exits waited and played together on restore.
+  `framesEnabled` says whether anything can be drawn.
 
-Five; the third reused the rule rather than rediscovering it, which is what this note is
+Six; the third reused the rule rather than rediscovering it, which is what this note is
 for.
 
 ## Where it will recur

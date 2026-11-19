@@ -7932,6 +7932,119 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('toasts dismissed while the app is hidden have no exit to '
+        'play on restore', (tester) async {
+      await tester.pumpWidget(app(controller: controller));
+      for (final title in ['One', 'Two', 'Three']) {
+        controller.show(title);
+      }
+      await tester.pumpAndSettle();
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.binding.framesEnabled, isFalse);
+      controller.dismissAll();
+      await tester.pump(const Duration(seconds: 2));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      for (final title in ['One', 'Two', 'Three']) {
+        expect(find.text(title), findsNothing);
+      }
+    });
+
+    testWidgets('a toast that runs out while the app is hidden under an empty '
+        'pauseTimersOn has no exit to play on restore', (tester) async {
+      final controller = SonnerController(
+        config: const SonnerConfig(
+          duration: Duration(seconds: 1),
+          pauseTimersOn: {},
+        ),
+      );
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(app(controller: controller));
+      controller.show('Kept', duration: null);
+      final id = controller.show('Saved');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.binding.framesEnabled, isFalse);
+      await tester.pump(const Duration(milliseconds: 700));
+      expect(controller.isAlive(id), isFalse);
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(find.text('Saved'), findsNothing);
+      final kept = toastRect(tester, 'Kept');
+      await tester.pumpAndSettle();
+      expect(toastRect(tester, 'Kept'), kept, reason: 'already at its place');
+    });
+
+    testWidgets('a toast shown while the app is hidden enters on restore', (
+      tester,
+    ) async {
+      await tester.pumpWidget(app(controller: controller));
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(tester.binding.framesEnabled, isFalse);
+      ToastView? view;
+      controller.show(
+        'Saved',
+        action: (context, t) {
+          view = t;
+          return const SizedBox();
+        },
+      );
+      await tester.pump(const Duration(seconds: 2));
+
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(view!.animation.value, lessThan(1));
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(view!.animation.value, inExclusiveRange(0, 1));
+      await tester.pump(const MotionDurations().enter);
+      expect(view!.animation.value, 1);
+    });
+
+    testWidgets(
+      'an exit begun before the app hides is over on the first frame after '
+      'restore',
+      (tester) async {
+        await tester.pumpWidget(app(controller: controller));
+        late ToastView view;
+        final id = controller.show(
+          'Saved',
+          action: (context, t) {
+            view = t;
+            return const SizedBox();
+          },
+        );
+        await tester.pumpAndSettle();
+        controller.dismiss(id);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+
+        tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+        await tester.pump(const Duration(milliseconds: 16));
+        expect(tester.binding.framesEnabled, isFalse);
+        final left = view.animation.value;
+        expect(left, inExclusiveRange(0, 1));
+        await tester.pump(const Duration(seconds: 2));
+        expect(find.text('Saved'), findsOneWidget);
+
+        expect(view.animation.value, left, reason: 'no frames ran');
+
+        tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        );
+        await tester.pump();
+        expect(view.animation.status, AnimationStatus.dismissed);
+        expect(find.text('Saved'), findsNothing, reason: 'its time ran out');
+      },
+    );
+
     group('pauseTimersOn', () {
       SonnerController counting(Set<AppLifecycleState> pauseTimersOn) {
         final controller = SonnerController(
