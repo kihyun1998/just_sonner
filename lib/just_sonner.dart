@@ -15,6 +15,7 @@ export 'src/config.dart'
         DeckHideMotion,
         DeckHideMotionLook,
         DeckScrollbarPlacement,
+        MotionDurations,
         SonnerConfig,
         SonnerPosition,
         SwipeDirection,

@@ -12,14 +12,15 @@ how far the deck reaches, which is [Deck reach and cut](deck-reach-and-cut.md).
   scales, on a toast's position moving only toward its place, and on a toast behind a
   shorter front being laid out at the height it is drawn at.
 - [spec §12](../../spec.md#12-decision-record) — `enterMotion` (#141).
+- [spec §12](../../spec.md#12-decision-record) — `motionDurations` (#162).
 - [spec §6](../../spec.md#6-layout-and-animation) — Collapsed and Expanded, and the Motion table.
 
 ## Design model
 A toast's place is counted from the **presence** of the toasts in front of it rather
 than from its index, so offsets, scales, the window fade and drawn heights all move
 with a toast entering or leaving. A position only ever moves *toward* its place and
-stops there: a toast entering over 400 ms and one leaving over 200 ms run on different
-clocks, and letting positions move both ways would carry the deck forward and back for
+stops there: a toast entering over `motionDurations.enter` (400 ms by default) and one
+leaving over `motionDurations.exit` (200 ms) run on different clocks, and letting positions move both ways would carry the deck forward and back for
 no net change.
 
 A toast is laid out at its **resting place** throughout its enter and exit; the slide is a

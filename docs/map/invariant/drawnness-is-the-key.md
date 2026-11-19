@@ -7,7 +7,8 @@ look unrelated: what is cut is decided from the drawn positions, and what schedu
 frames is decided from drawnness.
 
 ## Why it is cross-cutting
-The deck's state changes over 400 ms while the pointer leaves, and during that time a
+The deck's state changes over the collapse (`motionDurations.expand`, 400 ms by default)
+while the pointer leaves, and during that time a
 toast can be outside the window, still fanned out, and still on screen. Every question
 of the form *"does this toast still count?"* has to be answered from where it is drawn,
 because every other proxy — the scroll overflowing, the window index, the expansion flag
@@ -52,5 +53,5 @@ for.
 ## Where it will recur
 Any new behaviour that asks *"is this toast still in the deck?"* — a semantics
 decision, a new control's visibility, an announcement, a second cut. The test: **would
-this answer change during the 400 ms after the pointer leaves?** If yes, it must read
+this answer change during the collapse after the pointer leaves?** If yes, it must read
 the drawn position and not the overflow, the index or the expansion flag.

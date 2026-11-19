@@ -42,7 +42,8 @@ not whenever it reads zero. `hide()` notifies too, so a listener testing
 `close()` back to hidden.
 
 A toast that leaves a deck wholly out of sight has **no exit**. Running one would draw the
-toast if `reveal()`, `open()` or a banner brought the deck back inside its 200 ms: about
+toast if `reveal()`, `open()` or a banner brought the deck back inside its exit
+(`motionDurations.exit`, 200 ms by default): about
 100 ms of a toast already gone, 6,838 px at its peak against 450 px for the empty app (#123).
 The test is the hide value the deck is drawn by, because a listener that runs before the
 host's calls `reveal()` first, and the state and the host's flag both then read shown with
@@ -97,5 +98,5 @@ records no equivalent. Every value here was settled in #97's design session.
   before it handles the old controller's toasts, so they run an exit that is drawn: 13 frames,
   19,274 px at its peak, with #123's rule on or off.
 - **Open**: an exit begun part way through hiding can be drawn if the deck comes back on it.
-  Dismissed 250 ms into the 300 ms hide and revealed at 310 ms: 2 frames, 1,854 px at its peak;
+  Dismissed 250 ms into the default 300 ms hide and revealed at 310 ms: 2 frames, 1,854 px at its peak;
   dismissed 100 ms in: nothing. Measured with #123's rule on and off, the same.

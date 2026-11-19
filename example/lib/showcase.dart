@@ -539,6 +539,7 @@ class _ShowcasePageState extends State<ShowcasePage> {
         ),
       ],
     ),
+    _motionDurationsOptions(c),
     _Options(
       title: 'Look',
       children: [
@@ -689,6 +690,41 @@ class _ShowcasePageState extends State<ShowcasePage> {
     ),
     'an hourglass, which settles': const Icon(Icons.hourglass_top),
   };
+
+  Widget _motionDurationsOptions(SonnerConfig c) {
+    final d = c.motionDurations;
+    _Slide slide(
+      String label,
+      Duration value,
+      MotionDurations Function(Duration value) set,
+    ) => _Slide(
+      label: label,
+      value: value.inMilliseconds.toDouble(),
+      min: 0,
+      max: 1500,
+      divisions: 30,
+      format: (value) => '${value.round()} ms',
+      onChanged: (value) => _config = c.copyWith(
+        motionDurations: set(Duration(milliseconds: value.round())),
+      ),
+    );
+    return _Options(
+      title: 'Motion durations',
+      subtitle: 'How long each of the deck’s motions takes',
+      children: [
+        slide('enter', d.enter, (value) => d.copyWith(enter: value)),
+        slide('exit', d.exit, (value) => d.copyWith(exit: value)),
+        slide('expand', d.expand, (value) => d.copyWith(expand: value)),
+        slide('glide', d.glide, (value) => d.copyWith(glide: value)),
+        slide(
+          'springBack',
+          d.springBack,
+          (value) => d.copyWith(springBack: value),
+        ),
+        slide('hide', d.hide, (value) => d.copyWith(hide: value)),
+      ],
+    );
+  }
 
   Widget _timeLeftOptions(SonnerConfig c) {
     final left = c.timeLeft;

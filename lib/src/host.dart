@@ -71,14 +71,6 @@ class ToastLayer extends StatefulWidget {
 }
 
 class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
-  static const _enterDuration = Duration(milliseconds: 400);
-  static const _exitDuration = Duration(milliseconds: 200);
-  static const _expandDuration = Duration(milliseconds: 400);
-  static const _glideDuration = Duration(milliseconds: 400);
-
-  /// How long a toast let go of short of the threshold takes to come back.
-  static const _springDuration = Duration(milliseconds: 400);
-
   /// A swipe takes pointer drags and never a trackpad pan, which scrolls the
   /// expanded deck instead.
   static const _swipeDevices = {
@@ -198,6 +190,10 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// assigned one can be told apart from any other change to the toasts.
   late SonnerConfig _config;
 
+  /// How long each motion started now takes: the controller's config as it
+  /// is now, which may be newer than [_config] until the deck follows it.
+  MotionDurations get _motion => _controller.config.motionDurations;
+
   /// How far the toasts are on their way from where they were drawn to where
   /// the config assigned last puts them, from 0 to 1.
   late final _Eased _glide = _Eased(this, 1);
@@ -232,8 +228,6 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// The reach the built-in slides draw the deck with, set as the deck is
   /// built and again as it is laid out.
   final _drawnReach = ValueNotifier<HideReach>((edge: 0, left: 0, right: 0));
-
-  static const _hideDuration = Duration(milliseconds: 300);
 
   /// How far the empty card is drawn, from 0 gone to 1 in full.
   late final _Eased _empty = _Eased(this, 0);
@@ -337,7 +331,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       // drag ends here instead, and the toast goes back to its place.
       if (slot.drag != null && !slot.record.state.dismissibleNow) {
         slot.endDrag();
-        slot.swipe.springBack(_springDuration);
+        slot.swipe.springBack(_motion.springBack);
       }
     }
     _followConfig();
@@ -367,7 +361,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   /// swipe under way is called off — its toast is no longer under the hand
   /// dragging it.
   void _followZone() {
-    _empty.retarget(_emptyTarget, _enterDuration);
+    _empty.retarget(_emptyTarget, _motion.enter);
     final hide = _hiddenNow;
     if (hide == _hiddenShown) return;
     _hiddenShown = hide;
@@ -376,17 +370,17 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       _turnReach = _drawnReach.value;
       _turnedBackAt = _hide.value;
       _turnedEmpty = _deck.isEmpty;
-      _hide.retarget(0, _hideDuration);
+      _hide.retarget(0, _motion.hide);
       return;
     }
     final reach = _reachOf(_deck);
     _turnReach = _hide.value > 0 ? _drawnReach.value : reach;
     _hiddenEdgeReach = reach.edge;
-    _hide.retarget(1, _hideDuration);
+    _hide.retarget(1, _motion.hide);
     for (final slot in _slots) {
       if (slot.drag == null) continue;
       slot.endDrag();
-      slot.swipe.springBack(_springDuration);
+      slot.swipe.springBack(_motion.springBack);
     }
     final was = _interacting;
     _pressed
@@ -453,7 +447,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     _glide
       ..jump(0)
-      ..retarget(1, _glideDuration);
+      ..retarget(1, _motion.glide);
   }
 
   /// Puts the deck at the edge, with nothing kept in view.
@@ -607,7 +601,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
   }
 
   /// Puts the scroll back at the edge, and eases the deck there over
-  /// [_expandDuration] from where it was scrolled to.
+  /// the expand duration from where it was scrolled to.
   void _unscrollDeck() {
     _anchor = null;
     if (!_scroll.hasClients) return;
@@ -617,18 +611,18 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     _scroll.jumpTo(0);
     _unscroll
       ..jump(0)
-      ..retarget(1, _expandDuration);
+      ..retarget(1, _motion.expand);
   }
 
   /// How far the deck is drawn short of its scroll, on the way to the edge.
   double get _unscrolled => _unscrollFrom * (1 - _unscroll.value);
 
   /// Eases the deck from wherever it is toward expanded or collapsed, and the
-  /// toasts beyond the window toward drawn or hidden, over [_expandDuration],
+  /// toasts beyond the window toward drawn or hidden, over the expand duration,
   /// when where each is headed has changed.
   void _retarget() {
-    _expand.retarget(_expandTarget, _expandDuration);
-    _reveal.retarget(_revealTarget, _expandDuration);
+    _expand.retarget(_expandTarget, _motion.expand);
+    _reveal.retarget(_revealTarget, _motion.expand);
   }
 
   /// The recognizer that swipes [slot] away.
@@ -671,7 +665,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     slot.endDrag();
     final out = drag.outcome;
     if (out == null) {
-      slot.swipe.springBack(_springDuration);
+      slot.swipe.springBack(_motion.springBack);
       return;
     }
     slot.swipedOut = out;
@@ -771,17 +765,19 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
       slot.controller.removeStatusListener(onExit);
       slot.onExit = null;
     }
-    slot.controller.forward();
+    slot.controller
+      ..duration = _motion.enter
+      ..forward();
   }
 
   _Slot _enter(ToastRecord record) {
     final controller = AnimationController(
       vsync: this,
-      duration: _enterDuration,
+      duration: _motion.enter,
     );
     final slot = _Slot(
       record,
-      controller..forward(),
+      controller,
       AnimationController(vsync: this),
       _Sprung(this),
       _controller,
@@ -795,10 +791,11 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
         slot.owner.dismiss(record.id);
       }
     });
+    controller.forward();
     return slot;
   }
 
-  /// Runs the exit over the full [_exitDuration] from wherever the enter got
+  /// Runs the exit over the full exit duration from wherever the enter got
   /// to, then removes the slot. A slot leaving a deck wholly out of sight, or
   /// beyond the window with nothing drawing it, is removed at once, with no
   /// exit.
@@ -828,7 +825,7 @@ class _ToastLayerState extends State<ToastLayer> with TickerProviderStateMixin {
     }
     slot.controller
       ..addStatusListener(onExit)
-      ..animateBack(0, duration: _exitDuration);
+      ..animateBack(0, duration: _motion.exit);
   }
 
   @override
@@ -1672,7 +1669,8 @@ class _Driven extends Animation<double>
   void didUnregisterListener() {}
 }
 
-/// Runs from 0 to 1 over [duration], at a constant rate.
+/// Runs from 0 to 1 over [duration], at a constant rate. A zero duration is
+/// at 1 from the start.
 class _Progress extends Simulation {
   _Progress(Duration duration)
     : _seconds = duration.inMicroseconds / Duration.microsecondsPerSecond;
@@ -1680,7 +1678,8 @@ class _Progress extends Simulation {
   final double _seconds;
 
   @override
-  double x(double time) => (time / _seconds).clamp(0.0, 1.0);
+  double x(double time) =>
+      _seconds == 0 ? 1 : (time / _seconds).clamp(0.0, 1.0);
 
   @override
   double dx(double time) => time < _seconds ? 1 / _seconds : 0;

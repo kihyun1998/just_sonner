@@ -89,7 +89,8 @@ after `dispose` is dropped. A screen closed mid-request is the ordinary flow, an
 there failed an app's widget test; `FutureBuilder` drops a late result the same way (#155).
 
 A toast beyond the window with nothing drawing it has **no exit**. Running one would draw it if
-`open()` or a pointer fanned the deck out inside its 200 ms: 9 to 11 frames of a toast already
+`open()` or a pointer fanned the deck out inside its exit (`motionDurations.exit`, 200 ms by
+default): 9 to 11 frames of a toast already
 gone, about 7,700 px at the peak (#126). The test is `_Slot.hidden`, what the last build kept
 offstage, and not the toast's place in the window. A toast crossing the window's edge, one a lowered window is
 fading out and one leaving a deck fanned out or folding are all beyond the window and on screen.
