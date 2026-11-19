@@ -13,7 +13,10 @@ happens when…" cheaply, and it does not set this package's values.
 | emilkowalski/sonner | how it works | `research/sonner-values.md` on the `research/sonner-values` branch first. It is **summarized** but line-linked, so settle a question by following the link. Otherwise the source tree, raw. Say which one you used | example: where the spec is silent, follow sonner and record the divergence |
 | flash (`FlashBar`, `FlashController`) | how it works | its source tree, raw | binding for the §1 adapter only |
 | Flutter SDK (Overlay, animation) | how it works | local SDK source, raw | binding |
+| Flutter engine (desktop lifecycle, raster) | how it works | the local SDK's `engine/src/flutter`, raw | binding |
+| flutter_smooth_wheel_scroll | how it works | its source in the pub cache, raw | binding: a dependency, and `WheelMotion` is re-exported |
 | The example app (`example/`) | how it looks and moves | running it, as `example/README.md` says | binding for §9 and any "does this read right" question. Sonner's equivalent never closes one |
+| A profile build on the maintainer's Windows GPU | what a frame costs | a throwaway probe app, run only once the maintainer has agreed when, since it takes the screen | binding for any frame-cost claim; flutter_test's rasterizer shows structure, not cost |
 
 ## When the spec and a reference differ
 
