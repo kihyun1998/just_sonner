@@ -5,7 +5,13 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/controller.dart'
-    show holdDeck, holdTimersFor, releaseDeck, releaseTimersFor, toastsOf, zoneBanner;
+    show
+        holdDeck,
+        holdTimersFor,
+        releaseDeck,
+        releaseTimersFor,
+        toastsOf,
+        zoneBanner;
 
 void main() {
   group('countdown', () {
@@ -359,9 +365,11 @@ void main() {
         ], reason: 'kept, undrawn, just before its 4 s');
 
         async.elapse(const Duration(milliseconds: 1));
-        expect(titles(), [
-          'Newest',
-        ], reason: 'expired at 4 s, neither paused nor restarted while hidden');
+        expect(
+          titles(),
+          ['Newest'],
+          reason: 'expired at 4 s, neither paused nor restarted while hidden',
+        );
         controller.dispose();
       });
     });
@@ -863,10 +871,11 @@ void main() {
 
       second.complete('b');
       expect(await b, 'b');
-      expect(titles(controller), [
-        'Second b',
-        'First…',
-      ], reason: 'newest first; the other is untouched and still loading');
+      expect(
+        titles(controller),
+        ['Second b', 'First…'],
+        reason: 'newest first; the other is untouched and still loading',
+      );
 
       first.complete('a');
       expect(await a, 'a');
