@@ -91,5 +91,9 @@ holds nothing on it. The defaults were settled by feel in the example app.
   eight. The cost moves to startup, 1–3 slow frames of 22–56 ms. With eight toasts, slow frames
   remain after a one-card warm-up.
   The backend, Skia or Impeller, was not identified, and one machine is not a survey.
-- **Not covered**: the first open with the package's own `warmUp()` on a real GPU. The numbers
-  above are the triage's app-side stand-in for it.
+- The package's own `warmUp()` measured the same way (2026-11-19, the triage's probe, called
+  1.5 s after launch): first open 0:11 0:9 0:16 with one toast and 0:17 1:19 2:19 with eight,
+  the range of the triage's under-the-screen row; startup 2–3 slow frames of 21–28 ms. Two
+  8-toast launches disturbed from outside (slow frames before any open and in the second open)
+  were run again; spec §12 has the detail. **Not covered**: a refresh rate above 60 Hz, where the
+  frame-counted hold stops short of the fully fanned-out deck.
