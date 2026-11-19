@@ -146,6 +146,9 @@ states outright, so anything resting on them carries forward as needing confirma
   replace does not; a toast leaving a deck wholly out of sight has no exit.
 
 ## Known holes / open
+- **Not covered**: a config assigned while the app draws no frames starts its glide then, so it
+  plays on restore. #174 dropped the exits and kept the enters; the glide was not shown to the
+  maintainer, and it has not been reproduced or measured.
 - **Nothing caps the list.** A persistent toast can never leave by the tick, and every
   toast is built and laid out however few are drawn. The cost has never been measured,
   so it is a shape rather than a defect.
