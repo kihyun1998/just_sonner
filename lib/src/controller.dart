@@ -57,7 +57,7 @@ class SonnerController extends ChangeNotifier {
     if (value == _config) return;
     _config = value;
     _lifecycle?.read();
-    _warmUp.value?.deck.config = value;
+    _warmUp.value?.config = value;
     notifyListeners();
   }
 
@@ -540,13 +540,18 @@ class SonnerController extends ChangeNotifier {
   /// is drawn for real — the first toast, the first fan-out — costs no frame
   /// for being the first.
   ///
-  /// It fans out a deck with one stand-in toast, built from [config] as a
-  /// toast shown now would be — through its `builder`, or the default card,
-  /// with its `deckBackdrop` — and then takes it away. The stand-in has a title
-  /// and a one-line description set by the package. It is not one of this
-  /// controller's toasts: [count], [isAlive], [zone] and the listeners do not
-  /// see it, and it has no timer. It takes no pointer and no focus, and a
-  /// screen reader is not told of it.
+  /// It fans out a deck of stand-in toasts, built from [config] as toasts
+  /// shown now would be — through its `builder`, or the default card, with its
+  /// `deckBackdrop` — and then takes it away. It holds as many as show the
+  /// dismiss-all control; with no `dismissAll`, two where `deckCap` fades and
+  /// one otherwise. Where `deckCap` fades, the deck's cap ends that fade just
+  /// past the newest stand-in, so the cut's fade is drawn too once the second
+  /// stand-in passes it; with a fade large for the card, a card not much
+  /// taller than the fade less the `gap`, or frames 5 ms apart or less, it
+  /// is not. Each stand-in has the same title and one-line description, set by
+  /// the package. None is one of this controller's toasts: [count], [isAlive],
+  /// [zone] and the listeners do not see them, and they have no timer. They
+  /// take no pointer and no focus, and a screen reader is not told of them.
   ///
   /// With [SonnerHost] the deck is drawn **under the host's child**, the app's
   /// screen. Attached with [attach], it is drawn where the app lays a

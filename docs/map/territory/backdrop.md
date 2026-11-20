@@ -11,7 +11,8 @@ default, so an app that does not ask for it is unchanged.
   at layout.
 - [spec §12](../../spec.md#12-decision-record) — the blur at a fixed sigma, its opacity
   following the expansion, and the warm-up deferred (#142, the maintainer's), then refused
-  (#146), then added as an app call (#168, the maintainer's).
+  (#146), then added as an app call (#168, the maintainer's); its deck given a cap of its own
+  so the cut's fading mask is drawn (#179, the maintainer's).
 - [spec §6](../../spec.md#6-layout-and-animation).
 
 ## Design model
@@ -44,6 +45,20 @@ the app's screen ([Mounting](mounting.md) holds where). The deck it draws is bui
 config, so it runs with no backdrop too. An app-side blur alone (#146) moved nothing that the
 noise between launches did not cover. The warm-up draws the whole deck, and that is what the
 #168 triage measured: the first open went from 1–2 slow frames to 0–1 with one toast.
+
+**What a first open draws decides what the warm-up has to draw.** With eight toasts the slow first
+open that a one-card warm-up left followed the cut's fading mask, a `ShaderMaskLayer`
+(`deck_cut.dart`), not the number of cards: on the GPU every launch whose warm-up painted the mask
+opened at 8.7–9.6 ms, and both that did not at 21.6–22.9 ms (#179). A real deck draws that mask only
+once it passes `deckCap` with a `fade` above 0, and a frame-counted hold of a few stand-ins does
+not reach a pixel cap at every card height and frame rate. So the warm-up deck alone takes
+`PastNewestCap`: the app's `fade` past the newest stand-in, which the second stand-in passes as it
+fans out, where it gets that far within the 20 frames held. A smaller `DeckCap.pixels` cannot stand in for it, since a cap is never short of the
+newest toast and a far end there has no room to fade: at or under the card's height it cuts hard and
+draws no mask. With no `deckCap`, or a `fade` of 0, a real open draws no mask either, and the warm-up
+deck keeps the app's cap. Where it changes the cap it holds at least two stand-ins, since one never
+passes it; with `dismissAll` set it holds as many as show the dismiss-all control, so that
+control is drawn too, though it was not measured on its own.
 
 It never reaches nearer the edge than `offset`, scrolled or not. The box it follows is
 the deck's drawn box, and the deck's near cut exists only once a toast is pushed past
@@ -97,3 +112,11 @@ holds nothing on it. The defaults were settled by feel in the example app.
   8-toast launches disturbed from outside (slow frames before any open and in the second open)
   were run again; spec §12 has the detail. **Not covered**: a refresh rate above 60 Hz, where the
   frame-counted hold stops short of the fully fanned-out deck.
+- **Not covered** for the #179 cap: the committed package on a real GPU (the decision rests on a
+  probe copy that grew the stand-ins instead); an app `builder` card; and the cases where the
+  second stand-in does not pass the cap within the hold, so no mask is drawn while a real 8-toast
+  open draws one (the #179 reviewer's and lens's flutter_test probes): a `fade` large for the card
+  (100 or 120 with the default card), a card shorter than `fade - gap` (10 px at the defaults) or, at 8 ms
+  frames, little taller (11 px drew none), frames 5 ms apart or less, and `motionDurations.expand` of 800 ms or more at 8 ms frames. The
+  mask is pinned in flutter_test at 16 ms and 8 ms frames, at 40 px and 500 px cards, and with no
+  `dismissAll`.

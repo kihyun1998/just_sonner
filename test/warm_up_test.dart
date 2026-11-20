@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart' show RenderStack;
+import 'package:flutter/rendering.dart'
+    show ContainerLayer, Layer, RenderStack, ShaderMaskLayer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:just_sonner/just_sonner.dart';
 import 'package:just_sonner/src/host.dart' show ToastLayer;
 import 'package:just_sonner/src/look/deck_backdrop.dart' show DeckBackdropBox;
 import 'package:just_sonner/src/look/default_look.dart' show DefaultToastLook;
+import 'package:just_sonner/src/config.dart' show PastNewestCap;
+import 'package:just_sonner/src/controller.dart' show warmUpOf;
 import 'package:just_sonner/src/warm_up.dart' show warmUpTitle;
 
 void main() {
@@ -88,6 +91,10 @@ void main() {
 
   final standIn = find.text(warmUpTitle, skipOffstage: false);
 
+  /// The stand-ins a warm-up under a config with the default `dismissAll`
+  /// holds.
+  final findsStandIns = findsNWidgets(2);
+
   group('wrapped', () {
     testWidgets(
       'draws the stand-in and the backdrop, fanned out, then takes them away',
@@ -103,8 +110,8 @@ void main() {
         final warming = controller.warmUp();
         await tester.pump();
 
-        expect(standIn, findsOneWidget);
-        expect(find.byType(DefaultToastLook), findsOneWidget);
+        expect(standIn, findsStandIns);
+        expect(find.byType(DefaultToastLook), findsStandIns);
         expect(find.byType(DeckBackdropBox), findsNWidgets(boxes + 1));
         expect(find.byType(BackdropFilter), findsNothing);
 
@@ -113,7 +120,7 @@ void main() {
           tester.renderObject(find.byType(BackdropFilter)).debugNeedsPaint,
           isFalse,
         );
-        expect(tester.renderObject(standIn).debugNeedsPaint, isFalse);
+        expect(tester.renderObject(standIn.first).debugNeedsPaint, isFalse);
 
         await pumpUntilDone(tester, warming);
         await tester.pump();
@@ -131,7 +138,7 @@ void main() {
       final warming = controller.warmUp();
       await tester.pump();
 
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
       expect(find.byType(DeckBackdropBox), findsNothing);
 
       await pumpUntilDone(tester, warming);
@@ -153,7 +160,7 @@ void main() {
               matching: find.byType(Stack),
             )
             .first,
-        below: standIn,
+        below: standIn.first,
         above: find.byKey(screenKey),
       );
 
@@ -191,7 +198,7 @@ void main() {
       await tester.pump();
       // The stand-in enters from past the window's bottom edge.
       await tester.pump(const Duration(milliseconds: 400));
-      final center = tester.getCenter(standIn);
+      final center = tester.getCenter(standIn.first);
       expect(
         tester.view.physicalSize / tester.view.devicePixelRatio,
         isA<Size>().having((size) => size.contains(center), 'contains', isTrue),
@@ -212,7 +219,7 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 400));
 
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
       expect(find.bySemanticsLabel(RegExp(warmUpTitle)), findsNothing);
 
       await pumpUntilDone(tester, warming);
@@ -281,7 +288,7 @@ void main() {
 
         final warming = controller.warmUp();
         await tester.pump();
-        expect(standIn, findsOneWidget);
+        expect(standIn, findsStandIns);
 
         expect(controller.count, 0);
         expect(controller.zone.state, ZoneState.shown);
@@ -300,7 +307,7 @@ void main() {
 
       final warming = controller.warmUp();
       await tester.pump();
-      expect(find.byType(DefaultToastLook), findsOneWidget);
+      expect(find.byType(DefaultToastLook), findsStandIns);
 
       controller.config = SonnerConfig(
         duration: null,
@@ -312,7 +319,7 @@ void main() {
 
       expect(
         find.byKey(const Key('built'), skipOffstage: false),
-        findsOneWidget,
+        findsStandIns,
       );
 
       await pumpUntilDone(tester, warming);
@@ -353,7 +360,7 @@ void main() {
 
       expect(await completesAtOnce(tester, second), isTrue);
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       await pumpUntilDone(tester, first);
     });
@@ -402,7 +409,7 @@ void main() {
       await tester.pumpWidget(app());
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       final id = controller.show('Saved');
       expect(await completesAtOnce(tester, warming), isTrue);
@@ -424,7 +431,7 @@ void main() {
       await tester.pumpWidget(app());
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       controller.zone.open();
       expect(await completesAtOnce(tester, warming), isTrue);
@@ -440,7 +447,7 @@ void main() {
       await tester.pumpWidget(app());
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       await tester.pumpWidget(const SizedBox());
       final frames = await pumpUntilDone(tester, warming, limit: 3);
@@ -450,7 +457,7 @@ void main() {
       final again = controller.warmUp();
       await tester.pump();
 
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
       await pumpUntilDone(tester, again);
     });
 
@@ -466,7 +473,7 @@ void main() {
       final again = controller.warmUp();
       await tester.pump();
 
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
       await pumpUntilDone(tester, again);
     });
 
@@ -479,7 +486,7 @@ void main() {
       );
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -503,7 +510,7 @@ void main() {
       );
       final warming = own.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       own.dispose();
 
@@ -552,7 +559,7 @@ void main() {
         expect(await completesAtOnce(tester, warming), isFalse);
         await tester.pump();
 
-        expect(standIn, findsOneWidget);
+        expect(standIn, findsStandIns);
         expect(find.byType(DeckBackdropBox), findsOneWidget);
         expect(controller.count, 0);
 
@@ -564,12 +571,12 @@ void main() {
                 matching: find.byType(Stack),
               )
               .first,
-          below: standIn,
+          below: standIn.first,
           above: find.byKey(screenKey),
         );
 
         await pumpUntilFannedOut(tester);
-        expect(tester.renderObject(standIn).debugNeedsPaint, isFalse);
+        expect(tester.renderObject(standIn.first).debugNeedsPaint, isFalse);
 
         await tester.tapAt(tester.getCenter(find.byKey(screenKey)));
         expect(appTaps, 1);
@@ -635,7 +642,7 @@ void main() {
       final warming = controller.warmUp();
       await tester.pump();
 
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
       await pumpUntilDone(tester, warming);
       await tester.pump();
       expect(standIn, findsNothing);
@@ -649,7 +656,7 @@ void main() {
       controller.attach(GlobalKey<NavigatorState>());
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       expect(() => controller.show('Lost'), throwsStateError);
 
@@ -666,7 +673,7 @@ void main() {
       controller.attach(GlobalKey<NavigatorState>());
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       expect(controller.zone.open, throwsStateError);
 
@@ -681,12 +688,12 @@ void main() {
 
       final warming = controller.warmUp();
       await tester.pump();
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       controller.attach(navigatorKey);
       expect(await completesAtOnce(tester, warming), isFalse);
       await tester.pump(const Duration(milliseconds: 16));
-      expect(standIn, findsOneWidget);
+      expect(standIn, findsStandIns);
 
       await pumpUntilDone(tester, warming);
       await tester.pump();
@@ -716,7 +723,7 @@ void main() {
     final warming = toast.warmUp();
     await tester.pump();
 
-    expect(standIn, findsOneWidget);
+    expect(standIn, findsStandIns);
     await pumpUntilDone(tester, warming);
     await tester.pump();
     expect(standIn, findsNothing);
@@ -744,8 +751,183 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(standIn, findsOneWidget);
+    expect(standIn, findsStandIns);
 
     await pumpUntilDone(tester, warming!);
   });
+
+  group('what it draws', () {
+    /// How many cut masks the frame last drawn painted.
+    int masksPainted(WidgetTester tester) {
+      var masks = 0;
+      void walk(Layer? layer) {
+        while (layer != null) {
+          if (layer is ShaderMaskLayer) masks++;
+          if (layer is ContainerLayer) walk(layer.firstChild);
+          layer = layer.nextSibling;
+        }
+      }
+
+      walk(tester.binding.renderViews.first.debugLayer);
+      return masks;
+    }
+
+    /// Pumps [warming] to its end [frame] apart, and returns the most cut
+    /// masks one of its frames painted.
+    Future<int> peakMasks(
+      WidgetTester tester,
+      Future<void> warming,
+      Duration frame,
+    ) async {
+      var done = false;
+      warming.then((_) => done = true);
+      await tester.pump();
+      expect(standIn, findsWidgets);
+      var peak = 0;
+      var frames = 0;
+      while (!done) {
+        expect(frames, lessThan(100), reason: 'the warm-up never ended');
+        await tester.pump(frame);
+        frames++;
+        final masks = masksPainted(tester);
+        if (masks > peak) peak = masks;
+      }
+      return peak;
+    }
+
+    for (final ms in [16, 8]) {
+      testWidgets("paints the cut's fading mask with $ms ms frames", (
+        tester,
+      ) async {
+        await tester.pumpWidget(app());
+
+        final peak = await peakMasks(
+          tester,
+          controller.warmUp(),
+          Duration(milliseconds: ms),
+        );
+        expect(peak, greaterThan(0));
+      });
+    }
+
+    testWidgets("paints it with no dismissAll", (tester) async {
+      controller.config = const SonnerConfig(duration: null, dismissAll: null);
+      await tester.pumpWidget(app());
+
+      final peak = await peakMasks(
+        tester,
+        controller.warmUp(),
+        const Duration(milliseconds: 16),
+      );
+      expect(peak, greaterThan(0));
+    });
+
+    for (final height in [40.0, 500.0]) {
+      testWidgets('paints it with a card $height px tall, at 8 ms frames', (
+        tester,
+      ) async {
+        controller.config = SonnerConfig(
+          duration: null,
+          builder: (context, toast) => SizedBox(
+            width: 300,
+            height: height,
+            child: Text(toast.state.title),
+          ),
+        );
+        await tester.pumpWidget(app());
+
+        final peak = await peakMasks(
+          tester,
+          controller.warmUp(),
+          const Duration(milliseconds: 8),
+        );
+        expect(peak, greaterThan(0));
+      });
+    }
+
+    for (final (dismissAll, cap, count, label) in [
+      (const DeckDismissAll(), _defaultCap, 2, 'the default dismissAll'),
+      (const DeckDismissAll(minCount: 3), _defaultCap, 3, 'a minCount of 3'),
+      (null, _defaultCap, 2, 'no dismissAll and a cap that fades'),
+      (null, null, 1, 'no dismissAll and no cap'),
+      (
+        null,
+        const DeckCap.pixels(400, fade: 0),
+        1,
+        'no dismissAll and no fade',
+      ),
+    ]) {
+      testWidgets('holds $count stand-ins with $label', (tester) async {
+        controller.config = SonnerConfig(
+          duration: null,
+          dismissAll: dismissAll,
+          deckCap: cap,
+        );
+        await tester.pumpWidget(app());
+
+        final warming = controller.warmUp();
+        await tester.pump();
+        expect(standIn, findsNWidgets(count));
+
+        var done = false;
+        warming.then((_) => done = true);
+        var controlDrawn = false;
+        for (var i = 0; i < 100 && !done; i++) {
+          await tester.pump(const Duration(milliseconds: 16));
+          controlDrawn |= find.text('Clear all').evaluate().isNotEmpty;
+        }
+        expect(done, isTrue);
+        expect(controlDrawn, dismissAll != null);
+        expect(controller.count, 0);
+      });
+    }
+
+    SonnerConfig deckConfig() => warmUpOf(controller).value!.deck.config;
+
+    testWidgets(
+      "its cap ends the app's fade past the newest stand-in, a config "
+      'assigned while it runs included',
+      (tester) async {
+        controller.config = const SonnerConfig(
+          duration: null,
+          deckCap: DeckCap.pixels(300, fade: 10),
+        );
+        await tester.pumpWidget(app());
+        final warming = controller.warmUp();
+        await tester.pump();
+
+        expect(deckConfig().deckCap, const PastNewestCap(10));
+        expect(
+          deckConfig().copyWith(deckCap: () => controller.config.deckCap),
+          controller.config,
+        );
+
+        controller.config = controller.config.copyWith(
+          gap: 20,
+          deckCap: () => const DeckCap.share(0.5, fade: 30),
+        );
+        expect(deckConfig().deckCap, const PastNewestCap(30));
+        expect(deckConfig().gap, 20);
+
+        controller.config = controller.config.copyWith(deckCap: () => null);
+        expect(deckConfig(), controller.config);
+
+        await pumpUntilDone(tester, warming);
+      },
+    );
+
+    for (final cap in [null, const DeckCap.pixels(300, fade: 0)]) {
+      testWidgets("with deckCap $cap, its cap is the app's", (tester) async {
+        controller.config = SonnerConfig(duration: null, deckCap: cap);
+        await tester.pumpWidget(app());
+        final warming = controller.warmUp();
+        await tester.pump();
+
+        expect(deckConfig(), controller.config);
+        await pumpUntilDone(tester, warming);
+      });
+    }
+  });
 }
+
+const _defaultCap = DeckCap.pixels(400);

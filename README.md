@@ -584,12 +584,14 @@ MaterialApp(
 toast.warmUp();
 ```
 
-It fans out a deck of its own with one stand-in toast, built from `toast.config` — your `builder`
+It fans out a deck of its own with stand-in toasts, built from `toast.config` — your `builder`
 or the default card, and the backdrop when there is one — and takes it away after about twenty
-frames. **It draws under your app's screen**, so call it while that screen is opaque; a
-transparent window or route shows it. The stand-in is not one of your toasts: `count`, `isAlive`,
-the zone and the listeners do not see it, it takes no pointer or focus, and a screen reader is not
-told of it.
+frames. It holds enough stand-ins to show the dismiss-all control (two by default), and where your
+`deckCap` fades, its deck is cut just past the newest stand-in, with at least two stand-ins, so the
+fade at the cut is drawn too in most setups; the rest of the deck follows your config. **It draws under your
+app's screen**, so call it while that screen is opaque; a transparent window or route shows it.
+The stand-ins are not your toasts: `count`, `isAlive`, the zone and the listeners do not see
+them, they take no pointer or focus, and a screen reader is not told of them.
 
 Attached with `attach`, there is no public way to put the deck under the root overlay's routes,
 so lay a `SonnerWarmUpSlot` under your navigator instead, in the same `MaterialApp.builder`:

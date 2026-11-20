@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/scheduler.dart' show SchedulerBinding, SchedulerPhase;
 import 'package:flutter/widgets.dart';
@@ -13,14 +14,35 @@ const warmUpTitle = 'Warming up';
 /// The description of a warm-up's stand-in toast.
 const warmUpDescription = 'Drawn once, out of sight.';
 
-/// One warm-up: a deck of its own, holding one stand-in toast, that a
-/// [SonnerWarmUpSlot] draws under the app's screen and fans out, then lets go
-/// of. The deck is a controller of its own, not the one that started the run.
+/// How many stand-ins a warm-up under [config] holds: as many as show its
+/// dismiss-all control; with none, two where [warmUpConfig] changes the cap,
+/// and one otherwise.
+int warmUpStandIns(SonnerConfig config) => switch (config.dismissAll) {
+  final dismissAll? => math.max(2, dismissAll.minCount),
+  null when !identical(warmUpConfig(config), config) => 2,
+  null => 1,
+};
+
+/// [config] as the warm-up's deck takes it: where its cap fades, a
+/// [PastNewestCap] of that fade in place of the cap; otherwise [config] itself.
+SonnerConfig warmUpConfig(SonnerConfig config) => switch (config.deckCap) {
+  DeckCap(:final fade) when fade > 0 => config.copyWith(
+    deckCap: () => PastNewestCap(fade),
+  ),
+  _ => config,
+};
+
+/// One warm-up: a deck of its own, holding [warmUpStandIns] stand-in toasts,
+/// that a [SonnerWarmUpSlot] draws under the app's screen and fans out, then
+/// lets go of. The deck is a controller of its own, not the one that started
+/// the run, and takes the app's config through [warmUpConfig].
 final class WarmUpRun with WidgetsBindingObserver {
   WarmUpRun(SonnerConfig config, {required VoidCallback onEnd})
-    : deck = SonnerController(config: config),
+    : deck = SonnerController(config: warmUpConfig(config)),
       _onEnd = onEnd {
-    deck.show(warmUpTitle, description: warmUpDescription, duration: null);
+    for (var i = warmUpStandIns(config); i > 0; i--) {
+      deck.show(warmUpTitle, description: warmUpDescription, duration: null);
+    }
   }
 
   /// The frames drawn with the deck collapsed before its zone opens.
@@ -31,6 +53,9 @@ final class WarmUpRun with WidgetsBindingObserver {
 
   /// The controller whose deck a slot draws.
   final SonnerController deck;
+
+  /// Gives [deck] the app's [config], through [warmUpConfig].
+  set config(SonnerConfig config) => deck.config = warmUpConfig(config);
 
   final VoidCallback _onEnd;
   final Completer<void> _done = Completer<void>();

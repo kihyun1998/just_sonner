@@ -210,6 +210,12 @@ class DeckCap {
       assert(toasts >= 1, 'A cap holds at least one toast.'),
       assert(fade >= 0, 'A fade cannot be negative.');
 
+  const DeckCap._fadeOnly(this.fade)
+    : pixels = null,
+      share = null,
+      toasts = null,
+      assert(fade > 0, 'This cap is measured by its fade.');
+
   /// Set when the cap is given in pixels.
   final double? pixels;
 
@@ -242,6 +248,21 @@ class DeckCap {
     DeckCap(:final share?) => 'DeckCap.share($share, fade: $fade)',
     _ => 'DeckCap.toasts($toasts, fade: $fade)',
   };
+}
+
+/// A cap [fade] past the newest toast's far end, for the warm-up's deck.
+final class PastNewestCap extends DeckCap {
+  const PastNewestCap(super.fade) : super._fadeOnly();
+
+  @override
+  bool operator ==(Object other) =>
+      other is PastNewestCap && other.fade == fade;
+
+  @override
+  int get hashCode => Object.hash(PastNewestCap, fade);
+
+  @override
+  String toString() => 'PastNewestCap(fade: $fade)';
 }
 
 /// Which side of the deck's right edge a [DeckScrollbar] sits on.

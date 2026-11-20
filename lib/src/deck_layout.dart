@@ -410,6 +410,7 @@ class ToastDeckDelegate<T extends Object> extends MultiChildLayoutDelegate {
       DeckCap(:final pixels?) => config.nearOffset + pixels,
       DeckCap(:final share?) => size.height * share - config.farOffset,
       DeckCap(:final toasts?) => _endOf(placed, toasts) ?? layerFar,
+      PastNewestCap(:final fade) => (_newestEnd(placed) ?? layerFar) + fade,
       _ => layerFar,
     };
     return math.min(layerFar, math.max(capped, _newestEnd(placed) ?? 0));

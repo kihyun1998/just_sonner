@@ -6,6 +6,14 @@
   nothing and completes after the first frame. `attach` while a warm-up runs no longer cuts it
   short. The slot is outside your navigator, so a `builder` that needs an `Overlay` or a
   `Navigator`, such as one with a `Tooltip`, throws there during a warm-up.
+- **The warm-up draws what a first open with many toasts draws** (#179). It now holds enough
+  stand-ins to show the dismiss-all control (two by default, `minCount` where that is higher), and
+  where your `deckCap` fades, its deck alone is cut just past the newest stand-in, keeping your
+  `fade` and holding at least two stand-ins, so the fade at the cut is drawn ahead of time too.
+  It is not drawn with a `fade` large for your card, a card shorter than `fade` less `gap`, or a
+  very high refresh rate. With 8 toasts,
+  a one-card warm-up left a first open of 14.8–23.6 ms (#179's measurement); the remaining frame
+  followed that fade.
 
 ## 0.9.0
 

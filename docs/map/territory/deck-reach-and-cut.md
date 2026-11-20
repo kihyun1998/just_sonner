@@ -38,6 +38,11 @@ checks against a glide under way, not only a scroll at rest. A wheel over the co
 far end goes through the same `pointerScroll`; leaving, a reset and a drag of the thumb jump, which
 ends a glide.
 
+The warm-up's deck alone takes a fourth kind of cap, `PastNewestCap` in `config.dart`, not
+exported: `fade` past the newest toast's far end, the shortest cap whose cut fades. A change to how
+`_far` floors the cap at the newest toast, or to where `fadeFrom` sits, moves whether the warm-up
+draws the fading mask ([Backdrop](backdrop.md) holds why it must).
+
 An open zone draws every toast with no pointer on it, and is cut at the cap
 and does not scroll, as an `expandByDefault` deck is, until the pointer comes onto it.
 
