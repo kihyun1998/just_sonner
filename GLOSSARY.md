@@ -139,4 +139,6 @@ holding one stand-in **toast** built from the controller's config, under the app
 out and takes it away. The stand-in is not a toast of the controller: no id, no timer, not counted.
 Attached, there is nothing under the routes the package can reach, so the app lays a
 `SonnerWarmUpSlot` under its navigator and the deck is drawn there; with no slot, nothing is drawn.
+The "slot" in `SonnerWarmUpSlot` is a place in the app's widget tree, not a part of a toast as in
+**Action slot** or **Leading slot**.
 _Avoid_: preload, precache, shader warm-up (that is the engine's, `PaintingBinding.shaderWarmUp`)
