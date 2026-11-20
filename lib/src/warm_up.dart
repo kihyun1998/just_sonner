@@ -13,9 +13,9 @@ const warmUpTitle = 'Warming up';
 /// The description of a warm-up's stand-in toast.
 const warmUpDescription = 'Drawn once, out of sight.';
 
-/// One warm-up: a deck of its own, holding one stand-in toast, that a host
-/// draws under the app's screen and fans out, then lets go of. The deck is a
-/// controller of its own, not the one that started the run.
+/// One warm-up: a deck of its own, holding one stand-in toast, that a
+/// [SonnerWarmUpSlot] draws under the app's screen and fans out, then lets go
+/// of. The deck is a controller of its own, not the one that started the run.
 final class WarmUpRun with WidgetsBindingObserver {
   WarmUpRun(SonnerConfig config, {required VoidCallback onEnd})
     : deck = SonnerController(config: config),
@@ -29,14 +29,14 @@ final class WarmUpRun with WidgetsBindingObserver {
   /// The frames the zone is held open for.
   static const framesOpen = 20;
 
-  /// The controller whose deck the host draws.
+  /// The controller whose deck a slot draws.
   final SonnerController deck;
 
   final VoidCallback _onEnd;
   final Completer<void> _done = Completer<void>();
 
-  /// How many hosts draw [deck] now.
-  int _layers = 0;
+  /// How many slots draw [deck] now.
+  int _slots = 0;
 
   int _frames = 0;
   bool _ended = false;
@@ -75,7 +75,7 @@ final class WarmUpRun with WidgetsBindingObserver {
 
   void _onFrame(Duration _) {
     if (_ended) return;
-    if (_layers == 0) {
+    if (_slots == 0) {
       end();
       return;
     }
@@ -102,7 +102,7 @@ final class WarmUpRun with WidgetsBindingObserver {
     }
   }
 
-  /// Ends the run and completes [done]. The deck is disposed once no host
+  /// Ends the run and completes [done]. The deck is disposed once no slot
   /// draws it.
   void end() {
     if (_ended) return;
@@ -113,49 +113,72 @@ final class WarmUpRun with WidgetsBindingObserver {
     _done.complete();
   }
 
-  void _layerBuilt() => _layers++;
+  void _slotBuilt() => _slots++;
 
-  void _layerGone() {
-    _layers--;
+  void _slotGone() {
+    _slots--;
     _disposeIfLetGo();
   }
 
   void _disposeIfLetGo() {
-    if (!_ended || _layers > 0 || _deckDisposed) return;
+    if (!_ended || _slots > 0 || _deckDisposed) return;
     _deckDisposed = true;
     deck.dispose();
   }
 }
 
-/// Draws the deck of [controller]'s warm-up while one runs, and nothing
-/// otherwise. A host lays it under the app's screen.
-class WarmUpDeck extends StatefulWidget {
-  const WarmUpDeck({super.key, required this.controller});
+/// The place for the deck of a [SonnerController.warmUp]: draws
+/// [controller]'s warm-up deck while one runs, or the exported `toast`'s when
+/// [controller] is null, and nothing otherwise.
+///
+/// An app that calls [SonnerController.attach] lays it in a [Stack] under its
+/// navigator, in `MaterialApp.builder`:
+///
+/// ```dart
+/// builder: (context, child) => Stack(
+///   children: [const Positioned.fill(child: SonnerWarmUpSlot()), child!],
+/// ),
+/// ```
+///
+/// The app's screen covers it, so it must be opaque while a warm-up runs. It
+/// draws none of the controller's toasts; those stay in the root overlay. It
+/// is outside the navigator, so a `builder` that needs an `Overlay` or a
+/// `Navigator`, such as one with a `Tooltip`, throws here during a warm-up,
+/// and the run still counts as held to its end, so it does not run again.
+/// [SonnerHost] lays one under its child itself; with both on one controller,
+/// both draw it.
+class SonnerWarmUpSlot extends StatefulWidget {
+  const SonnerWarmUpSlot({super.key, this.controller});
 
-  final SonnerController controller;
+  final SonnerController? controller;
 
   @override
-  State<WarmUpDeck> createState() => _WarmUpDeckState();
+  State<SonnerWarmUpSlot> createState() => _SonnerWarmUpSlotState();
 }
 
-class _WarmUpDeckState extends State<WarmUpDeck> {
+class _SonnerWarmUpSlotState extends State<SonnerWarmUpSlot> {
+  late SonnerController _controller;
+
   @override
   void initState() {
     super.initState();
-    warmUpOf(widget.controller).addListener(_onRun);
+    _controller = widget.controller ?? toast;
+    warmUpOf(_controller).addListener(_onRun);
   }
 
   @override
-  void didUpdateWidget(WarmUpDeck oldWidget) {
+  void didUpdateWidget(SonnerWarmUpSlot oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (identical(oldWidget.controller, widget.controller)) return;
-    warmUpOf(oldWidget.controller).removeListener(_onRun);
-    warmUpOf(widget.controller).addListener(_onRun);
+    final controller = widget.controller ?? toast;
+    if (identical(controller, _controller)) return;
+    warmUpOf(_controller).removeListener(_onRun);
+    _controller = controller;
+    warmUpOf(_controller).addListener(_onRun);
   }
 
   @override
   void dispose() {
-    warmUpOf(widget.controller).removeListener(_onRun);
+    warmUpOf(_controller).removeListener(_onRun);
     super.dispose();
   }
 
@@ -166,18 +189,17 @@ class _WarmUpDeckState extends State<WarmUpDeck> {
         SchedulerPhase.persistentCallbacks) {
       SchedulerBinding.instance.addPostFrameCallback((_) {
         if (mounted) _onRun();
-      }, debugLabel: 'WarmUpDeck.onRun');
+      }, debugLabel: 'SonnerWarmUpSlot.onRun');
       return;
     }
     setState(() {});
   }
 
   @override
-  Widget build(BuildContext context) =>
-      switch (warmUpOf(widget.controller).value) {
-        final run? => _HiddenDeck(key: ObjectKey(run), run: run),
-        null => const SizedBox.shrink(),
-      };
+  Widget build(BuildContext context) => switch (warmUpOf(_controller).value) {
+    final run? => _HiddenDeck(key: ObjectKey(run), run: run),
+    null => const SizedBox.shrink(),
+  };
 }
 
 /// [run]'s deck, taking no pointer, no focus and no part in semantics.
@@ -194,12 +216,12 @@ class _HiddenDeckState extends State<_HiddenDeck> {
   @override
   void initState() {
     super.initState();
-    widget.run._layerBuilt();
+    widget.run._slotBuilt();
   }
 
   @override
   void dispose() {
-    widget.run._layerGone();
+    widget.run._slotGone();
     super.dispose();
   }
 

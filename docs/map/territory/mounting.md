@@ -8,7 +8,8 @@ own routes, dialogs and overlays. Two modes, and the z-order rule that follows.
 - [spec §12](../../spec.md#12-decision-record) — the mounting rows, including the
   z-order rule rewritten on the corrected overlay premise.
 - [spec §12](../../spec.md#12-decision-record) — the `warmUp()` rows (#168): its deck under
-  the host's child in mode 2, and nothing in mode 1 (the maintainer's).
+  the host's child in mode 2; and the #178 rows: in mode 1, under the navigator in a
+  `SonnerWarmUpSlot` the app lays, and `attach` no longer ending a run (the maintainer's).
 - [spec §5](../../spec.md#5-mounting).
 
 ## Design model
@@ -53,15 +54,30 @@ did, through the root assert, so only release reads it newly, and only with some
 draw. The entry is built anew in the new overlay: State, and an exit under way, stay
 with the old one.
 
-**The warm-up's deck is mode 2's only, and it goes under the child.** `SonnerHost` is one
+**The warm-up's deck goes under the app's screen.** `SonnerHost` is one
 `Stack` of three children that never changes shape — the warm-up slot, the child, the toasts'
 layer — so the app's screen keeps its element whether a warm-up runs or not, and the warm-up deck
 paints first, under the app's opaque screen. That placement is the one the #168 triage measured to
-keep its effect: off the window it gave none, and under `Opacity` 0.01 it was erratic. Mode 1 has no
-such place. "Below every route" needs an entry to `insert` or `rearrange` below, `OverlayState`
-keeps `_entries` private, and no public API lists a navigator's routes, so `warmUp()` does nothing
-once attached. The maintainer chose that over an app-given placement and over a private
-element-tree lookup. That also leaves out the triage's "no navigator yet: wait and try once".
+keep its effect: off the window it gave none, and under `Opacity` 0.01 it was erratic. The root
+overlay has no such place: "below every route" needs an entry to `insert` or `rearrange` below,
+`OverlayState` keeps `_entries` private, and no public API lists a navigator's routes. So mode 1
+gets the same placement from the app: `SonnerWarmUpSlot`, the widget the host lays first, laid in a
+`Stack` under the navigator in `MaterialApp.builder` (#178). #168 had rejected "an app-given
+placement", read back as an `OverlayEntry` handed over to insert below; a slot was not shown then,
+and the maintainer took it once it was built. A private element-tree lookup stays out. The slot
+is its own widget, not a mode of `SonnerHost`: a mode would make a host that draws no toasts, one
+left off would draw each toast twice beside the overlay's, and `attach`/`detach` would have to
+notify. `warmUp()` does not look at `_mount`: a run ends by itself at the end of a frame with no
+`SonnerWarmUpSlot` drawing it, so an attached app with no slot gets a run that ends after the first
+frame, and `attach` has no reason to end one.
+
+**The trap in the slot: it is outside the root overlay.** An attached app's real toasts are drawn
+inside it, so their `builder` may use a `Tooltip` or `Navigator.of`; the stand-in goes through the
+same `builder` in the slot, where both throw (`No Overlay widget found`, flutter_test, #178). It is
+documented, not guarded. The error is reported once, the run still holds to its end and counts as
+finished, so the deck's backdrop and layout are warmed with an error card in place of the stand-in,
+and it does not run again (flutter_test, #178's proving pass). Mode 2 has no such gap: its real
+toasts are outside the navigator too.
 
 The deck is driven by a package-private controller, not the app's, so nothing the app reads
 moves: `count`, `isAlive`, `zone.state`, the listeners, the timers, the lifecycle watch. The
@@ -75,7 +91,7 @@ the tests put the host inside the page to see each guard fail.
 `controller.dart` — SonnerController
 `root_overlay.dart` — RootOverlayMount
 `host.dart` — SonnerHost, ToastLayer
-`warm_up.dart` — WarmUpRun, WarmUpDeck
+`warm_up.dart` — WarmUpRun, SonnerWarmUpSlot
 
 ## Reference behaviour
 sonner mounts one `<Toaster/>` and has no second mode — its equivalent question does not
@@ -101,6 +117,8 @@ stop at the boundary where the layer is created.
   exit was drawn by the old entry and goes with it.
 - **Not covered**: a mode-2 host that is itself first mounted while the app is hidden —
   nothing draws it, so a `show` on a never-attached controller is not reached.
-- A warm-up ended while the app draws no frames leaves its deck in the tree until the host's
+- A warm-up ended while the app draws no frames leaves its deck in the tree until the slot's
   next build, which is the first frame back; its controller is disposed then. Nothing draws or
-  ticks it meanwhile. **Not covered**: two `SonnerHost`s on one controller each draw the deck.
+  ticks it meanwhile. **Not covered**: two `SonnerHost`s on one controller each draw the deck, and
+  so do a `SonnerHost` and a `SonnerWarmUpSlot`, or two slots, on one controller (the slot's doc
+  says so for a host and a slot; nothing guards either).

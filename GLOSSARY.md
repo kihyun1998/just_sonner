@@ -137,5 +137,6 @@ The deck drawn once where the user cannot see it, so that its first real fan-out
 not also the first time the engine draws it: `toast.warmUp()`. `SonnerHost` lays a deck of its own,
 holding one stand-in **toast** built from the controller's config, under the app's screen, fans it
 out and takes it away. The stand-in is not a toast of the controller: no id, no timer, not counted.
-Attached, there is nothing under the routes the package can reach, and it does nothing.
+Attached, there is nothing under the routes the package can reach, so the app lays a
+`SonnerWarmUpSlot` under its navigator and the deck is drawn there; with no slot, nothing is drawn.
 _Avoid_: preload, precache, shader warm-up (that is the engine's, `PaintingBinding.shaderWarmUp`)

@@ -1,3 +1,12 @@
+## Unreleased
+
+- **An attached app can warm the deck up too** (#178). Lay the new `SonnerWarmUpSlot` in a
+  `Stack` under your navigator in `MaterialApp.builder`, and `toast.warmUp()` draws its stand-in
+  there, under your screen; before, an attached `warmUp()` did nothing. With no slot it draws
+  nothing and completes after the first frame. `attach` while a warm-up runs no longer cuts it
+  short. The slot is outside your navigator, so a `builder` that needs an `Overlay` or a
+  `Navigator`, such as one with a `Tooltip`, throws there during a warm-up.
+
 ## 0.9.0
 
 - **An app chooses which lifecycle states pause the timers** (#172).

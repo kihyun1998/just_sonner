@@ -39,6 +39,7 @@ export 'src/toast_content.dart' show ToastContent;
 export 'src/toast_id.dart' show ToastId;
 export 'src/toast_fit.dart' show ToastFit, toastCardBuilder;
 export 'src/toast_state.dart' show ToastState;
+export 'src/warm_up.dart' show SonnerWarmUpSlot;
 export 'src/toast_view.dart' show ToastBuilder, ToastSlot, ToastView;
 export 'src/zone_view.dart' show ZoneEmptyBuilder, ZoneEmptyView;
 export 'package:flutter_smooth_wheel_scroll/flutter_smooth_wheel_scroll.dart'

@@ -24,6 +24,14 @@ class _ExampleAppState extends State<ExampleApp> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _settings.controller.warmUp(),
+    );
+  }
+
+  @override
   void dispose() {
     _settings.controller.dispose();
     _settings.dispose();
@@ -47,8 +55,15 @@ class _ExampleAppState extends State<ExampleApp> {
           brightness: Brightness.dark,
         ),
       ),
-      builder: (context, child) =>
-          Stack(children: [child!, if (_settings.titleBar) const _TitleBar()]),
+      builder: (context, child) => Stack(
+        children: [
+          Positioned.fill(
+            child: SonnerWarmUpSlot(controller: _settings.controller),
+          ),
+          child!,
+          if (_settings.titleBar) const _TitleBar(),
+        ],
+      ),
       home: ShowcasePage(settings: _settings),
     ),
   );

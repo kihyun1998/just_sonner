@@ -59,6 +59,33 @@ void main() {
     return done;
   }
 
+  Future<void> pumpUntilFannedOut(WidgetTester tester) async {
+    var backdropDrawn = false;
+    for (var i = 0; i < 30 && !backdropDrawn; i++) {
+      await tester.pump(const Duration(milliseconds: 16));
+      backdropDrawn = find.byType(BackdropFilter).evaluate().isNotEmpty;
+    }
+    expect(backdropDrawn, isTrue, reason: 'the deck never fanned out');
+  }
+
+  void expectLaidUnder(
+    WidgetTester tester,
+    Finder stack, {
+    required Finder below,
+    required Finder above,
+  }) {
+    final layers = tester.renderObject<RenderStack>(stack).getChildrenAsList();
+    int layerOf(Finder finder) {
+      RenderObject? node = tester.renderObject(finder);
+      while (node != null && !layers.contains(node)) {
+        node = node.parent;
+      }
+      return layers.indexOf(node! as RenderBox);
+    }
+
+    expect(layerOf(below), lessThan(layerOf(above)));
+  }
+
   final standIn = find.text(warmUpTitle, skipOffstage: false);
 
   group('wrapped', () {
@@ -81,12 +108,7 @@ void main() {
         expect(find.byType(DeckBackdropBox), findsNWidgets(boxes + 1));
         expect(find.byType(BackdropFilter), findsNothing);
 
-        var backdropDrawn = false;
-        for (var i = 0; i < 30 && !backdropDrawn; i++) {
-          await tester.pump(const Duration(milliseconds: 16));
-          backdropDrawn = find.byType(BackdropFilter).evaluate().isNotEmpty;
-        }
-        expect(backdropDrawn, isTrue, reason: 'the deck never fanned out');
+        await pumpUntilFannedOut(tester);
         expect(
           tester.renderObject(find.byType(BackdropFilter)).debugNeedsPaint,
           isFalse,
@@ -123,25 +145,17 @@ void main() {
       final warming = controller.warmUp();
       await tester.pump();
 
-      // A stack paints its children in order, so the first is the lowest.
-      final stack = tester.renderObject<RenderStack>(
+      expectLaidUnder(
+        tester,
         find
             .descendant(
               of: find.byType(SonnerHost),
               matching: find.byType(Stack),
             )
             .first,
+        below: standIn,
+        above: find.byKey(screenKey),
       );
-      final layers = stack.getChildrenAsList();
-      int layerOf(Finder finder) {
-        RenderObject? node = tester.renderObject(finder);
-        while (node != null && !layers.contains(node)) {
-          node = node.parent;
-        }
-        return layers.indexOf(node! as RenderBox);
-      }
-
-      expect(layerOf(standIn), lessThan(layerOf(find.byKey(screenKey))));
 
       await pumpUntilDone(tester, warming);
     });
@@ -356,34 +370,6 @@ void main() {
       expect(standIn, findsNothing);
     });
 
-    testWidgets('attached, with the navigator built', (tester) async {
-      final navigatorKey = GlobalKey<NavigatorState>();
-      await tester.pumpWidget(
-        MaterialApp(navigatorKey: navigatorKey, home: const SizedBox.expand()),
-      );
-      controller.attach(navigatorKey);
-      final entries = find.byType(ToastLayer, skipOffstage: false);
-
-      final warming = controller.warmUp();
-      expect(await completesAtOnce(tester, warming), isTrue);
-      await tester.pump();
-
-      expect(standIn, findsNothing);
-      expect(entries, findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-
-    testWidgets('attached, with no navigator built', (tester) async {
-      controller.attach(GlobalKey<NavigatorState>());
-      await tester.pumpWidget(const SizedBox());
-
-      final warming = controller.warmUp();
-      expect(await completesAtOnce(tester, warming), isTrue);
-      await tester.pump();
-
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('with no host to draw it, after a frame', (tester) async {
       await tester.pumpWidget(const SizedBox());
 
@@ -468,20 +454,6 @@ void main() {
       await pumpUntilDone(tester, again);
     });
 
-    testWidgets('by attach', (tester) async {
-      await tester.pumpWidget(app());
-      final warming = controller.warmUp();
-      await tester.pump();
-      expect(standIn, findsOneWidget);
-
-      controller.attach(GlobalKey<NavigatorState>());
-      expect(await completesAtOnce(tester, warming), isTrue);
-      await tester.pump();
-
-      expect(standIn, findsNothing);
-      expect(tester.takeException(), isNull);
-    });
-
     testWidgets('a warm-up cut short can be run again', (tester) async {
       await tester.pumpWidget(app());
       controller.warmUp();
@@ -539,6 +511,215 @@ void main() {
       await tester.pumpWidget(const SizedBox());
       expect(tester.takeException(), isNull);
     });
+  });
+
+  group('attached', () {
+    late GlobalKey<NavigatorState> navigatorKey;
+    setUp(() => navigatorKey = GlobalKey<NavigatorState>());
+
+    Widget attachedApp({bool slot = true, VoidCallback? onTap}) => MaterialApp(
+      navigatorKey: navigatorKey,
+      builder: (context, child) => Stack(
+        children: [
+          if (slot)
+            Positioned.fill(child: SonnerWarmUpSlot(controller: controller)),
+          child!,
+        ],
+      ),
+      home: GestureDetector(
+        onTap: onTap,
+        child: const ColoredBox(
+          key: screenKey,
+          color: Color(0xFFFFFFFF),
+          child: SizedBox.expand(),
+        ),
+      ),
+    );
+
+    testWidgets(
+      'with a slot: draws the stand-in and the backdrop under the screen, '
+      'then takes them away',
+      (tester) async {
+        controller.config = const SonnerConfig(
+          duration: null,
+          deckBackdrop: DeckBackdrop(blur: 4),
+        );
+        var appTaps = 0;
+        await tester.pumpWidget(attachedApp(onTap: () => appTaps++));
+        controller.attach(navigatorKey);
+
+        final warming = controller.warmUp();
+        expect(await completesAtOnce(tester, warming), isFalse);
+        await tester.pump();
+
+        expect(standIn, findsOneWidget);
+        expect(find.byType(DeckBackdropBox), findsOneWidget);
+        expect(controller.count, 0);
+
+        expectLaidUnder(
+          tester,
+          find
+              .ancestor(
+                of: find.byType(SonnerWarmUpSlot),
+                matching: find.byType(Stack),
+              )
+              .first,
+          below: standIn,
+          above: find.byKey(screenKey),
+        );
+
+        await pumpUntilFannedOut(tester);
+        expect(tester.renderObject(standIn).debugNeedsPaint, isFalse);
+
+        await tester.tapAt(tester.getCenter(find.byKey(screenKey)));
+        expect(appTaps, 1);
+
+        await pumpUntilDone(tester, warming);
+        await tester.pump();
+
+        expect(standIn, findsNothing);
+        expect(find.byType(DeckBackdropBox), findsNothing);
+        expect(find.byType(BackdropFilter), findsNothing);
+        expect(controller.count, 0);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
+    testWidgets('with a slot: a toast shown after it is drawn once, attached', (
+      tester,
+    ) async {
+      await tester.pumpWidget(attachedApp());
+      controller.attach(navigatorKey);
+      await pumpUntilDone(tester, controller.warmUp());
+      await tester.pump();
+
+      controller.show('Saved');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 500));
+
+      expect(find.text('Saved'), findsOneWidget);
+      expect(
+        find.descendant(
+          of: find.byType(SonnerWarmUpSlot),
+          matching: find.byType(ToastLayer),
+        ),
+        findsNothing,
+      );
+      controller.dismissAll();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('with no slot: draws nothing and ends after the first frame', (
+      tester,
+    ) async {
+      await tester.pumpWidget(attachedApp(slot: false));
+      controller.attach(navigatorKey);
+      final layers = find.byType(ToastLayer, skipOffstage: false);
+
+      final warming = controller.warmUp();
+      expect(await completesAtOnce(tester, warming), isFalse);
+      final frames = await pumpUntilDone(tester, warming, limit: 3);
+
+      expect(frames, lessThanOrEqualTo(1));
+      expect(standIn, findsNothing);
+      expect(layers, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('to a key with no navigator built: a slot still draws it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(attachedApp());
+      controller.attach(GlobalKey<NavigatorState>());
+
+      final warming = controller.warmUp();
+      await tester.pump();
+
+      expect(standIn, findsOneWidget);
+      await pumpUntilDone(tester, warming);
+      await tester.pump();
+      expect(standIn, findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('a show dropped for want of a navigator still ends it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(attachedApp());
+      controller.attach(GlobalKey<NavigatorState>());
+      final warming = controller.warmUp();
+      await tester.pump();
+      expect(standIn, findsOneWidget);
+
+      expect(() => controller.show('Lost'), throwsStateError);
+
+      expect(await completesAtOnce(tester, warming), isTrue);
+      await tester.pump();
+      expect(standIn, findsNothing);
+      expect(controller.count, 0);
+    });
+
+    testWidgets('a zone.open() refused for want of a navigator still ends it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(attachedApp());
+      controller.attach(GlobalKey<NavigatorState>());
+      final warming = controller.warmUp();
+      await tester.pump();
+      expect(standIn, findsOneWidget);
+
+      expect(controller.zone.open, throwsStateError);
+
+      expect(await completesAtOnce(tester, warming), isTrue);
+      await tester.pump();
+      expect(standIn, findsNothing);
+      expect(controller.zone.state, ZoneState.shown);
+    });
+
+    testWidgets('attach while one runs does not cut it short', (tester) async {
+      await tester.pumpWidget(attachedApp());
+
+      final warming = controller.warmUp();
+      await tester.pump();
+      expect(standIn, findsOneWidget);
+
+      controller.attach(navigatorKey);
+      expect(await completesAtOnce(tester, warming), isFalse);
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(standIn, findsOneWidget);
+
+      await pumpUntilDone(tester, warming);
+      await tester.pump();
+      expect(standIn, findsNothing);
+      final again = controller.warmUp();
+      expect(await completesAtOnce(tester, again), isTrue);
+      await tester.pump();
+      expect(standIn, findsNothing);
+    });
+  });
+
+  testWidgets("a slot given no controller draws the exported toast's", (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (context, child) => Stack(
+          children: [
+            const Positioned.fill(child: SonnerWarmUpSlot()),
+            child!,
+          ],
+        ),
+        home: const ColoredBox(color: Color(0xFFFFFFFF)),
+      ),
+    );
+
+    final warming = toast.warmUp();
+    await tester.pump();
+
+    expect(standIn, findsOneWidget);
+    await pumpUntilDone(tester, warming);
+    await tester.pump();
+    expect(standIn, findsNothing);
   });
 
   testWidgets('called during a build, it starts once the frame ends', (

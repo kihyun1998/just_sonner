@@ -57,7 +57,7 @@ class SonnerHost extends StatelessWidget {
     final controller = this.controller ?? toast;
     return Stack(
       children: [
-        Positioned.fill(child: WarmUpDeck(controller: controller)),
+        Positioned.fill(child: SonnerWarmUpSlot(controller: controller)),
         child,
         Positioned.fill(child: ToastLayer(controller: controller)),
       ],

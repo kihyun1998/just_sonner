@@ -82,8 +82,8 @@ state and animations. Wrapped in `SonnerHost`, no entry in the overlay can cover
 The difference matters for the widgets you put in a toast. Wrapped, the toasts sit **above** the
 `Navigator`, so `Navigator.of(context)` finds no navigator there, and a `Tooltip` or anything else
 that looks for an `Overlay` throws "No Overlay widget found". Attached, they sit inside the root
-overlay and find both. `toast.warmUp()` (see [Warming the deck up](#warming-the-deck-up)) works
-wrapped only; attached, it does nothing.
+overlay and find both. `toast.warmUp()` (see [Warming the deck up](#warming-the-deck-up)) draws
+under your screen in both modes; attached, it needs a `SonnerWarmUpSlot` under your navigator.
 
 ## Showing, updating and dismissing
 
@@ -591,11 +591,34 @@ transparent window or route shows it. The stand-in is not one of your toasts: `c
 the zone and the listeners do not see it, it takes no pointer or focus, and a screen reader is not
 told of it.
 
-It works with `SonnerHost` only. **Attached with `attach`, it does nothing**: there is no public
-way to put the deck under the root overlay's routes. It also does nothing while a toast is alive
-or the zone is open, while one runs, after one has run to its end, and while the app is hidden. A
-`show` or `zone.open()` while it runs takes it away at once. The returned future completes when it
-is taken away or does nothing, and never with an error.
+Attached with `attach`, there is no public way to put the deck under the root overlay's routes,
+so lay a `SonnerWarmUpSlot` under your navigator instead, in the same `MaterialApp.builder`:
+
+```dart
+MaterialApp(
+  navigatorKey: navigatorKey,
+  builder: (context, child) => Stack(
+    children: [const Positioned.fill(child: SonnerWarmUpSlot()), child!],
+  ),
+  home: const HomePage(),
+);
+
+toast.attach(navigatorKey);
+// Once the app is running and its first screen is up:
+toast.warmUp();
+```
+
+The slot draws the warm-up's deck and nothing else; your toasts are still drawn in the root
+overlay. With no slot, an attached `warmUp()` draws nothing and completes after the first frame.
+The slot sits outside your navigator, so **a `builder` that needs an `Overlay` or a `Navigator`**
+— a `Tooltip`, `Navigator.of(context)` — works in your real toasts but **throws in the slot during
+a warm-up**, and that warm-up still counts as done, so it does not run again. Calling `attach`
+while a warm-up runs leaves it running.
+
+It does nothing while a toast is alive or the zone is open, while one runs, after one has run to
+its end, and while the app is hidden. A `show` or `zone.open()` while it runs takes it away at
+once. The returned future completes when it is taken away or does nothing, and never with an
+error.
 
 ## Hiding the zone
 

@@ -184,7 +184,7 @@ class SonnerController extends ChangeNotifier {
 
   bool _disposed = false;
 
-  /// The warm-up under way, for a host to draw.
+  /// The warm-up under way, for a slot to draw.
   final _warmUp = ValueNotifier<WarmUpRun?>(null);
 
   /// Whether a warm-up has held its deck fanned out to the end.
@@ -230,7 +230,6 @@ class SonnerController extends ChangeNotifier {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     if (identical(_mount?.navigatorKey, navigatorKey)) return;
     final mount = RootOverlayMount(this, navigatorKey)..debugAssertRoot();
-    _endWarmUp();
     _mount?.detach();
     _mount = mount;
     if (_toasts.isEmpty && _zoneState != ZoneState.open) return;
@@ -308,13 +307,13 @@ class SonnerController extends ChangeNotifier {
     );
     id ??= ToastId(AutoToastIdValue(_serial++));
     final existing = _recordOf(id);
+    _endWarmUp();
     final problem = _mount?.problem();
     if (problem != null && existing == null) {
       if (kDebugMode) throw StateError(problem);
       debugPrint('just_sonner: $problem The toast "$title" was dropped.');
       return id;
     }
-    _endWarmUp();
     final state = ToastState(
       title: title,
       description: description,
@@ -550,16 +549,19 @@ class SonnerController extends ChangeNotifier {
   /// screen reader is not told of it.
   ///
   /// With [SonnerHost] the deck is drawn **under the host's child**, the app's
-  /// screen, so call it while that screen is opaque: a transparent window or
-  /// route shows it. Attached with [attach], it does nothing.
+  /// screen. Attached with [attach], it is drawn where the app lays a
+  /// [SonnerWarmUpSlot], under its navigator, and with no slot nothing is
+  /// drawn. Either way, call it while that screen is opaque: a transparent
+  /// window or route shows it. What a `builder` cannot use in the slot is on
+  /// [SonnerWarmUpSlot].
   ///
   /// It does nothing while a toast is alive, while the zone is open, while a
   /// warm-up runs, after one has run to its end, and while the app is hidden.
   /// A [show] or [SonnerZone.open] while it runs takes the deck away at once,
   /// and the toasts are drawn as they would be without it; so does the app
-  /// being hidden, and [attach]. It ends at the end of any frame with no host
-  /// drawing it, the first included, so call it after `runApp`. One cut short
-  /// can be run again.
+  /// being hidden. [attach] while it runs leaves it running. It ends at the
+  /// end of any frame with nothing drawing it, the first included, so call it
+  /// after `runApp`. One cut short can be run again.
   ///
   /// The future completes once the deck is taken away, or at once when it
   /// does nothing; it never completes with an error. Called before the app's
@@ -568,8 +570,7 @@ class SonnerController extends ChangeNotifier {
     assert(ChangeNotifier.debugAssertNotDisposed(this));
     // Throws while there is no binding.
     WidgetsBinding.instance;
-    if (_mount != null ||
-        _warmed ||
+    if (_warmed ||
         _warmUp.value != null ||
         _toasts.isNotEmpty ||
         _zoneState == ZoneState.open) {
@@ -741,7 +742,7 @@ void releaseDeck(SonnerController controller, Object holder) =>
 bool zoneBanner(SonnerController controller) =>
     controller._zoneState == ZoneState.hidden && controller._banner;
 
-/// The warm-up [controller] has under way, for a host to draw. For the host;
+/// The warm-up [controller] has under way, for a slot to draw. For the slot;
 /// not exported.
 ValueListenable<WarmUpRun?> warmUpOf(SonnerController controller) =>
     controller._warmUp;
@@ -853,6 +854,7 @@ class SonnerZone {
     final controller = _controller;
     assert(ChangeNotifier.debugAssertNotDisposed(controller));
     if (controller._zoneState == ZoneState.open) return;
+    controller._endWarmUp();
     final mount = controller._mount;
     final problem = mount?.problem();
     if (problem != null) {
@@ -860,7 +862,6 @@ class SonnerZone {
       debugPrint('just_sonner: $problem The zone was not opened.');
       return;
     }
-    controller._endWarmUp();
     controller._beforeOpen = controller._zoneState;
     controller._setZone(ZoneState.open);
     if (mount != null) {
