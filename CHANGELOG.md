@@ -1,4 +1,4 @@
-## Unreleased
+## 0.10.0
 
 - **An attached app can warm the deck up too** (#178). Lay the new `SonnerWarmUpSlot` in a
   `Stack` under your navigator in `MaterialApp.builder`, and `toast.warmUp()` draws its stand-in
