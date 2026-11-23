@@ -1567,6 +1567,219 @@ void main() {
     expect(notifications, 1);
   });
 
+  group('dismissWhere', () {
+    test('leaves only what the test keeps, in one notification that reads '
+        'the new state', () {
+      final a = controller.show('A', duration: null);
+      final b = controller.show('B', duration: null);
+      final c = controller.show('C', duration: null);
+      final seen = <(int, bool, bool, bool)>[];
+      controller.addListener(
+        () => seen.add((
+          controller.count,
+          controller.isAlive(a),
+          controller.isAlive(b),
+          controller.isAlive(c),
+        )),
+      );
+      notifications = 0;
+
+      controller.dismissWhere((id) => id != b);
+
+      expect(controller.count, 1);
+      expect(notifications, 1);
+      expect(seen, [(1, false, true, false)]);
+    });
+
+    test('keeps a kept toast in its place and on its countdown', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        controller.show('A', duration: const Duration(seconds: 10));
+        final b = controller.show('B', duration: const Duration(seconds: 10));
+        controller.show('C', duration: const Duration(seconds: 10));
+        final d = controller.show('D', duration: const Duration(seconds: 10));
+        async.elapse(const Duration(seconds: 3));
+        final before = {
+          for (final record in toastsOf(controller))
+            record.state.title: record.remaining,
+        };
+        final kept = toastsOf(controller).where((r) => r.id == b || r.id == d);
+
+        controller.dismissWhere((id) => id != b && id != d);
+
+        expect(toastsOf(controller), orderedEquals(kept));
+        expect(
+          [for (final record in toastsOf(controller)) record.state.title],
+          ['D', 'B'],
+          reason: 'the deck lists the newest first',
+        );
+        expect(toastsOf(controller).first.remaining, before['D']);
+        expect(toastsOf(controller).last.remaining, before['B']);
+        final left = before['B']!;
+        expect(left, greaterThan(Duration.zero));
+
+        async.elapse(left - const Duration(milliseconds: 100));
+        expect(controller.count, 2, reason: 'not run out early');
+        async.elapse(const Duration(milliseconds: 100));
+        expect(controller.count, 0, reason: 'ran out when it would have');
+        controller.dispose();
+      });
+    });
+
+    test('a test that selects nothing, or no toast alive, notifies no one', () {
+      controller.dismissWhere((id) => true);
+      expect(notifications, 0, reason: 'no toast alive');
+
+      controller.show('A', duration: null);
+      controller.show('B', duration: null);
+      notifications = 0;
+
+      controller.dismissWhere((id) => false);
+
+      expect(controller.count, 2);
+      expect(notifications, 0);
+    });
+
+    test('a test that throws leaves every toast alive and notifies no one', () {
+      final ids = [
+        for (final title in ['A', 'B', 'C']) controller.show(title),
+      ];
+      notifications = 0;
+      var calls = 0;
+
+      expect(
+        () => controller.dismissWhere((id) {
+          if (++calls == 2) throw StateError('second');
+          return true;
+        }),
+        throwsStateError,
+      );
+
+      expect(controller.count, 3);
+      expect([
+        for (final id in ids) controller.isAlive(id),
+      ], everyElement(true));
+      expect(notifications, 0);
+    });
+
+    test('a test that calls back into the controller sees every toast', () {
+      final a = controller.show('A', duration: null);
+      final b = controller.show('B', duration: null);
+      final seenCounts = <int>[];
+
+      controller.dismissWhere((id) {
+        seenCounts.add(controller.count);
+        return id == b && controller.isAlive(a);
+      });
+
+      expect(seenCounts, [2, 2]);
+      expect(controller.isAlive(a), isTrue);
+      expect(controller.isAlive(b), isFalse);
+    });
+
+    test('a test that shows a toast leaves the new one alone', () {
+      controller.show('A', duration: null);
+      late final ToastId shown;
+
+      controller.dismissWhere((id) {
+        shown = controller.show('New', duration: null);
+        return true;
+      });
+
+      expect(controller.count, 1);
+      expect(controller.isAlive(shown), isTrue);
+    });
+
+    test('dismisses what is beyond visibleToasts, not dismissible or '
+        'loading, when selected', () {
+      final controller = SonnerController(
+        config: const SonnerConfig(visibleToasts: 1, duration: null),
+      );
+      final plain = [
+        for (final title in ['A', 'B', 'C']) controller.show(title),
+      ];
+      final stuck = controller.show('Stuck', dismissible: false);
+      final busy = controller.show('Busy', isLoading: true);
+      var notified = 0;
+      controller.addListener(() => notified++);
+      final tested = <ToastId>[];
+
+      controller.dismissWhere((id) {
+        tested.add(id);
+        return true;
+      });
+
+      expect(tested, unorderedEquals([...plain, stuck, busy]));
+      expect(controller.count, 0);
+      expect(notified, 1);
+      controller.dispose();
+    });
+
+    test('stops the ticker once no toast is counting', () {
+      fakeAsync((async) {
+        final controller = SonnerController();
+        final timed = controller.show('Timed');
+        controller.show('Waiting', duration: null);
+        expect(async.periodicTimerCount, 1);
+
+        controller.dismissWhere((id) => id == timed);
+
+        expect(async.periodicTimerCount, 0);
+        controller.dispose();
+      });
+    });
+
+    test('takes a banner down once the toasts it was up for have gone', () {
+      controller.zone.hide();
+      controller.show('A', duration: null);
+      expect(zoneBanner(controller), isTrue);
+
+      controller.dismissWhere((id) => true);
+
+      expect(zoneBanner(controller), isFalse);
+    });
+
+    test('leaves an open zone open and a hidden zone hidden', () {
+      controller.show('A', duration: null);
+      controller.show('B', duration: null);
+      controller.zone.open();
+
+      controller.dismissWhere((id) => true);
+      expect(controller.zone.state, ZoneState.open);
+
+      controller.zone.close();
+      controller.show('C', duration: null);
+      controller.zone.hide();
+      controller.dismissWhere((id) => true);
+      expect(controller.zone.state, ZoneState.hidden);
+    });
+
+    test('on a disposed controller it asserts before anything changes', () {
+      final controller = SonnerController(
+        config: const SonnerConfig(duration: null),
+      );
+      controller.show('Saved');
+      controller.dispose();
+      var called = false;
+
+      expect(
+        () => controller.dismissWhere((id) {
+          called = true;
+          return true;
+        }),
+        throwsFlutterError,
+      );
+
+      expect(called, isFalse);
+      expect(controller.count, 1);
+      expect(
+        () => (SonnerController()..dispose()).dismissWhere((id) => false),
+        throwsFlutterError,
+        reason: 'with no toast on screen too',
+      );
+    });
+  });
+
   group('count', () {
     test('rises with each new toast and falls with each way one leaves, and a '
         'listener reads the new value in that notification', () {

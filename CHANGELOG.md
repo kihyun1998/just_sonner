@@ -1,3 +1,12 @@
+## Unreleased
+
+- **An app can dismiss every toast but some** (#180). `toast.dismissWhere((id) => ...)` calls your
+  test with the id of each toast alive, those beyond `visibleToasts`, not dismissible and loading
+  ones included, and dismisses the ones it returns true for, with one notification instead of one
+  per id. A toast you keep stays in its place and keeps its countdown. With nothing selected nobody
+  is notified, and the zone is left as it was, as `dismissAll()` leaves it. A test that throws
+  leaves every toast alive. No list of alive ids is added.
+
 ## 0.10.0
 
 - **An attached app can warm the deck up too** (#178). Lay the new `SonnerWarmUpSlot` in a

@@ -520,6 +520,38 @@ class SonnerController extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Dismisses, in one change, every toast on screen that [test] selects.
+  ///
+  /// [test] is called with the id of each toast alive, those beyond
+  /// [SonnerConfig.visibleToasts], those not dismissible and loading ones
+  /// included, and every id is tested before any toast is removed. A toast it
+  /// selects is dismissed as [dismissAll] dismisses it; one it keeps stays
+  /// where it was in the deck, and its countdown goes on from the time it had
+  /// left. Listeners are notified once; with nothing selected, or no toast on
+  /// screen, they are not. The zone is never touched, as [dismissAll] does not
+  /// touch it.
+  ///
+  /// A [test] that throws leaves every toast on screen, and this call notifies
+  /// no one. A toast it shows at a new id is not tested and stays; one it
+  /// shows at the id of a toast already selected replaces that toast, which is
+  /// then dismissed. A [test] that dismisses a toast is still called with that
+  /// toast's id if it comes later.
+  ///
+  /// On a disposed controller it asserts, with no toast on screen too.
+  void dismissWhere(bool Function(ToastId id) test) {
+    assert(ChangeNotifier.debugAssertNotDisposed(this));
+    final selected = Set<ToastRecord>.identity();
+    for (final record in List.of(_toasts)) {
+      if (test(record.id)) selected.add(record);
+    }
+    final before = _toasts.length;
+    _toasts.removeWhere(selected.contains);
+    if (_toasts.length == before) return;
+    _endBannerIfDone();
+    _stopTickerIfIdle();
+    notifyListeners();
+  }
+
   /// Pauses every timer of this controller until the returned hold is
   /// released: for a signal the lifecycle does not carry, such as a program
   /// the app launched coming to the front. Which lifecycle states pause the

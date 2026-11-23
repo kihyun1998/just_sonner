@@ -30,6 +30,9 @@ tick that serves every counting toast.
 - [spec §12](../../spec.md#12-decision-record) — `dismiss` and `dismissAll` asserting at entry on
   a disposed controller, a `promise` state due after `dispose` dropped with no report, and the
   other direct calls left assert-only (#155, maintainer).
+- [spec §12](../../spec.md#12-decision-record) — `dismissWhere(test)` on the controller, a predicate
+  on `ToastId` chosen over `dismissAll({keep})` and a list of ids (#180, maintainer for the predicate
+  and its name); what it tests, what it leaves alone and when it notifies (derived).
 - [spec §4](../../spec.md#4-api), [spec §7](../../spec.md#7-timers).
 
 ## Design model
@@ -86,10 +89,26 @@ it back to true before the comparing listener runs, so the leaving is never seen
 Reading it when the app next acts on the id has no such order. On a disposed controller it
 reads the list as `dispose` left it, as `count` does, so the two never disagree.
 
+`dismissWhere(test)` is `dismissAll` with a choice, and it keeps `dismissAll`'s lines: the list
+changes once and listeners hear once, nothing selected is no change and no notification, the zone
+is not touched, a banner ends by the existing rule, and a toast leaves `count` and `isAlive` as it
+is dismissed. Every id is tested on a copy of the list before anything is removed, which is what
+holds three things: a `test` that throws has removed nothing, one that only reads `count` or
+`isAlive` sees the whole list, and one that shows a toast does not change the list being walked (a
+toast shown at a new id is not tested and stays). A `test` that itself changes the list is not
+covered by that: a `dismiss` of a later id still has the test called with it, now dead, and a
+`show(id:)` at an id already selected replaces the same record, which is then dismissed, as a
+replace keeps the toast; a `dismiss` then a `show` makes a new record that stays. A throwing
+`test` leaves the toasts alone, and a `show` it made before throwing notifies on its own. Only the selected records leave, so a kept toast keeps its place
+and its `remaining`; nothing restarts or pauses it. Loading and non-dismissible toasts are
+dismissed when selected; skipping them is the deck's dismiss-all control's rule
+(`DeckDismissAllView.count`), not the controller's. No list of ids goes with it, for the reason
+the `count` and `isAlive` rows give (#180).
+
 After `dispose`, every call that changes the controller asserts at entry, before anything
 changes: `show`, `update`, `dismiss`, `dismissAll`, `promise`, the `config` setter,
-`holdTimers`, `attach`, `raise` and the zone's `open`, `close`, `hide` and `reveal`. The
-entry assert matters for `dismiss` and `dismissAll` in particular: without it they removed
+`holdTimers`, `attach`, `raise`, `dismissWhere` and the zone's `open`, `close`, `hide` and
+`reveal`. The entry assert matters for `dismiss` and `dismissAll` in particular: without it they removed
 the record and only then hit `notifyListeners`'s assert, so a debug run threw with the toast
 already gone (#155). In release the asserts are gone and these calls act; that was chosen
 over ignoring them. Reads, `TimerHold.release()` and `detach` do not assert.
