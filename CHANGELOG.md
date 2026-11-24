@@ -1,4 +1,4 @@
-## Unreleased
+## 0.11.0
 
 - **An app can dismiss every toast but some** (#180). `toast.dismissWhere((id) => ...)` calls your
   test with the id of each toast alive, those beyond `visibleToasts`, not dismissible and loading
