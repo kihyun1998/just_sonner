@@ -100,6 +100,10 @@ toast.update(
 
 toast.dismiss(id);
 toast.dismissAll();
+
+// Every toast but the ones you keep, in one change.
+final keep = {ToastId('maintenance'), ToastId('license')};
+toast.dismissWhere((id) => !keep.contains(id));
 ```
 
 - **Duration.** A toast shown with a `duration` is a **transient** toast: it is gone once that
@@ -120,6 +124,11 @@ toast.dismissAll();
   no toast with that id is on screen.
 - **Your own ids.** `ToastId('connection')` names a toast you can reach again without keeping the
   id `show` returned. Ids are equal when their values are.
+- **Dismissing all but some.** `dismissWhere` calls your test with the id of every toast alive,
+  those beyond `visibleToasts`, loading and not dismissible ones included, and dismisses the ones
+  it returns true for, with one notification. A toast you keep stays in its place and keeps its
+  countdown. With nothing selected, nobody is notified. The zone is left as it was, as
+  `dismissAll()` leaves it.
 - **Leading.** `leading:` takes any widget, such as an icon, drawn in a box of
   `config.leadingSize`.
 
